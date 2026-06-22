@@ -17,11 +17,6 @@ export default function UserManagement() {
   const [formLoading, setFormLoading] = useState(false);
 
   useEffect(() => {
-    // Sirf admin access kar sake
-    if (currentUser?.role !== 'admin') {
-      navigate('/dashboard');
-      return;
-    }
     fetchUsers();
   }, [currentUser]);
 

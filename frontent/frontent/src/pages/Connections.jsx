@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 export default function Connections() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -101,6 +103,56 @@ export default function Connections() {
       setSuccess('Connection delete ho gaya!');
     } catch (err) {
       setError('Delete failed!');
+    }
+  };
+
+  // Sharing Modal State
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [sharingConn, setSharingConn] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState('');
+  const [shareSuccess, setShareSuccess] = useState('');
+
+  const handleOpenShareModal = async (conn) => {
+    setSharingConn(conn);
+    setShareModalOpen(true);
+    setShareError('');
+    setShareSuccess('');
+    setSelectedUserIds([]);
+    try {
+      const res = await API.get(`/connections/${conn._id}/share`);
+      setUsersList(res.data.users);
+      setSelectedUserIds(res.data.allowedUsers);
+    } catch (err) {
+      setShareError('Failed to load sharing details.');
+    }
+  };
+
+  const handleToggleUser = (userId) => {
+    if (selectedUserIds.includes(userId)) {
+      setSelectedUserIds(selectedUserIds.filter(id => id !== userId));
+    } else {
+      setSelectedUserIds([...selectedUserIds, userId]);
+    }
+  };
+
+  const handleSaveShare = async () => {
+    setShareLoading(true);
+    setShareError('');
+    setShareSuccess('');
+    try {
+      await API.put(`/connections/${sharingConn._id}/share`, {
+        developerIds: selectedUserIds
+      });
+      setShareSuccess('Access updated successfully!');
+      fetchConnections();
+      setTimeout(() => setShareModalOpen(false), 1000);
+    } catch (err) {
+      setShareError(err.response?.data?.message || 'Failed to update access.');
+    } finally {
+      setShareLoading(false);
     }
   };
 
@@ -363,23 +415,29 @@ export default function Connections() {
             {connections.map(conn => (
               <div
                 key={conn._id}
-                className="bg-white rounded-xl border border-gray-200 p-5"
+                className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
 
                   {/* Left — Info */}
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">{getTypeIcon(conn.type)}</span>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap text-left">
                         <p className="text-sm font-semibold text-gray-900">
                           {conn.name}
                         </p>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadge(conn.type)}`}>
                           {conn.type}
                         </span>
+                        {/* Shared Badge */}
+                        {conn.user && conn.user._id !== user?.id && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+                            Shared by {conn.user.name}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-xs text-gray-400 mt-0.5 text-left">
                         {conn.type === 'mongodb'
                           ? conn.connectionString?.substring(0, 40) + '...'
                           : `${conn.host}:${conn.port} / ${conn.database}`
@@ -390,6 +448,15 @@ export default function Connections() {
 
                   {/* Right — Actions */}
                   <div className="flex items-center gap-2">
+                    {/* Share Button (Only if admin or owner) */}
+                    {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
+                      <button
+                        onClick={() => handleOpenShareModal(conn)}
+                        className="px-3 py-2 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium"
+                      >
+                        👥 Share
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         if (conn.database) {
@@ -398,16 +465,19 @@ export default function Connections() {
                           navigate(`/connections/${conn._id}/select-db`);
                         }
                       }}
-                      className="px-4 py-2 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700 transition"
+                      className="px-4 py-2 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700 transition font-medium"
                     >
                       Open →
                     </button>
-                    <button
-                      onClick={() => handleDelete(conn._id, conn.name)}
-                      className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition"
-                    >
-                      Delete
-                    </button>
+                    {/* Delete Button (Only if admin or owner) */}
+                    {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
+                      <button
+                        onClick={() => handleDelete(conn._id, conn.name)}
+                        className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition font-medium"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
 
                 </div>
@@ -417,6 +487,113 @@ export default function Connections() {
         )}
 
       </div>
+
+      {/* Share Modal */}
+      {shareModalOpen && sharingConn && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn text-left">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  👥 Share Access
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Share connection <span className="font-semibold text-gray-700">{sharingConn.name}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShareModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg font-semibold"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              {shareError && (
+                <div className="mb-4 bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {shareError}
+                </div>
+              )}
+              {shareSuccess && (
+                <div className="mb-4 bg-green-50 text-green-600 text-xs px-4 py-2.5 rounded-lg border border-green-200">
+                  ✅ {shareSuccess}
+                </div>
+              )}
+
+              <p className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wider">
+                Select Developers / Viewers:
+              </p>
+
+              {usersList.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">
+                  No developers or viewers found.
+                </p>
+              ) : (
+                <div className="max-h-60 overflow-y-auto space-y-2 border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+                  {usersList.map(u => {
+                    const isChecked = selectedUserIds.includes(u._id);
+                    return (
+                      <label
+                        key={u._id}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition ${
+                          isChecked
+                            ? 'bg-blue-50/50 border-blue-200'
+                            : 'bg-white border-gray-100 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleUser(u._id)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">
+                              {u.name}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {u.email}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                          u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+              <button
+                onClick={() => setShareModalOpen(false)}
+                className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveShare}
+                disabled={shareLoading || usersList.length === 0}
+                className="flex-1 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
+              >
+                {shareLoading ? 'Saving...' : 'Save Access'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

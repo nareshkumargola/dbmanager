@@ -35,15 +35,15 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
         <div className="flex flex-col md:flex-row">
 
           {/* LEFT SIDE - Branding Section (exactly same as Login) */}
-          <div className="md:w-1/2 bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-8 md:p-12 flex flex-col justify-between relative overflow-hidden">
+          <div className="md:w-1/2 bg-gradient-to-br from-gray-800 to-gray-950 p-8 md:p-12 flex flex-col justify-between relative overflow-hidden">
             {/* Decorative background elements */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl"></div>
+            <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-white/5 rounded-full blur-3xl"></div>
 
             <div className="relative z-10">
               {/* COINFINITY */}
@@ -53,15 +53,15 @@ export default function Signup() {
 
               {/* INFINITY */}
               <div className="mt-3 flex items-center gap-2">
-                <div className="h-px flex-1 bg-white/30 max-w-16"></div>
+                <div className="h-px flex-1 bg-white/20 max-w-16"></div>
                 <p className="text-2xl md:text-3xl font-semibold text-white/90 tracking-wide">
                   INFINITY
                 </p>
-                <div className="h-px flex-1 bg-white/30 max-w-16"></div>
+                <div className="h-px flex-1 bg-white/20 max-w-16"></div>
               </div>
 
               {/* Ps - Stylish Badge */}
-              <div className="mt-8 inline-flex items-center gap-3 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-5 py-2.5 shadow-lg">
+              <div className="mt-8 inline-flex items-center gap-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-5 py-2.5 shadow-lg">
                 <span className="text-xl font-bold text-white tracking-wider">Ps</span>
                 <span className="text-white/80 text-sm font-mono">✦</span>
                 <span className="w-1.5 h-1.5 bg-white/60 rounded-full"></span>
@@ -70,12 +70,12 @@ export default function Signup() {
 
               {/* Additional tagline */}
               <div className="mt-10 space-y-1">
-                <p className="text-indigo-100 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full"></span>
+                <p className="text-gray-300 text-sm flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
                   Next-gen database management
                 </p>
-                <p className="text-indigo-100 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-indigo-300 rounded-full"></span>
+                <p className="text-gray-300 text-sm flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
                   Powered by infinite scale
                 </p>
               </div>
@@ -83,7 +83,7 @@ export default function Signup() {
 
             {/* Decorative Ps pattern */}
             <div className="relative z-10 mt-auto pt-12">
-              <div className="flex items-center gap-2 text-indigo-200/40 text-xs font-mono">
+              <div className="flex items-center gap-2 text-gray-400/40 text-xs font-mono">
                 <span>✦</span>
                 <span>P S</span>
                 <span>✦</span>
@@ -123,7 +123,7 @@ export default function Signup() {
                   value={form.name}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all duration-200"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all duration-200"
                 />
               </div>
 
@@ -139,7 +139,7 @@ export default function Signup() {
                   value={form.email}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all duration-200"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all duration-200"
                 />
               </div>
 
@@ -155,7 +155,7 @@ export default function Signup() {
                   value={form.password}
                   onChange={handleChange}
                   required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all duration-200"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all duration-200"
                 />
               </div>
 
@@ -168,10 +168,9 @@ export default function Signup() {
                   name="role"
                   value={form.role}
                   onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white transition-all duration-200"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 bg-white transition-all duration-200"
                 >
                   <option value="developer">Developer</option>
-                  <option value="admin">Admin</option>
                   <option value="viewer">Viewer</option>
                 </select>
               </div>
@@ -180,7 +179,7 @@ export default function Signup() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 text-white py-2.5 rounded-xl text-sm font-semibold hover:from-indigo-700 hover:to-purple-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -200,7 +199,7 @@ export default function Signup() {
             <div className="mt-8 text-center">
               <p className="text-sm text-gray-500">
                 Pehle se account hai?{' '}
-                <Link to="/login" className="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline transition">
+                <Link to="/login" className="text-gray-900 font-semibold hover:underline transition">
                   Login
                 </Link>
               </p>

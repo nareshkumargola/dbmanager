@@ -27,6 +27,15 @@ const queryHistorySchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  connectionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Connection',
+    default: null,
+  },
+  database: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

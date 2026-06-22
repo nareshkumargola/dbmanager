@@ -1,5 +1,5 @@
 const mysql = require('mysql2/promise');
-const { Client } = require('pg');
+const { Pool } = require('pg');
 const { MongoClient } = require('mongodb');
 
 // Active connections store karo — memory mein
@@ -31,16 +31,21 @@ const connectMySQL = async (config) => {
 
 // ─── POSTGRESQL CONNECT ───────────────────────────
 const connectPostgreSQL = async (config) => {
-  const client = new Client({
+  const pool = new Pool({
     host: config.host,
     port: config.port || 5432,
     user: config.username,
     password: config.password,
     database: config.database,
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
   });
 
-  await client.connect();
-  return client;
+  // Verify connection by connecting a client and releasing it immediately
+  const client = await pool.connect();
+  client.release();
+  return pool;
 };
 
 // ─── MONGODB CONNECT ──────────────────────────────

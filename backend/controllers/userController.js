@@ -1,5 +1,7 @@
 const User = require('../models/userModel');
 const bcrypt = require('bcryptjs');
+const Connection = require('../models/connectionModel');
+const { closeConnection } = require('../connections/connectionManager');
 
 // Saare users dekho — sirf admin
 exports.getAllUsers = async (req, res) => {
@@ -72,6 +74,16 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
+    // Pehle user ke connections find karo taaki unhe close kar sakein
+    const connectionsToClose = await Connection.find({ user: id });
+    for (const conn of connectionsToClose) {
+      await closeConnection(conn._id);
+    }
+
+    // Ab connections delete karo
+    await Connection.deleteMany({ user: id });
+
+    // Ab user delete karo
     const user = await User.findByIdAndDelete(id);
     if (!user) {
       return res.status(404).json({ message: 'User nahi mila!' });
@@ -79,7 +91,7 @@ exports.deleteUser = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'User delete ho gaya!' 
+      message: 'User aur uske saare database connections delete ho gaye!' 
     });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });

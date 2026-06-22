@@ -107,39 +107,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Permissions Card */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-            Permissions
-          </h3>
-          <div className="space-y-3">
-            {[
-              {
-                label: 'View Tables & Collections',
-                allowed: true,
-              },
-              {
-                label: 'Run SQL Queries',
-                allowed: user?.role === 'admin' || user?.role === 'developer',
-              },
-              {
-                label: 'Admin Panel Access',
-                allowed: user?.role === 'admin',
-              },
-            ].map((perm, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">{perm.label}</span>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  perm.allowed
-                    ? 'bg-green-100 text-green-600'
-                    : 'bg-red-100 text-red-400'
-                }`}>
-                  {perm.allowed ? '✓ Allowed' : '✗ Not allowed'}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+
 
         {/* Logout Button */}
         <button

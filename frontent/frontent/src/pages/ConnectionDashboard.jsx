@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import SlowQueryPanel from '../components/SlowQueryPanel';
+import BinlogMonitorPanel from '../components/BinlogMonitorPanel';
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid,
@@ -450,7 +451,10 @@ const fetchTableData = async (tableName) => {
     { id: 'history', label: '🕐 History' },
     { id: 'monitoring', label: '📈 Monitoring' },
     { id: 'slow-queries', label: '🐢 Slow Query' },
-    ...(dbType === 'mysql' ? [{ id: 'backup', label: '💾 Backup' }] : []),
+    ...(dbType === 'mysql' ? [
+      { id: 'backup', label: '💾 Backup' },
+      { id: 'binlog', label: '📡 Binlog Monitor' }
+    ] : []),
   ];
 
   if (loading) {
@@ -494,10 +498,19 @@ const fetchTableData = async (tableName) => {
 
         {/* Sidebar */}
         <div className="w-56 bg-white border-r border-gray-200 flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-100">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
               {dbType === 'mongodb' ? 'Collections' : 'Tables'} ({tables.length})
             </p>
+            <button
+              onClick={fetchAll}
+              title="Refresh Schema"
+              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-800 transition"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
+              </svg>
+            </button>
           </div>
           <div className="overflow-y-auto flex-1">
             {tables.length === 0 ? (
@@ -1486,6 +1499,13 @@ const fetchTableData = async (tableName) => {
             {activeTab === 'slow-queries' && (
               <div>
                 <SlowQueryPanel />
+              </div>
+            )}
+
+            {/* BINLOG MONITOR */}
+            {dbType === 'mysql' && (
+              <div className={activeTab === 'binlog' ? 'block' : 'hidden'}>
+                <BinlogMonitorPanel connectionId={id} />
               </div>
             )}
 

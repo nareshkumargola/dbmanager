@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import API from '../api/axios';
@@ -15,6 +15,63 @@ export default function QueryEditor() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
+  // Connection selection state
+  const [connections, setConnections] = useState([]);
+  const [selectedConnection, setSelectedConnection] = useState(location.state?.connectionId || '');
+  const [connectionType, setConnectionType] = useState('');
+  const [databases, setDatabases] = useState([]);
+  const [selectedDatabase, setSelectedDatabase] = useState(location.state?.database || '');
+
+  useEffect(() => {
+    fetchConnections();
+  }, []);
+
+  useEffect(() => {
+    if (selectedConnection) {
+      const conn = connections.find(c => c._id === selectedConnection);
+      if (conn) {
+        setConnectionType(conn.type);
+        if (conn.type === 'mysql' || conn.type === 'postgresql') {
+          fetchDatabases(conn._id);
+        } else {
+          setDatabases([]);
+        }
+      }
+    } else {
+      setConnectionType('');
+      setDatabases([]);
+    }
+  }, [selectedConnection, connections]);
+
+  const fetchConnections = async () => {
+    try {
+      const res = await API.get('/connections');
+      setConnections(res.data.connections || []);
+      // If there is an active connection from location state, set it
+      if (location.state?.connectionId) {
+        setSelectedConnection(location.state.connectionId);
+      }
+    } catch (err) {
+      console.error('Failed to fetch connections:', err);
+    }
+  };
+
+  const fetchDatabases = async (id) => {
+    try {
+      const res = await API.get(`/connections/${id}/databases`);
+      setDatabases(res.data.databases || []);
+      // Pre-select connection's default database if matching
+      const conn = connections.find(c => c._id === id);
+      if (conn?.database && res.data.databases.includes(conn.database)) {
+        setSelectedDatabase(conn.database);
+      } else if (res.data.databases?.length > 0 && !selectedDatabase) {
+        setSelectedDatabase(res.data.databases[0]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch databases:', err);
+    }
+  };
+
   const runQuery = async () => {
     setError('');
     setMessage('');
@@ -22,12 +79,17 @@ export default function QueryEditor() {
     setLoading(true);
 
     try {
-      // If opened with a connection context, forward it
       const params = new URLSearchParams();
-      if (location.state?.connectionId) params.append('connectionId', location.state.connectionId);
-      if (location.state?.database) params.append('database', location.state.database);
-      const path = `/db/mysql/query${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await API.post(path, { query });
+      if (selectedConnection) params.append('connectionId', selectedConnection);
+      if (selectedDatabase) params.append('database', selectedDatabase);
+      
+      let path = '/db/mysql/query';
+      if (connectionType === 'postgresql') {
+        path = '/db/pg/query';
+      }
+
+      const queryPath = `${path}${params.toString() ? `?${params.toString()}` : ''}`;
+      const res = await API.post(queryPath, { query });
 
       const data = res.data.results;
 
@@ -61,7 +123,7 @@ export default function QueryEditor() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 text-left">
 
       {/* Navbar */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
@@ -78,12 +140,70 @@ export default function QueryEditor() {
 
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900">
+          <h2 className="text-2xl font-semibold text-gray-900 text-left">
             SQL Query Editor
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            MySQL queries run karo — Ctrl+Enter se bhi run kar sakte ho
+          <p className="text-sm text-gray-500 mt-1 text-left">
+            MySQL aur PostgreSQL queries run karo — Ctrl+Enter se bhi run kar sakte ho
           </p>
+        </div>
+
+        {/* Connection & DB Selector */}
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex flex-wrap items-end gap-4 shadow-sm text-left">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+              Select Connection
+            </label>
+            <select
+              value={selectedConnection}
+              onChange={(e) => {
+                setSelectedConnection(e.target.value);
+                setSelectedDatabase('');
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:border-gray-500 focus:bg-white transition font-medium"
+            >
+              <option value="">🐬 Default App Database (MySQL)</option>
+              {connections.map(c => (
+                <option key={c._id} value={c._id}>
+                  {c.type === 'mysql' ? '🐬' : c.type === 'postgresql' ? '🐘' : '🍃'} {c.name} ({c.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(connectionType === 'mysql' || connectionType === 'postgresql') && databases.length > 0 && (
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                Select Database / Schema
+              </label>
+              <select
+                value={selectedDatabase}
+                onChange={(e) => setSelectedDatabase(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:border-gray-500 focus:bg-white transition font-medium"
+              >
+                {databases.map(db => (
+                  <option key={db} value={db}>
+                    {db}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={() => {
+              fetchConnections();
+              if (selectedConnection) {
+                fetchDatabases(selectedConnection);
+              }
+            }}
+            title="Refresh Connections & Databases"
+            className="p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition shadow-sm h-[38px] w-[38px] flex items-center justify-center"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
+            </svg>
+          </button>
         </div>
 
         {/* Query Box */}

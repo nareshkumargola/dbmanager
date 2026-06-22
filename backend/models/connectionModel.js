@@ -6,6 +6,11 @@ const connectionSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  allowedUsers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: []
+  }],
   name: {
     type: String,
     required: true,
