@@ -77,8 +77,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Server error!', error: err.message });
 });
 
+const { startBackgroundBinlogPoller } = require('./services/binlogPollerService');
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
   console.log(`🚀 Server chal raha hai http://localhost:${PORT}`);
   await connectAppDB();
+  
+  // Start persistent background binlog poller daemon
+  startBackgroundBinlogPoller(io);
 });

@@ -310,6 +310,14 @@ exports.runQuery = async (req, res) => {
         console.error('Procedure audit logging failed:', logErr.message);
       }
     }
+    
+    // Slow query check karo — 100ms se zyada?
+    try {
+      const { saveSlowQuery } = require('./slowQueryController');
+      await saveSlowQuery(req.user.id, query, executionTime, rowsAffected);
+    } catch (slowQueryErr) {
+      console.error('Failed to log slow query:', slowQueryErr.message);
+    }
 
     res.status(200).json({ success: true, results, executionTime });
   } catch (err) {
@@ -797,6 +805,15 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
             oldData: null
           }
         },
+        { 
+          type: 'OTHER', 
+          statement: `SELECT * FROM users WHERE role = 'developer' AND status = 'active' LIMIT 10`,
+          diff: {
+            table: 'users',
+            newData: null,
+            oldData: null
+          }
+        },
       ];
       const selected = mockTemplates[Math.floor(Math.random() * mockTemplates.length)];
       nextPos = startPos + 150;
@@ -895,7 +912,7 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
 
       const parsed = parseBinlogEvent(row);
       
-      if (['INSERT', 'UPDATE', 'DELETE', 'DDL'].includes(parsed.eventType)) {
+      if (['INSERT', 'UPDATE', 'DELETE', 'DDL', 'OTHER'].includes(parsed.eventType)) {
         let diff = parseSQLDiff(parsed.statement, parsed.eventType);
 
         // Fallback for Row-based binary logging format where statement parsing doesn't apply

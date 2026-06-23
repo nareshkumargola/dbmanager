@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const connectionController = require('../controllers/connectionController');
+const mysqlUserController = require('../controllers/mysqlUserController');
 const { protect, adminOnly } = require('../middlewares/authMiddleware');
 
 // Saare routes protected
@@ -26,5 +27,13 @@ router.post('/:id/binlog/start', protect, connectionController.startBinlogMonito
 router.get('/:id/binlog/events', protect, connectionController.getBinlogEvents);
 router.get('/:id/binlog/history', protect, connectionController.getBinlogHistory);
 router.delete('/:id/binlog/history', protect, connectionController.clearBinlogHistory);
+
+// MySQL user management
+router.get('/:id/mysql-users', protect, mysqlUserController.listMySQLUsers);
+router.get('/:id/mysql-users/:username/:host', protect, mysqlUserController.getMySQLUserPrivileges);
+router.post('/:id/mysql-users', protect, mysqlUserController.createMySQLUser);
+router.delete('/:id/mysql-users/:username/:host', protect, mysqlUserController.deleteMySQLUser);
+router.put('/:id/mysql-users/:username/:host/password', protect, mysqlUserController.updateMySQLUserPassword);
+router.put('/:id/mysql-users/:username/:host/privileges', protect, mysqlUserController.updateMySQLUserPrivileges);
 
 module.exports = router;

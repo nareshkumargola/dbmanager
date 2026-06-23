@@ -233,7 +233,7 @@ export default function Backup() {
             disabled={restoreLoading || !selectedFile}
             className="w-full py-2.5 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition disabled:opacity-60"
           >
-            {restoreLoading ? 'Restore ho raha hai...' : '⬆ Restore Database'}
+            {restoreLoading ? 'Restore....' : '⬆ Restore Database'}
           </button>
         </div>
 

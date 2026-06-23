@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import SlowQueryPanel from '../components/SlowQueryPanel';
 import BinlogMonitorPanel from '../components/BinlogMonitorPanel';
+import MySQLUsersPanel from '../components/MySQLUsersPanel';
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid,
@@ -453,7 +454,8 @@ const fetchTableData = async (tableName) => {
     { id: 'slow-queries', label: '🐢 Slow Query' },
     ...(dbType === 'mysql' ? [
       { id: 'backup', label: '💾 Backup' },
-      { id: 'binlog', label: '📡 Binlog Monitor' }
+      { id: 'binlog', label: '📡 Binlog Monitor' },
+      { id: 'mysql-users', label: '👤 MySQL Users' }
     ] : []),
   ];
 
@@ -1506,6 +1508,13 @@ const fetchTableData = async (tableName) => {
             {dbType === 'mysql' && (
               <div className={activeTab === 'binlog' ? 'block' : 'hidden'}>
                 <BinlogMonitorPanel connectionId={id} />
+              </div>
+            )}
+
+            {/* MYSQL USER MANAGER */}
+            {dbType === 'mysql' && (
+              <div className={activeTab === 'mysql-users' ? 'block' : 'hidden'}>
+                <MySQLUsersPanel connectionId={id} />
               </div>
             )}
 

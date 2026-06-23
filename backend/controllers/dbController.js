@@ -117,6 +117,53 @@ exports.runMysqlQuery = async (req, res) => {
       database || (connectionDoc ? connectionDoc.database : null)
     );
 
+    // Save MySQL query to BinlogAudit collection as part of unified history logs
+    if (connectionId) {
+      try {
+        const clean = query.replace(/\/\*.*?\*\//g, '').trim();
+        const upper = clean.toUpperCase();
+        let eventType = 'OTHER';
+
+        if (upper.startsWith('INSERT')) {
+          eventType = 'INSERT';
+        } else if (upper.startsWith('UPDATE')) {
+          eventType = 'UPDATE';
+        } else if (upper.startsWith('DELETE')) {
+          eventType = 'DELETE';
+        } else if (upper.startsWith('CREATE') || upper.startsWith('ALTER') || upper.startsWith('DROP')) {
+          eventType = 'DDL';
+        }
+
+        let diff = null;
+        try {
+          const { parseSQLDiff } = require('./connectionController');
+          diff = parseSQLDiff(query, eventType);
+        } catch (diffErr) {
+          console.warn('Failed to parse SQL diff:', diffErr.message);
+        }
+
+        let dbUser = 'User (App)';
+        if (connectionDoc && connectionDoc.username) {
+          dbUser = connectionDoc.username;
+        }
+
+        const BinlogAudit = require('../models/binlogAuditModel');
+        await BinlogAudit.create({
+          connectionId,
+          eventType,
+          statement: clean,
+          originalType: 'Query Editor',
+          pos: 0,
+          logName: 'Query Editor',
+          user: req.user.id || null,
+          diff,
+          dbUser
+        });
+      } catch (binlogErr) {
+        console.error('Failed to log query editor command to binlog audit:', binlogErr.message);
+      }
+    }
+
     // Stored procedure audit check and log
     if (isStoredProcedureDDL) {
       try {
