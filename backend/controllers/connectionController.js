@@ -295,6 +295,92 @@ exports.runQuery = async (req, res) => {
       console.error('History save error:', e.message);
     }
 
+    // Save MySQL/Postgres query to BinlogAudit collection as part of unified history logs
+    try {
+      const clean = query.replace(/\/\*.*?\*\//g, '').trim();
+      const upper = clean.toUpperCase();
+      let eventType = 'OTHER';
+      let shouldLog = false;
+
+      if (upper.startsWith('CALL') || upper.startsWith('EXEC') || upper.includes('PROCEDURE') || upper.includes('FUNCTION')) {
+        eventType = 'SP';
+        shouldLog = true;
+      } else if (upper.startsWith('INSERT')) {
+        eventType = 'INSERT';
+        shouldLog = true;
+      } else if (upper.startsWith('UPDATE')) {
+        eventType = 'UPDATE';
+        shouldLog = true;
+      } else if (upper.startsWith('DELETE')) {
+        eventType = 'DELETE';
+        shouldLog = true;
+      } else if (upper.startsWith('CREATE') || upper.startsWith('ALTER') || upper.startsWith('DROP')) {
+        eventType = 'DDL';
+        shouldLog = true;
+      }
+
+      if (shouldLog) {
+        let diff = null;
+        try {
+          diff = parseSQLDiff(query, eventType);
+        } catch (diffErr) {
+          console.warn('Failed to parse SQL diff:', diffErr.message);
+        }
+
+        const activeDatabaseName = database || connection.database || 'test';
+        if (diff) {
+          diff.database = activeDatabaseName;
+        } else {
+          diff = {
+            table: 'unknown',
+            database: activeDatabaseName,
+            newData: null,
+            oldData: null
+          };
+        }
+
+        let dbUser = 'User (App)';
+        if (connection && connection.username) {
+          dbUser = connection.username;
+        }
+
+        const BinlogAudit = getBinlogAuditModel(id);
+        const auditRecord = await BinlogAudit.create({
+          connectionId: id,
+          eventType,
+          statement: clean,
+          originalType: 'Query Editor',
+          pos: 0,
+          logName: 'Query Editor',
+          user: req.user.id || null,
+          diff,
+          dbUser
+        });
+
+        // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
+        const io = req.app.get('io');
+        if (io) {
+          const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+          io.to(`connection_${id}`).emit('binlog_events', {
+            events: [{
+              _id: populatedRecord._id,
+              eventType: populatedRecord.eventType,
+              statement: populatedRecord.statement,
+              originalType: populatedRecord.originalType,
+              pos: populatedRecord.pos,
+              logName: populatedRecord.logName,
+              timestamp: populatedRecord.timestamp,
+              user: populatedRecord.user,
+              diff: populatedRecord.diff,
+              dbUser: populatedRecord.dbUser
+            }]
+          });
+        }
+      }
+    } catch (binlogErr) {
+      console.error('Failed to log query editor command to binlog audit:', binlogErr.message);
+    }
+
     // Stored procedure audit check and log
     if (isStoredProcedureDDL) {
       try {
@@ -743,6 +829,13 @@ const parseSQLDiff = (statement, eventType) => {
       const createMatch = clean.match(/(?:CREATE|DROP|ALTER)\s+TABLE\s+([^\s\`\(]+)/i);
       if (createMatch) {
         table = createMatch[1].replace(/[\`\'\"]/g, '');
+      }
+    } else if (eventType === 'SP') {
+      const callMatch = clean.match(/(?:CALL|EXEC)\s+([^\s\`\(]+)/i);
+      const procMatch = clean.match(/(?:PROCEDURE|FUNCTION)\s+([^\s\`\(]+)/i);
+      const name = callMatch ? callMatch[1] : (procMatch ? procMatch[1] : '');
+      if (name) {
+        table = name.replace(/[\`\'\"]/g, '');
       }
     }
   } catch (e) {
