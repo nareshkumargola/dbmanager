@@ -45,6 +45,7 @@ export default function ConnectionMonitor() {
   const [range, setRange] = useState('current');
   const [currentHourFilter, setCurrentHourFilter] = useState('live');
   const [liveHistory, setLiveHistory] = useState([]);
+  const [writeHistory, setWriteHistory] = useState([]);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [error, setError] = useState('');
@@ -85,6 +86,48 @@ export default function ConnectionMonitor() {
       ]);
       const newData = res.data.data;
       setMonitorData(newData);
+
+      // Fetch binlog history for write activity metrics in a safe, non-blocking block
+      let auditLogs = [];
+      try {
+        const filterVal = range === 'current' ? 'ALL' : range;
+        const binlogParams = `timeFilter=${filterVal}` + (range === 'custom' ? `&startDate=${customStartDate}&endDate=${customEndDate}` : '');
+        const binlogRes = await API.get(`/connections/${id}/binlog/history?${binlogParams}`);
+        auditLogs = binlogRes.data.history || [];
+      } catch (e) {
+        console.warn('Binlog history not available:', e.message);
+      }
+
+      // Group write logs by time interval
+      const getWriteGraphData = (logs) => {
+        const groups = {};
+        const sorted = [...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        sorted.forEach(event => {
+          const date = new Date(event.timestamp);
+          let key = '';
+          if (range === '1day' || range === '2day' || range === '3day' || range === '4day' || range === '5day') {
+            key = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' + date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+          } else if (range === 'custom') {
+            const diffMs = customEndDate && customStartDate ? new Date(customEndDate) - new Date(customStartDate) : 0;
+            if (diffMs > 3 * 24 * 60 * 60 * 1000) {
+              key = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            } else {
+              key = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' + date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            }
+          } else {
+            key = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+          }
+          if (!groups[key]) {
+            groups[key] = { name: key, INSERT: 0, UPDATE: 0, DELETE: 0, DDL: 0 };
+          }
+          const type = event.eventType;
+          if (groups[key][type] !== undefined) {
+            groups[key][type] += 1;
+          }
+        });
+        return Object.values(groups);
+      };
+      setWriteHistory(getWriteGraphData(auditLogs));
 
       // Store hourly data if available
       if (histRes.data.hourly && histRes.data.hourly.length > 0) {
@@ -930,6 +973,93 @@ export default function ConnectionMonitor() {
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
+            )}
+
+            {/* 7. Query Transaction Activity (Inserts, Updates, Deletes, DDL) */}
+            {writeHistory && (
+              <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-5 shadow-xs">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+                  📊 Database Write Activity Trend (Inserts, Updates, Deletes, DDL) ({range === 'current' ? (currentHourFilter === 'live' ? 'Live Feed' : `Last ${currentHourFilter} Hours`) : (range === 'custom' ? 'Custom Range' : range)})
+                </h3>
+                {writeHistory.length === 0 ? (
+                  <div className="h-60 flex flex-col items-center justify-center border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                    <span className="text-2xl mb-2">📊</span>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-semibold">No query write events (Insert/Update/Delete) captured in this time range.</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <AreaChart data={writeHistory}>
+                      <defs>
+                        <linearGradient id="colorMonitorInsert" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorMonitorUpdate" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorMonitorDelete" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorMonitorDDL" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0, 0, 0, 0.05)" />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        labelStyle={{ fontWeight: 'bold', fontSize: '10px', color: '#111827' }}
+                        itemStyle={{ fontSize: '11px' }}
+                      />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }} />
+                      <Area
+                        type="monotone"
+                        dataKey="INSERT"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorMonitorInsert)"
+                        name="Inserts"
+                        stackId="1"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="UPDATE"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorMonitorUpdate)"
+                        name="Updates"
+                        stackId="1"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="DELETE"
+                        stroke="#ef4444"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorMonitorDelete)"
+                        name="Deletes"
+                        stackId="1"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="DDL"
+                        stroke="#8b5cf6"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorMonitorDDL)"
+                        name="DDL (Creates)"
+                        stackId="1"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             )}
 
