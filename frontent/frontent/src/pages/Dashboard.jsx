@@ -2,16 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import Navbar from '../components/Navbar';
+import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef(null);
 
-  // Developer Query Tracking States
+
   const [selectedDevs, setSelectedDevs] = useState({});
   const [todayQueries, setTodayQueries] = useState({});
   const [queriesLoading, setQueriesLoading] = useState({});
@@ -19,19 +19,17 @@ export default function Dashboard() {
   const [showQueryModal, setShowQueryModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Admin Tabs & Activity Logging States
   const [activeTab, setActiveTab] = useState('connections');
   const [allConnections, setAllConnections] = useState([]);
   const [loadingAllConnections, setLoadingAllConnections] = useState(false);
   const [activityLogs, setActivityLogs] = useState([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [selectedUserFilter, setSelectedUserFilter] = useState('all');
-  const [subTab, setSubTab] = useState('queries'); // 'queries' or 'procedures'
+  const [subTab, setSubTab] = useState('queries');
   const [procedureAudits, setProcedureAudits] = useState([]);
   const [loadingProcedures, setLoadingProcedures] = useState(false);
   const [expandedAuditId, setExpandedAuditId] = useState(null);
 
-  // Connection Sharing States
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [sharingConn, setSharingConn] = useState(null);
   const [usersList, setUsersList] = useState([]);
@@ -45,15 +43,7 @@ export default function Dashboard() {
     fetchConnections();
   }, [user]);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+
 
   const fetchConnections = async () => {
     try {
@@ -93,8 +83,13 @@ export default function Dashboard() {
   const fetchAllConnections = async () => {
     setLoadingAllConnections(true);
     try {
-      const res = await API.get('/connections/all');
-      setAllConnections(res.data.connections || []);
+      if (user?.role === 'admin') {
+        const res = await API.get('/connections/all');
+        setAllConnections(res.data.connections || []);
+      } else {
+        const res = await API.get('/connections');
+        setAllConnections(res.data.connections || []);
+      }
     } catch (err) {
       console.error('Error fetching all connections:', err);
     } finally {
@@ -129,7 +124,7 @@ export default function Dashboard() {
   const exportQueriesToCSV = () => {
     const logsToExport = activityLogs.filter(log => selectedUserFilter === 'all' || log.user?._id === selectedUserFilter);
     if (logsToExport.length === 0) {
-      alert('Export karne ke liye koi records nahi hain!');
+      alert('No records available to export!');
       return;
     }
     const headers = ['User Name', 'Email', 'Role', 'Status', 'Execution Time (ms)', 'Query', 'Rows Affected', 'Timestamp'];
@@ -161,7 +156,7 @@ export default function Dashboard() {
 
   const exportProceduresToCSV = () => {
     if (procedureAudits.length === 0) {
-      alert('Export karne ke liye koi records nahi hain!');
+      alert('No records available to export!');
       return;
     }
     const headers = ['User Name', 'Email', 'Role', 'Host/IP', 'Database/Schema', 'Procedure Name', 'Operation', 'SQL Text', 'Timestamp'];
@@ -229,7 +224,6 @@ export default function Dashboard() {
     return `${dayName}, ${dateFormatted} ${timeFormatted}`;
   };
 
-  // Connection sharing handlers
   const handleOpenShareModal = async (conn) => {
     setSharingConn(conn);
     setShareModalOpen(true);
@@ -271,10 +265,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+
 
   const getTypeIcon = (type) => {
     if (type === 'mysql') return '🐬';
@@ -284,10 +275,10 @@ export default function Dashboard() {
   };
 
   const getTypeBadgeColor = (type) => {
-    if (type === 'mysql') return 'bg-blue-100 text-blue-700';
-    if (type === 'postgresql') return 'bg-indigo-100 text-indigo-700';
-    if (type === 'mongodb') return 'bg-emerald-100 text-emerald-700';
-    return 'bg-gray-100 text-gray-600';
+    if (type === 'mysql') return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200';
+    if (type === 'postgresql') return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200';
+    if (type === 'mongodb') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+    return 'bg-stone-100 text-stone-600 ring-1 ring-stone-200';
   };
 
   const mysqlCount = connections.filter(c => c.type === 'mysql').length;
@@ -296,301 +287,191 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-500">Loading dashboard...</p>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center bg-white/70 backdrop-blur-sm rounded-2xl px-10 py-8">
+          <div className="w-10 h-10 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-teal-700 text-sm font-medium">Loading dashboard…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-
+    <div className="min-h-screen bg-white">
       {/* Navbar */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-10 px-6 py-3 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg flex items-center justify-center">
-            <span className="text-white text-sm font-bold">DB</span>
-          </div>
-          <h1 className="text-lg font-semibold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
-            DB Management
-          </h1>
-        </div>
+      <Navbar variant="teal" />
 
-        {/* Profile Dropdown */}
-        <div className="relative" ref={dropdownRef}>
-          <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-all duration-200"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center text-white text-sm font-medium">
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <div className="hidden sm:block text-left">
-              <p className="text-sm font-medium text-gray-700">{user?.name}</p>
-              <p className="text-xs text-gray-400">{user?.role}</p>
-            </div>
-            <svg
-              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`}
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-20 animate-fadeIn">
-              <button
-                onClick={() => { setDropdownOpen(false); navigate('/profile'); }}
-                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                My Profile
-              </button>
-              <hr className="my-1 border-gray-100" />
-              <button
-                onClick={handleLogout}
-                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                </svg>
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-      </nav>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8">
 
         {/* Header */}
-        <div className="mb-6">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Welcome back, {user?.name}! Manage your database connections.
+        <div className="mb-7">
+          <h2 className="text-[26px] font-bold text-teal-900 tracking-tight">Dashboard</h2>
+          <p className="text-[13px] text-teal-800/70 mt-1">
+            Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span> — here's what's happening across your databases.
           </p>
         </div>
 
         {/* Quick Actions */}
-        <div className="mb-8 bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="mb-7 bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-1 h-6 bg-gray-800 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-900">Quick Actions</h3>
+            <div className="w-1 h-4 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
+            <h3 className="text-[12px] font-bold text-teal-700 uppercase tracking-wider">Quick Actions</h3>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2.5">
             <button
               onClick={() => setActiveTab('connections')}
-              className={`px-4 py-2 text-sm rounded-lg transition flex items-center gap-2 font-medium ${
+              className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
                 activeTab === 'connections'
-                  ? 'bg-gray-900 text-white shadow-sm'
-                  : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                  ? 'text-white shadow-sm'
+                  : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
               }`}
+              style={activeTab === 'connections' ? { backgroundColor: '#0d9da4' } : {}}
             >
-              🗄️ Connections List
-            </button>
-
-            <button
-              onClick={() => setActiveTab('activity')}
-              className={`px-4 py-2 text-sm rounded-lg transition flex items-center gap-2 font-medium ${
-                activeTab === 'activity'
-                  ? 'bg-gray-900 text-white shadow-sm'
-                  : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              👥 Developer Activity Logs
+              <span className="text-base leading-none">🗄️</span> Connections
             </button>
 
             <button
               onClick={() => setActiveTab('all-connections')}
-              className={`px-4 py-2 text-sm rounded-lg transition flex items-center gap-2 font-medium ${
+              className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
                 activeTab === 'all-connections'
-                  ? 'bg-gray-900 text-white shadow-sm'
-                  : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                  ? 'text-white shadow-sm'
+                  : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
               }`}
+              style={activeTab === 'all-connections' ? { backgroundColor: '#0d9da4' } : {}}
             >
-              🔌 App Connections Overview
+              <span className="text-base leading-none">🔌</span> App Overview
             </button>
 
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => setActiveTab('audit-logs')}
+                className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
+                  activeTab === 'audit-logs'
+                    ? 'text-white shadow-sm'
+                    : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                }`}
+                style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
+              >
+                <span className="text-base leading-none">📜</span> System Audit Logs
+              </button>
+            )}
+
+            <div className="w-px h-6 bg-teal-200 mx-1 self-center hidden sm:block"></div>
 
             <button
               onClick={() => navigate('/connections')}
-              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition flex items-center gap-2 font-medium"
+              className="px-4 py-2 ring-1 ring-teal-200 text-teal-700 bg-white text-[13px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-2 font-semibold"
             >
-              ⚙️ Manage Connections
+              <span className="text-base leading-none">⚙️</span> Manage Connections
             </button>
-            <button
-              onClick={() => navigate('/history')}
-              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition flex items-center gap-2 font-medium"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Query History
-            </button>
-            
-            <button
-              onClick={() => navigate('/users')}
-              className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 transition flex items-center gap-2 font-medium"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              User Management
-            </button>
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => navigate('/permissions')}
+                className="px-4 py-2 ring-1 ring-teal-200 text-teal-700 bg-white text-[13px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-2 font-semibold"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Permissions
+              </button>
+            )}
           </div>
         </div>
 
         {/* Stats Cards */}
         {activeTab === 'connections' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-            <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7">
+            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-xl">🐬</div>
-                <span className="text-xs text-gray-400">MySQL</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-teal-100" style={{ backgroundColor: '#e3f6f6' }}>🐬</div>
+                <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">MySQL</span>
               </div>
-              <p className="text-3xl font-bold text-gray-900">{mysqlCount}</p>
-              <p className="text-xs text-gray-500 mt-1">MySQL Connections</p>
+              <p className="text-[28px] font-bold tracking-tight leading-none" style={{ color: '#0d9da4' }}>{mysqlCount}</p>
+              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center text-xl">🐘</div>
-                <span className="text-xs text-gray-400">PostgreSQL</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-cyan-100 bg-cyan-50">🐘</div>
+                <span className="text-[10px] font-bold text-cyan-600 uppercase tracking-wider">Postgres</span>
               </div>
-              <p className="text-3xl font-bold text-gray-900">{pgCount}</p>
-              <p className="text-xs text-gray-500 mt-1">PostgreSQL Connections</p>
+              <p className="text-[28px] font-bold text-cyan-700 tracking-tight leading-none">{pgCount}</p>
+              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5">
+            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 bg-emerald-50 rounded-lg flex items-center justify-center text-xl">🍃</div>
-                <span className="text-xs text-gray-400">MongoDB</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-amber-100" style={{ backgroundColor: '#fdf6d8' }}>🍃</div>
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">MongoDB</span>
               </div>
-              <p className="text-3xl font-bold text-gray-900">{mongoCount}</p>
-              <p className="text-xs text-gray-500 mt-1">MongoDB Connections</p>
+              <p className="text-[28px] font-bold text-amber-700 tracking-tight leading-none">{mongoCount}</p>
+              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
             </div>
           </div>
         )}
 
-        {/* Main Content Box (Tab container) */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-          {/* Tab headers */}
-          <div className="px-6 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex gap-2">
-              <h3 className="text-sm font-semibold text-gray-900 py-4">
-                {activeTab === 'connections' 
-                  ? 'Your Connections' 
-                  : activeTab === 'all-connections' 
-                  ? 'App Connections (Admin View)' 
-                  : 'Developer Activity Logs'}
-              </h3>
-            </div>
+        {/* Main Content Box */}
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-lg">
+          <div className="px-6 border-b border-teal-100 bg-teal-50/40 flex flex-wrap items-center justify-between gap-4">
+            <h3 className="text-[14px] font-bold text-teal-900 py-4 tracking-tight">
+              {activeTab === 'all-connections'
+                ? 'App Connections — Admin View'
+                : activeTab === 'audit-logs'
+                ? 'System Activity Audit Trail — Admin View'
+                : 'Your Connections'}
+            </h3>
 
             {activeTab === 'connections' && connections.length > 0 && (
-              <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full my-3">
-                {connections.length} Connections
+              <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full my-3">
+                {connections.length} connections
               </span>
             )}
 
             {activeTab === 'all-connections' && allConnections.length > 0 && (
-              <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full my-3">
-                {allConnections.length} Total Connections
+              <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full my-3">
+                {allConnections.length} total
               </span>
-            )}
-
-            {activeTab === 'activity' && (
-              <div className="flex items-center gap-3 my-2 flex-wrap">
-                {subTab === 'queries' && activityLogs.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 font-medium">Filter by Developer:</span>
-                    <select
-                      value={selectedUserFilter}
-                      onChange={(e) => setSelectedUserFilter(e.target.value)}
-                      className="text-xs border border-gray-200 rounded-lg p-1.5 bg-white text-gray-700 outline-none focus:border-gray-400 font-medium"
-                    >
-                      <option value="all">All Developers</option>
-                      {Array.from(new Set(activityLogs.map(log => log.user?._id).filter(Boolean)))
-                        .map(id => {
-                          const u = activityLogs.find(log => log.user?._id === id)?.user;
-                          return u ? <option key={u._id} value={u._id}>{u.name}</option> : null;
-                        })
-                      }
-                    </select>
-                  </div>
-                )}
-                
-                <button
-                  onClick={subTab === 'queries' ? exportQueriesToCSV : exportProceduresToCSV}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm transition"
-                >
-                  📥 Export CSV
-                </button>
-              </div>
             )}
           </div>
 
-          {activeTab === 'activity' && (
-            <div className="px-6 bg-gray-50/50 border-b border-gray-100 flex gap-4">
-              <button
-                onClick={() => setSubTab('queries')}
-                className={`py-3 text-xs font-bold border-b-2 transition ${
-                  subTab === 'queries' ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent hover:text-gray-600'
-                }`}
-              >
-                📝 All Queries
-              </button>
-              <button
-                onClick={() => setSubTab('procedures')}
-                className={`py-3 text-xs font-bold border-b-2 transition ${
-                  subTab === 'procedures' ? 'text-gray-900 border-gray-900' : 'text-gray-400 border-transparent hover:text-gray-600'
-                }`}
-              >
-                📜 Stored Procedure Audits
-              </button>
-            </div>
-          )}
-
           {/* Tab Contents */}
-          <div className="divide-y divide-gray-100">
-            {activeTab === 'connections' ? (
+          <div className="divide-y divide-teal-50">
+            {activeTab === 'connections' && (
               connections.length === 0 ? (
                 <div className="p-16 text-center">
                   <p className="text-4xl mb-4">🗄️</p>
-                  <p className="text-gray-700 font-medium mb-2">Koi connection nahi hai</p>
-                  <p className="text-gray-400 text-sm mb-6">Apna pehla database connect karo</p>
+                  <p className="text-teal-900 font-semibold mb-1.5">No connections yet</p>
+                  <p className="text-teal-700/60 text-[13px] mb-6">Connect your first database to get started</p>
                   <button
                     onClick={() => navigate('/connections')}
-                    className="px-6 py-2.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition"
+                    className="px-5 py-2.5 text-white text-[13px] font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-sm"
+                    style={{ backgroundColor: '#0d9da4' }}
                   >
                     + Add Connection
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-6 bg-gray-50/30">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 p-6 bg-teal-50/20">
                   {connections.map(conn => (
                     <div
                       key={conn._id}
-                      className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col gap-4 hover:shadow-md transition-all duration-200"
+                      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200"
                     >
-                      {/* Connection Header Info */}
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-3">
-                          <span className="text-2xl">{getTypeIcon(conn.type)}</span>
+                          <div className="w-10 h-10 rounded-lg ring-1 ring-teal-100 flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: '#f0f9f7' }}>
+                            {getTypeIcon(conn.type)}
+                          </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap text-left">
-                              <p className="text-sm font-semibold text-gray-900">{conn.name}</p>
+                              <p className="text-[14px] font-bold text-teal-900">{conn.name}</p>
                               {conn.user && conn.user._id !== user?.id && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-50 text-purple-600 border border-purple-100">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700 ring-1 ring-amber-100">
                                   Shared by {conn.user.name}
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-gray-400 text-left mt-0.5">
+                            <p className="text-[12px] text-teal-700/60 text-left mt-0.5 font-mono">
                               {conn.type === 'mongodb'
                                 ? 'MongoDB'
                                 : `${conn.host}:${conn.port}${conn.database ? ' / ' + conn.database : ''}`
@@ -600,168 +481,93 @@ export default function Dashboard() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadgeColor(conn.type)}`}>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                             {conn.type}
                           </span>
-                          {/* Share Button (Only if admin or owner) */}
                           {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
                             <button
                               onClick={() => handleOpenShareModal(conn)}
-                              className="px-2.5 py-1 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium"
+                              className="px-2.5 py-1.5 ring-1 ring-teal-200 text-teal-700 text-[12px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-1 font-semibold"
                             >
-                              👥 Share
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                              </svg>
+                              Share
                             </button>
                           )}
                           <button
                             onClick={() => {
-                              if (conn.database) {
-                                navigate(`/connections/${conn._id}`);
-                              } else {
-                                navigate(`/connections/${conn._id}/select-db`);
-                              }
+                              navigate(`/connections/${conn._id}`);
                             }}
-                            className="px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-700 transition font-medium flex items-center gap-1"
+                            className="px-3.5 py-1.5 text-white text-[12px] rounded-lg hover:opacity-90 transition-opacity font-semibold flex items-center gap-1 shadow-sm"
+                            style={{ backgroundColor: '#0d9da4' }}
                           >
-                            Open →
+                            Open
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                            </svg>
                           </button>
                         </div>
-                      </div>
-
-                      {/* Dropdown Selection */}
-                      <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
-                        <div className="flex items-center gap-2 max-w-xs text-left">
-                          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                            Query Tracker:
-                          </label>
-                          <select
-                            value={selectedDevs[conn._id] || ''}
-                            onChange={(e) => handleDevChange(conn._id, e.target.value)}
-                            className="flex-1 text-xs border border-gray-200 rounded-lg p-1.5 bg-white text-gray-700 outline-none focus:border-gray-400 font-medium"
-                          >
-                            <option value="">-- Select Developer --</option>
-                            {conn.user && (
-                              <option value={conn.user._id}>
-                                {conn.user.name} ({conn.user.role === 'admin' ? 'Admin' : 'Owner'})
-                              </option>
-                            )}
-                            {conn.allowedUsers && conn.allowedUsers.map(u => (
-                              <option key={u._id} value={u._id}>
-                                {u.name} ({u.role})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Today's Query Log Table */}
-                        {selectedDevs[conn._id] && (
-                          <div className="mt-1 text-left">
-                            {queriesLoading[conn._id] ? (
-                              <p className="text-xs text-gray-400 italic">Queries load ho rahi hain...</p>
-                            ) : !todayQueries[conn._id] || todayQueries[conn._id].length === 0 ? (
-                              <p className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded-lg border border-gray-100">
-                                Is developer ne aaj koi query run nahi ki.
-                              </p>
-                            ) : (
-                              <div className="overflow-x-auto border border-gray-100 rounded-lg max-h-52 overflow-y-auto">
-                                <table className="min-w-full divide-y divide-gray-200 text-[11px]">
-                                  <thead className="bg-gray-50 sticky top-0 z-10">
-                                    <tr>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Dev</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Database</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Host</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Time & Day</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Status</th>
-                                      <th className="px-3 py-2 text-right font-semibold text-gray-500">Action</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="bg-white divide-y divide-gray-100">
-                                    {todayQueries[conn._id].map(q => (
-                                      <tr key={q._id} className="hover:bg-gray-50/50">
-                                        <td className="px-3 py-2 font-medium text-gray-800">{q.user?.name || 'Unknown'}</td>
-                                        <td className="px-3 py-2 text-gray-500">{q.database || conn.database || 'default'}</td>
-                                        <td className="px-3 py-2 text-gray-500">{conn.host || 'localhost'}</td>
-                                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{formatDateDayTime(q.createdAt)}</td>
-                                        <td className="px-3 py-2">
-                                          <span className={`px-1 rounded-[3px] text-[9px] font-bold uppercase ${
-                                            q.status === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                                          }`}>
-                                            {q.status}
-                                          </span>
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                          <button
-                                            onClick={() => handleViewQuery(q)}
-                                            className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 border border-gray-200 rounded font-medium transition"
-                                          >
-                                            👁️ View
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               )
-            ) : activeTab === 'all-connections' ? (
+            )}
+
+            {activeTab === 'all-connections' && (
               loadingAllConnections ? (
                 <div className="p-16 text-center">
-                  <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-gray-500 text-sm">Fetching app connections...</p>
+                  <div className="w-8 h-8 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-teal-700/60 text-[13px]">Fetching app connections…</p>
                 </div>
               ) : allConnections.length === 0 ? (
                 <div className="p-16 text-center">
                   <p className="text-4xl mb-4">🔌</p>
-                  <p className="text-gray-700 font-medium mb-2">Koi connection nahi mila</p>
-                  <p className="text-gray-400 text-sm">Application se abhi koi connection linked nahi hai</p>
+                  <p className="text-teal-900 font-semibold mb-1.5">No connections found</p>
+                  <p className="text-teal-700/60 text-[13px]">No application connections are linked yet</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto text-left">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <thead className="bg-teal-50/60 border-b border-teal-100 text-left text-[10px] font-bold text-teal-700 uppercase tracking-wider">
                       <tr>
-                        <th className="px-6 py-3.5">Connection Info</th>
+                        <th className="px-6 py-3.5">Connection</th>
                         <th className="px-6 py-3.5">Type</th>
-                        <th className="px-6 py-3.5">Database Name</th>
-                        <th className="px-6 py-3.5">Host details / Conn String</th>
+                        <th className="px-6 py-3.5">Database</th>
+                        <th className="px-6 py-3.5">Host / String</th>
                         <th className="px-6 py-3.5">Created By</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-teal-50 bg-white">
                       {allConnections.map(conn => (
-                        <tr key={conn._id} className="hover:bg-gray-50/50 transition">
+                        <tr key={conn._id} className="hover:bg-teal-50/40 transition-colors">
                           <td className="px-6 py-4">
-                            <p className="text-sm font-semibold text-gray-900">{conn.name}</p>
-                            <p className="text-xs text-gray-400 font-mono">ID: {conn._id}</p>
+                            <p className="text-[13px] font-bold text-teal-900">{conn.name}</p>
+                            <p className="text-[11px] text-teal-700/50 font-mono">{conn._id}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadgeColor(conn.type)}`}>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                               {getTypeIcon(conn.type)} {conn.type}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-700 font-medium">
-                            {conn.database || <span className="text-gray-400 italic">None</span>}
+                          <td className="px-6 py-4 text-[13px] text-teal-800 font-semibold">
+                            {conn.database || <span className="text-teal-700/40 italic font-normal">None</span>}
                           </td>
-                          <td className="px-6 py-4 text-xs font-mono text-gray-500 max-w-xs truncate">
+                          <td className="px-6 py-4 text-[11px] font-mono text-teal-700/60 max-w-xs truncate">
                             {conn.type === 'mongodb'
                               ? conn.connectionString
                               : `${conn.host}:${conn.port}`
                             }
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-semibold shadow-sm">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shadow-sm" style={{ backgroundColor: '#0d9da4' }}>
                                 {conn.user?.name?.charAt(0).toUpperCase() || 'U'}
                               </div>
                               <div>
-                                <p className="text-xs font-semibold text-gray-900">{conn.user?.name || 'Unknown'}</p>
-                                <p className="text-[10px] text-gray-400">{conn.user?.email || 'N/A'}</p>
+                                <p className="text-[12px] font-bold text-teal-900">{conn.user?.name || 'Unknown'}</p>
+                                <p className="text-[10px] text-teal-700/50">{conn.user?.email || 'N/A'}</p>
                               </div>
                             </div>
                           </td>
@@ -771,273 +577,101 @@ export default function Dashboard() {
                   </table>
                 </div>
               )
-            ) : (
-              /* Activity Tab */
-              subTab === 'queries' ? (
-                loadingActivity ? (
-                  <div className="p-16 text-center">
-                    <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-500 text-sm">Fetching activity logs...</p>
-                  </div>
-                ) : activityLogs.length === 0 ? (
-                  <div className="p-16 text-center">
-                    <p className="text-4xl mb-4">📜</p>
-                    <p className="text-gray-700 font-medium mb-2">Koi activity record nahi hai</p>
-                    <p className="text-gray-400 text-sm">Database me chalaye gaye query yahan dikhenge</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-100 text-left">
-                    {activityLogs
-                      .filter(log => selectedUserFilter === 'all' || log.user?._id === selectedUserFilter)
-                      .map(log => (
-                        <div key={log._id} className="p-6 hover:bg-gray-50/50 transition">
-                          <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-semibold shadow-sm">
-                                {log.user?.name?.charAt(0).toUpperCase() || 'U'}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-semibold text-gray-900">{log.user?.name || 'Unknown User'}</span>
-                                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-500">
-                                    {log.user?.role || 'user'}
-                                  </span>
-                                  {isToday(log.createdAt) && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 animate-pulse">
-                                      Today
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-400">{log.user?.email}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-xs text-gray-400 font-medium block">
-                                {formatDateTime(log.createdAt)}
-                              </span>
-                              <div className="flex items-center justify-end gap-1.5 mt-1">
-                                <span className={`w-2 h-2 rounded-full ${log.status === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                                <span className="text-xs font-semibold text-gray-600 capitalize">
-                                  {log.status}
-                                </span>
-                                <span className="text-xs text-gray-400 ml-1.5">
-                                  ({log.executionTime}ms)
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+            )}
 
-                          {/* Query Box */}
-                          <div className="mt-2 bg-gray-950 rounded-lg p-3 text-xs font-mono text-gray-100 overflow-x-auto border border-gray-800 shadow-inner max-h-40">
-                            {log.query}
-                          </div>
-
-                          {/* Error info if failed */}
-                          {log.status === 'failed' && log.error && (
-                            <div className="mt-2 text-xs bg-red-50 text-red-700 border border-red-100 rounded-lg p-3 font-medium">
-                              <strong>⚠️ Error:</strong> {log.error}
-                            </div>
-                          )}
-                          {log.status === 'success' && log.rowsAffected !== undefined && (
-                            <p className="text-xs text-gray-500 mt-2 font-medium">
-                              📊 Rows Affected / Documents: <span className="font-semibold text-gray-700">{log.rowsAffected}</span>
-                            </p>
-                          )}
-                        </div>
-                      ))
-                    }
-                    {activityLogs.filter(log => selectedUserFilter === 'all' || log.user?._id === selectedUserFilter).length === 0 && (
-                      <div className="p-12 text-center text-gray-400 text-sm">
-                        Is developer ke liye aaj koi activity nahi mili.
-                      </div>
-                    )}
-                  </div>
-                )
-              ) : (
-                /* Stored Procedure Audits */
-                loadingProcedures ? (
-                  <div className="p-16 text-center">
-                    <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-500 text-sm">Fetching procedure audit logs...</p>
-                  </div>
-                ) : procedureAudits.length === 0 ? (
-                  <div className="p-16 text-center">
-                    <p className="text-4xl mb-4">📜</p>
-                    <p className="text-gray-700 font-medium mb-2">Koi stored procedure audit record nahi hai</p>
-                    <p className="text-gray-400 text-sm">CREATE, ALTER, ya DROP PROCEDURE queries yahan log honge</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {procedureAudits.map(audit => (
-                      <div key={audit._id} className="p-6 hover:bg-gray-50/50 transition text-left">
-                        <div className="flex flex-wrap items-start justify-between gap-4 mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-500 to-rose-600 flex items-center justify-center text-white text-sm font-semibold shadow-sm animate-fadeIn">
-                              {audit.user?.name?.charAt(0).toUpperCase() || 'U'}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-gray-900">{audit.user?.name || 'Unknown User'}</span>
-                                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-gray-100 text-gray-500">
-                                  {audit.user?.role || 'user'}
-                                </span>
-                                {isToday(audit.createdAt) && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 animate-pulse">
-                                    Today
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400">{audit.user?.email}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs text-gray-400 font-medium block">
-                              {formatDateTime(audit.createdAt)}
-                            </span>
-                            <span className="text-[11px] text-gray-500 block mt-0.5 font-medium">
-                              💻 Host: {audit.host}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Audit specific details */}
-                        <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
-                          <span className="text-gray-500 font-medium">Procedure:</span>
-                          <span className="font-mono font-bold bg-gray-100 text-gray-800 px-2 py-0.5 rounded border border-gray-200">
-                            {audit.procedureName}
-                          </span>
-
-                          {audit.databaseName && (
-                            <>
-                              <span className="text-gray-500 font-medium ml-2">Database/Schema:</span>
-                              <span className="font-mono font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200">
-                                {audit.databaseName}
-                              </span>
-                            </>
-                          )}
-
-                          <span className="text-gray-500 font-medium ml-2">Operation:</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                            audit.operation === 'CREATE' ? 'bg-emerald-100 text-emerald-800' :
-                            audit.operation === 'ALTER' ? 'bg-blue-100 text-blue-800' :
-                            'bg-rose-100 text-rose-800'
-                          }`}>
-                            {audit.operation}
-                          </span>
-                        </div>
-
-                        {/* Collapsible SQL Query */}
-                        <div className="mt-3">
-                          <button
-                            onClick={() => setExpandedAuditId(expandedAuditId === audit._id ? null : audit._id)}
-                            className="text-xs text-gray-500 hover:text-gray-800 flex items-center gap-1 font-semibold transition"
-                          >
-                            <span>{expandedAuditId === audit._id ? '🔽 Hide SQL Statement' : '▶️ View SQL Statement'}</span>
-                          </button>
-
-                          {expandedAuditId === audit._id && (
-                            <div className="mt-2 bg-gray-950 rounded-lg p-3 text-xs font-mono text-gray-100 overflow-auto whitespace-pre-wrap shadow-inner max-h-60 animate-fadeIn">
-                              {audit.sqlText}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              )
+            {activeTab === 'audit-logs' && user?.role === 'admin' && (
+              <div className="p-6 bg-teal-50/20">
+                <SystemAuditLogsPanel />
+              </div>
             )}
           </div>
         </div>
 
       </div>
 
-      {/* Query Detail Modal Popup */}
+      {/* Query Detail Modal */}
       {showQueryModal && viewingQuery && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-2xl w-full max-w-full h-full max-h-full sm:w-[550px] sm:h-[550px] flex flex-col overflow-hidden animate-fadeIn text-left">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 bg-teal-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl ring-1 ring-teal-100 shadow-2xl w-full max-w-full h-full max-h-full sm:w-[560px] sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden animate-fadeIn text-left">
+
+            <div className="px-6 py-4 border-b border-teal-100 bg-teal-50/60 flex justify-between items-center shrink-0">
               <div>
-                <h3 className="text-base font-bold text-gray-900">
-                  📄 Full SQL Query
+                <h3 className="text-[15px] font-bold text-teal-900">
+                  Full SQL Query
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Executed by <span className="font-semibold text-gray-700">{viewingQuery.user?.name}</span> on <span className="font-medium text-gray-600">{formatDateDayTime(viewingQuery.createdAt)}</span>
+                <p className="text-[12px] text-teal-700/60 mt-0.5">
+                  Executed by <span className="font-semibold text-teal-800">{viewingQuery.user?.name}</span> · {formatDateDayTime(viewingQuery.createdAt)}
                 </p>
               </div>
               <button
                 onClick={() => { setShowQueryModal(false); setViewingQuery(null); }}
-                className="text-gray-400 hover:text-gray-600 text-lg font-semibold"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-teal-500 hover:text-teal-800 hover:bg-teal-100 transition-colors text-lg font-medium"
               >
-                &times;
+                ✕
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 space-y-4 flex-1 overflow-y-auto flex flex-col">
               <div className="relative group flex-1 flex flex-col min-h-[150px]">
-                <div className="absolute top-2 right-2 opacity-80 group-hover:opacity-100 transition-opacity z-10">
+                <div className="absolute top-2 right-2 opacity-90 group-hover:opacity-100 transition-opacity z-10">
                   <button
                     onClick={() => handleCopyQuery(viewingQuery.query)}
-                    className="px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-white rounded text-[10px] font-bold flex items-center gap-1 border border-gray-700 transition active:scale-95 shadow"
+                    className="px-2.5 py-1.5 bg-teal-800 hover:bg-teal-700 text-white rounded-md text-[10px] font-bold flex items-center gap-1 ring-1 ring-teal-700 transition active:scale-95 shadow"
                   >
-                    {copied ? '✓ Copied' : '📋 Copy Query'}
+                    {copied ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
-                <div className="bg-gray-950 text-gray-100 rounded-lg p-4 pt-10 font-mono text-xs overflow-auto whitespace-pre-wrap flex-1 border border-gray-800 shadow-inner">
+                <div className="bg-teal-950 text-teal-50 rounded-lg p-4 pt-10 font-mono text-[12px] overflow-auto whitespace-pre-wrap flex-1 ring-1 ring-teal-800 leading-relaxed">
                   {viewingQuery.query}
                 </div>
               </div>
 
-              {/* Stats / Details */}
-              <div className="grid grid-cols-2 gap-3 text-xs shrink-0">
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col justify-between shadow-sm">
-                  <span className="text-gray-400 block font-medium uppercase tracking-wider text-[10px]">Status</span>
-                  <span className={`font-bold mt-1 text-sm ${viewingQuery.status === 'success' ? 'text-green-600' : 'text-red-500'}`}>
-                    {viewingQuery.status === 'success' ? '🟢 SUCCESS' : '🔴 FAILED'}
-                  </span>
-                </div>
-                
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col justify-between shadow-sm">
-                  <span className="text-gray-400 block font-medium uppercase tracking-wider text-[10px]">Execution Speed</span>
-                  <span className="text-gray-800 font-bold mt-1 text-sm flex items-center gap-1">
-                    ⚡ {viewingQuery.executionTime} ms
+              <div className="grid grid-cols-2 gap-3 text-[12px] shrink-0">
+                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
+                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Status</span>
+                  <span className={`font-bold mt-1.5 text-[14px] ${viewingQuery.status === 'success' ? 'text-teal-600' : 'text-rose-500'}`}>
+                    {viewingQuery.status === 'success' ? '● Success' : '● Failed'}
                   </span>
                 </div>
 
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col justify-between shadow-sm">
-                  <span className="text-gray-400 block font-medium uppercase tracking-wider text-[10px]">Rows Affected</span>
-                  <span className="text-gray-800 font-bold mt-1 text-sm">
-                    📊 {viewingQuery.rowsAffected} rows
+                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
+                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Execution Speed</span>
+                  <span className="text-teal-900 font-bold mt-1.5 text-[14px]">
+                    {viewingQuery.executionTime} ms
                   </span>
                 </div>
 
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex flex-col justify-between shadow-sm">
-                  <span className="text-gray-400 block font-medium uppercase tracking-wider text-[10px]">Date & Day</span>
-                  <span className="text-gray-800 font-semibold mt-1 text-[11px] truncate">
-                    📅 {formatDateDayTime(viewingQuery.createdAt)}
+                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
+                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Rows Affected</span>
+                  <span className="text-teal-900 font-bold mt-1.5 text-[14px]">
+                    {viewingQuery.rowsAffected}
+                  </span>
+                </div>
+
+                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
+                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Date &amp; Day</span>
+                  <span className="text-teal-900 font-bold mt-1.5 text-[12px] truncate">
+                    {formatDateDayTime(viewingQuery.createdAt)}
                   </span>
                 </div>
               </div>
 
               {viewingQuery.error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-xs font-mono shadow-sm flex items-start gap-2 shrink-0">
-                  <span className="text-base">⚠️</span>
+                <div className="bg-rose-50 ring-1 ring-rose-200 rounded-xl p-4 text-rose-600 text-[12px] font-mono flex items-start gap-2.5 shrink-0">
+                  <span className="text-base leading-none">⚠</span>
                   <div>
-                    <strong className="block font-bold mb-0.5">Execution Error:</strong>
+                    <strong className="block font-bold mb-0.5">Execution error</strong>
                     <span className="leading-relaxed">{viewingQuery.error}</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end shrink-0">
+            <div className="px-6 py-4 bg-teal-50/60 border-t border-teal-100 flex justify-end shrink-0">
               <button
                 onClick={() => { setShowQueryModal(false); setViewingQuery(null); }}
-                className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold rounded-lg transition"
+                className="px-4 py-2 text-white text-[12px] font-bold rounded-lg transition-opacity hover:opacity-90"
+                style={{ backgroundColor: '#0d9da4' }}
               >
                 Close
               </button>
@@ -1049,59 +683,57 @@ export default function Dashboard() {
 
       {/* Share Modal */}
       {shareModalOpen && sharingConn && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn text-left">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+        <div className="fixed inset-0 bg-teal-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl ring-1 ring-teal-100 shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn text-left">
+
+            <div className="px-6 py-4 border-b border-teal-100 bg-teal-50/60 flex justify-between items-center">
               <div>
-                <h3 className="text-base font-bold text-gray-900">
-                  👥 Share Access
+                <h3 className="text-[15px] font-bold text-teal-900">
+                  Share Access
                 </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Share connection <span className="font-semibold text-gray-700">{sharingConn.name}</span>
+                <p className="text-[12px] text-teal-700/60 mt-0.5">
+                  Connection: <span className="font-semibold text-teal-800">{sharingConn.name}</span>
                 </p>
               </div>
               <button
                 onClick={() => setShareModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-semibold"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-teal-500 hover:text-teal-800 hover:bg-teal-100 transition-colors text-lg font-medium"
               >
-                &times;
+                ✕
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6">
               {shareError && (
-                <div className="mb-4 bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
-                  ❌ {shareError}
+                <div className="mb-4 bg-rose-50 text-rose-600 text-[12px] px-4 py-2.5 rounded-lg ring-1 ring-rose-200 font-medium">
+                  {shareError}
                 </div>
               )}
               {shareSuccess && (
-                <div className="mb-4 bg-green-50 text-green-600 text-xs px-4 py-2.5 rounded-lg border border-green-200">
-                  ✅ {shareSuccess}
+                <div className="mb-4 bg-teal-50 text-teal-700 text-[12px] px-4 py-2.5 rounded-lg ring-1 ring-teal-200 font-medium">
+                  {shareSuccess}
                 </div>
               )}
 
-              <p className="text-xs font-semibold text-gray-700 mb-3 uppercase tracking-wider">
-                Select Developers / Viewers:
+              <p className="text-[11px] font-bold text-teal-600 mb-3 uppercase tracking-wider">
+                Select developers / viewers
               </p>
 
               {usersList.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">
+                <p className="text-[13px] text-teal-700/50 text-center py-6">
                   No developers or viewers found.
                 </p>
               ) : (
-                <div className="max-h-60 overflow-y-auto space-y-2 border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+                <div className="max-h-60 overflow-y-auto space-y-1.5 ring-1 ring-teal-50 rounded-xl p-2.5 bg-teal-50/30">
                   {usersList.map(u => {
                     const isChecked = selectedUserIds.includes(u._id);
                     return (
                       <label
                         key={u._id}
-                        className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition ${
+                        className={`flex items-center justify-between p-2.5 rounded-lg ring-1 cursor-pointer transition-all ${
                           isChecked
-                            ? 'bg-blue-50/50 border-blue-200'
-                            : 'bg-white border-gray-100 hover:border-gray-300'
+                            ? 'bg-teal-50/70 ring-teal-200'
+                            : 'bg-white ring-teal-50 hover:ring-teal-200'
                         }`}
                       >
                         <div className="flex items-center gap-3">
@@ -1109,19 +741,19 @@ export default function Dashboard() {
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => handleToggleUser(u._id)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded border-teal-300 text-teal-600 focus:ring-teal-400 w-4 h-4"
                           />
                           <div>
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-[13px] font-semibold text-teal-900">
                               {u.name}
                             </p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-[11px] text-teal-700/50">
                               {u.email}
                             </p>
                           </div>
                         </div>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                          u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800'
+                          u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'
                         }`}>
                           {u.role}
                         </span>
@@ -1132,20 +764,20 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+            <div className="px-6 py-4 bg-teal-50/60 border-t border-teal-100 flex gap-3">
               <button
                 onClick={() => setShareModalOpen(false)}
-                className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-100 transition"
+                className="flex-1 py-2.5 ring-1 ring-teal-200 text-teal-700 text-[13px] font-semibold rounded-lg hover:bg-teal-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveShare}
                 disabled={shareLoading || usersList.length === 0}
-                className="flex-1 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
+                className="flex-1 py-2.5 text-white text-[13px] font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+                style={{ backgroundColor: '#0d9da4' }}
               >
-                {shareLoading ? 'Saving...' : 'Save Access'}
+                {shareLoading ? 'Saving…' : 'Save Access'}
               </button>
             </div>
 
@@ -1155,11 +787,11 @@ export default function Dashboard() {
 
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
+          from { opacity: 0; transform: translateY(-6px); }
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out;
+          animation: fadeIn 0.18s ease-out;
         }
       `}</style>
     </div>

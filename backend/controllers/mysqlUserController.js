@@ -47,15 +47,15 @@ exports.listMySQLUsers = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     if (connection.type !== 'mysql') {
-      return res.status(400).json({ message: 'Users list sirf MySQL databases ke liye support hoti hai!' });
+      return res.status(400).json({ message: 'Users listing is only supported for MySQL databases!' });
     }
 
     const { conn } = await getConnection(connection);
@@ -95,11 +95,11 @@ exports.getMySQLUserPrivileges = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const { conn } = await getConnection(connection);
@@ -115,7 +115,7 @@ exports.getMySQLUserPrivileges = async (req, res) => {
     );
 
     if (users.length === 0) {
-      return res.status(404).json({ message: 'MySQL User nahi mila!' });
+      return res.status(404).json({ message: 'MySQL User not found!' });
     }
 
     const u = users[0];
@@ -144,11 +144,11 @@ exports.createMySQLUser = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     if (!username || !host) {
@@ -164,7 +164,15 @@ exports.createMySQLUser = async (req, res) => {
     await conn.query(`CREATE USER ${escapedUser}@${escapedHost} IDENTIFIED BY ${escapedPass}`);
     await conn.query('FLUSH PRIVILEGES');
 
-    res.status(201).json({ success: true, message: 'MySQL User successfully create ho gaya!' });
+    // Log to shared connection audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(id, req.user.id, 'CREATE_DB_USER', `Created MySQL user: ${username}@${host}`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
+
+    res.status(201).json({ success: true, message: 'MySQL User successfully created!' });
   } catch (err) {
     res.status(500).json({ message: 'Error creating MySQL user', error: err.message });
   }
@@ -177,11 +185,11 @@ exports.deleteMySQLUser = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const { conn } = await getConnection(connection);
@@ -192,7 +200,15 @@ exports.deleteMySQLUser = async (req, res) => {
     await conn.query(`DROP USER ${escapedUser}@${escapedHost}`);
     await conn.query('FLUSH PRIVILEGES');
 
-    res.status(200).json({ success: true, message: 'MySQL User successfully delete ho gaya!' });
+    // Log to shared connection audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(id, req.user.id, 'DELETE_DB_USER', `Deleted MySQL user: ${username}@${host}`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
+
+    res.status(200).json({ success: true, message: 'MySQL User successfully deleted!' });
   } catch (err) {
     res.status(500).json({ message: 'Error deleting MySQL user', error: err.message });
   }
@@ -206,15 +222,15 @@ exports.updateMySQLUserPassword = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     if (password === undefined || password === '') {
-      return res.status(400).json({ message: 'Password required hai!' });
+      return res.status(400).json({ message: 'Password is required!' });
     }
 
     const { conn } = await getConnection(connection);
@@ -226,7 +242,15 @@ exports.updateMySQLUserPassword = async (req, res) => {
     await conn.query(`ALTER USER ${escapedUser}@${escapedHost} IDENTIFIED BY ${escapedPass}`);
     await conn.query('FLUSH PRIVILEGES');
 
-    res.status(200).json({ success: true, message: 'Password successfully change ho gaya!' });
+    // Log to shared connection audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(id, req.user.id, 'UPDATE_DB_USER', `Updated password for MySQL user: ${username}@${host}`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
+
+    res.status(200).json({ success: true, message: 'Password successfully changed!' });
   } catch (err) {
     res.status(500).json({ message: 'Error updating MySQL user password', error: err.message });
   }
@@ -240,11 +264,11 @@ exports.updateMySQLUserPrivileges = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const { conn } = await getConnection(connection);
@@ -260,7 +284,7 @@ exports.updateMySQLUserPrivileges = async (req, res) => {
     );
 
     if (users.length === 0) {
-      return res.status(404).json({ message: 'MySQL User nahi mila!' });
+      return res.status(404).json({ message: 'MySQL User not found!' });
     }
 
     const current = users[0];
@@ -300,6 +324,14 @@ exports.updateMySQLUserPrivileges = async (req, res) => {
     }
 
     await conn.query('FLUSH PRIVILEGES');
+
+    // Log to shared connection audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(id, req.user.id, 'UPDATE_DB_USER', `Updated privileges for MySQL user: ${username}@${host}`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
 
     res.status(200).json({ success: true, message: 'Permissions successfully update ho gayi hain!' });
   } catch (err) {

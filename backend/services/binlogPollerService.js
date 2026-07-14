@@ -8,14 +8,20 @@ const processingConnections = new Set();
 
 const pollAllConnections = async (io) => {
   try {
-    // Fetch all active/saved MySQL connections
-    const mysqlConnections = await Connection.find({ type: 'mysql' });
+    // Fetch all active/saved connections
+    const connections = await Connection.find({ type: { $in: ['mysql', 'postgresql', 'mongodb'] } });
     
-    for (const connDoc of mysqlConnections) {
+    for (const connDoc of connections) {
       const connId = connDoc._id.toString();
       
       // Skip if already in process to avoid overlapping interval queries
       if (processingConnections.has(connId)) continue;
+
+      // Check if there are active socket clients watching this connection
+      const room = io.sockets.adapter.rooms.get(`connection_${connId}`);
+      if (!room || room.size === 0) {
+        continue; // Skip polling if no one is watching
+      }
       
       processingConnections.add(connId);
       
@@ -28,58 +34,64 @@ const pollAllConnections = async (io) => {
         let startMode = 'real';
         
         if (!state) {
-          // Initialize coordinates from the current binlog position
-          try {
-            const { conn } = await getConnection(connDoc);
-            let logFile = '';
-            let position = 4;
-            let logBinEnabled = false;
-
-            // Check if binary logging is enabled on target database
+          if (connDoc.type === 'mongodb' || connDoc.type === 'postgresql') {
+            startLogFile = connDoc.type === 'mongodb' ? 'mock-oplog.000001' : 'mock-wal.000001';
+            startPosition = 100;
+            startMode = 'simulation';
+          } else {
+            // Initialize coordinates from the current MySQL binlog position
             try {
-              const [logBinVars] = await conn.query("SHOW VARIABLES LIKE 'log_bin'");
-              if (logBinVars && logBinVars.length > 0 && logBinVars[0].Value === 'ON') {
-                logBinEnabled = true;
-              }
-            } catch (err) {
-              console.warn(`Failed to check log_bin variable for connection ${connId}:`, err.message);
-            }
+              const { conn } = await getConnection(connDoc);
+              let logFile = '';
+              let position = 4;
+              let logBinEnabled = false;
 
-            if (logBinEnabled) {
+              // Check if binary logging is enabled on target database
               try {
-                // Query current file and coordinates
-                try {
-                  const [binlogStatus] = await conn.query("SHOW BINARY LOG STATUS");
-                  if (binlogStatus && binlogStatus.length > 0) {
-                    logFile = binlogStatus[0].File;
-                    position = binlogStatus[0].Position;
-                  }
-                } catch (e1) {
-                  const [masterStatus] = await conn.query("SHOW MASTER STATUS");
-                  if (masterStatus && masterStatus.length > 0) {
-                    logFile = masterStatus[0].File;
-                    position = masterStatus[0].Position;
-                  }
+                const [logBinVars] = await conn.query("SHOW VARIABLES LIKE 'log_bin'");
+                if (logBinVars && logBinVars.length > 0 && logBinVars[0].Value === 'ON') {
+                  logBinEnabled = true;
                 }
-              } catch (e2) {
-                console.warn(`Failed to read binary status for connection ${connId}:`, e2.message);
+              } catch (err) {
+                console.warn(`Failed to check log_bin variable for connection ${connId}:`, err.message);
               }
-            }
 
-            if (logFile) {
-              startLogFile = logFile;
-              startPosition = position;
-              startMode = 'real';
-            } else {
+              if (logBinEnabled) {
+                try {
+                  // Query current file and coordinates
+                  try {
+                    const [binlogStatus] = await conn.query("SHOW BINARY LOG STATUS");
+                    if (binlogStatus && binlogStatus.length > 0) {
+                      logFile = binlogStatus[0].File;
+                      position = binlogStatus[0].Position;
+                    }
+                  } catch (e1) {
+                    const [masterStatus] = await conn.query("SHOW MASTER STATUS");
+                    if (masterStatus && masterStatus.length > 0) {
+                      logFile = masterStatus[0].File;
+                      position = masterStatus[0].Position;
+                    }
+                  }
+                } catch (e2) {
+                  console.warn(`Failed to read binary status for connection ${connId}:`, e2.message);
+                }
+              }
+
+              if (logFile) {
+                startLogFile = logFile;
+                startPosition = position;
+                startMode = 'real';
+              } else {
+                startLogFile = 'mock-binlog.000001';
+                startPosition = 100;
+                startMode = 'simulation';
+              }
+            } catch (connErr) {
+              // Default to simulation mode if target database is unreachable
               startLogFile = 'mock-binlog.000001';
               startPosition = 100;
               startMode = 'simulation';
             }
-          } catch (connErr) {
-            // Default to simulation mode if target database is unreachable
-            startLogFile = 'mock-binlog.000001';
-            startPosition = 100;
-            startMode = 'simulation';
           }
 
           state = await BinlogState.create({

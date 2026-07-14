@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
+import Navbar from '../components/Navbar';
 
 export default function Profile() {
   const { user, logout, loading } = useAuth();
@@ -27,15 +28,7 @@ export default function Profile() {
     <div className="min-h-screen bg-gray-50">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-gray-900">DB Manager</h1>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Dashboard
-        </button>
-      </nav>
+      <Navbar backTo="/dashboard" backText="Dashboard" />
 
       <div className="max-w-2xl mx-auto px-6 py-8">
 
@@ -43,7 +36,7 @@ export default function Profile() {
         <div className="mb-6">
           <h2 className="text-2xl font-semibold text-gray-900">My Profile</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Apni account ki details dekho
+            View your account details
           </p>
         </div>
 
@@ -52,7 +45,7 @@ export default function Profile() {
 
           {/* Avatar + Name */}
           <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
-            <div className="w-16 h-16 rounded-full bg-gray-900 text-white flex items-center justify-center text-2xl font-bold">
+            <div className="w-16 h-16 rounded-full bg-[#0d9da4] text-white flex items-center justify-center text-2xl font-bold">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
             <div>
@@ -87,7 +80,7 @@ export default function Profile() {
               <span className="text-sm text-gray-500">Role</span>
               <span className={`text-xs px-3 py-1 rounded-full font-medium
                 ${user?.role === 'admin' 
-                  ? 'bg-gray-900 text-white' 
+                  ? 'bg-[#0d9da4] text-white' 
                   : user?.role === 'developer'
                   ? 'bg-blue-100 text-blue-700'
                   : 'bg-gray-100 text-gray-600'

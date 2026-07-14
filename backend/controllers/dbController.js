@@ -43,10 +43,39 @@ exports.getMysqlTableData = async (req, res) => {
   }
 };
 
+// Helper to strip client-side DELIMITER commands and clean trailing delimiters
+const sanitizeQuery = (sql) => {
+  if (!sql) return '';
+  
+  // Find all custom delimiters first using multiline regex
+  const matches = [...sql.matchAll(/^\s*DELIMITER\s+(\S+)/gim)];
+  
+  // Remove DELIMITER declarations that start on their own line
+  let cleaned = sql.replace(/^\s*DELIMITER\s+\S+/gim, '');
+  
+  // Replace custom delimiters with semicolon
+  matches.forEach(m => {
+    const delim = m[1];
+    if (delim && delim !== ';') {
+      const escapedDelim = delim.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      // Replace custom delimiter only when it appears at the end of a line or statement
+      const delimRegex = new RegExp(escapedDelim + '\\s*$', 'gm');
+      cleaned = cleaned.replace(delimRegex, ';');
+    }
+  });
+  
+  cleaned = cleaned.replace(/;+/g, ';');
+  return cleaned.trim();
+};
+
 // ─── QUERY RUN + HISTORY SAVE ─────────────────────
 exports.runMysqlQuery = async (req, res) => {
   try {
-    const { query } = req.body;
+    const { query: rawQuery } = req.body;
+    const query = sanitizeQuery(rawQuery);
+    if (!query) {
+      return res.status(400).json({ message: 'Query string cannot be empty after sanitization.' });
+    }
     const connectionId = req.query.connectionId;
     const database = req.query.database;
 
@@ -68,13 +97,13 @@ exports.runMysqlQuery = async (req, res) => {
       // Run against a specific saved connection
       connectionDoc = await Connection.findById(connectionId);
       if (!connectionDoc) {
-        return res.status(404).json({ message: 'Connection nahi mila!' });
+        return res.status(404).json({ message: 'Connection not found!' });
       }
       if (connectionDoc.type !== 'mysql') {
         return res.status(400).json({ message: 'Sirf MySQL connections supported hain.' });
       }
       if (!checkAccess(connectionDoc, req.user)) {
-        return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+        return res.status(403).json({ message: 'You do not have access to this connection!' });
       }
 
       const useDb = database || connectionDoc.database;
@@ -90,11 +119,11 @@ exports.runMysqlQuery = async (req, res) => {
           mysqlConn.release();
         }
       } else {
-        const [resRows] = await conn.execute(query);
+        const [resRows] = await conn.query(query);
         results = resRows;
       }
     } else {
-      const [resRows] = await mysqlPool.execute(query);
+      const [resRows] = await mysqlPool.query(query);
       results = resRows;
     }
 
@@ -192,7 +221,7 @@ exports.runMysqlQuery = async (req, res) => {
     }
 
     // Slow query check karo — 100ms se zyada?
-    await saveSlowQuery(req.user.id, query, executionTime, rowsAffected);
+    await saveSlowQuery(connectionId, req.user.id, query, executionTime, rowsAffected);
 
     res.status(200).json({ success: true, results });
   } catch (err) {
@@ -286,17 +315,17 @@ exports.getPostgresTables = async (req, res) => {
   try {
     const connectionId = req.query.connectionId;
     if (!connectionId) {
-      return res.status(400).json({ message: 'connectionId specify karo!' });
+      return res.status(400).json({ message: 'Please specify connectionId!' });
     }
     const connectionDoc = await Connection.findById(connectionId);
     if (!connectionDoc) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
     if (connectionDoc.type !== 'postgresql') {
-      return res.status(400).json({ message: 'PostgreSQL connection nahi mila!' });
+      return res.status(400).json({ message: 'PostgreSQL connection not found!' });
     }
     if (!checkAccess(connectionDoc, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
     const { conn } = await getConnection(connectionDoc);
     const result = await conn.query(`
@@ -316,17 +345,17 @@ exports.getPostgresTableData = async (req, res) => {
     const { tableName } = req.params;
     const connectionId = req.query.connectionId;
     if (!connectionId) {
-      return res.status(400).json({ message: 'connectionId specify karo!' });
+      return res.status(400).json({ message: 'Please specify connectionId!' });
     }
     const connectionDoc = await Connection.findById(connectionId);
     if (!connectionDoc) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
     if (connectionDoc.type !== 'postgresql') {
-      return res.status(400).json({ message: 'Valid PostgreSQL connection nahi mila!' });
+      return res.status(400).json({ message: 'Valid PostgreSQL connection not found!' });
     }
     if (!checkAccess(connectionDoc, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
     const { conn } = await getConnection(connectionDoc);
     
@@ -354,17 +383,17 @@ exports.getPostgresStats = async (req, res) => {
   try {
     const connectionId = req.query.connectionId;
     if (!connectionId) {
-      return res.status(400).json({ message: 'connectionId specify karo!' });
+      return res.status(400).json({ message: 'Please specify connectionId!' });
     }
     const connectionDoc = await Connection.findById(connectionId);
     if (!connectionDoc) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
     if (connectionDoc.type !== 'postgresql') {
-      return res.status(400).json({ message: 'Valid PostgreSQL connection nahi mila!' });
+      return res.status(400).json({ message: 'Valid PostgreSQL connection not found!' });
     }
     if (!checkAccess(connectionDoc, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
     const { conn } = await getConnection(connectionDoc);
     const database = req.query.database || connectionDoc.database;
@@ -396,18 +425,18 @@ exports.runPostgresQuery = async (req, res) => {
     const connectionId = req.query.connectionId;
     
     if (!connectionId) {
-      return res.status(400).json({ message: 'connectionId specify karo!' });
+      return res.status(400).json({ message: 'Please specify connectionId!' });
     }
     
     const connectionDoc = await Connection.findById(connectionId);
     if (!connectionDoc) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
     if (connectionDoc.type !== 'postgresql') {
       return res.status(400).json({ message: 'Sirf PostgreSQL connections supported hain.' });
     }
     if (!checkAccess(connectionDoc, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
     
     const { conn } = await getConnection(connectionDoc);
@@ -474,7 +503,7 @@ exports.runPostgresQuery = async (req, res) => {
     }
     
     // Slow query check karo — 100ms se zyada?
-    await saveSlowQuery(req.user.id, query, executionTime, rowsAffected);
+    await saveSlowQuery(connectionId, req.user.id, query, executionTime, rowsAffected);
     
     res.status(200).json({ success: true, results });
   } catch (err) {

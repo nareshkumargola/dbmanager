@@ -26,11 +26,13 @@ const generateSuggestion = (query, executionTime) => {
 };
 
 // Slow query save karo — dbController se call hoga
-exports.saveSlowQuery = async (userId, query, executionTime, rowsExamined) => {
+exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsExamined) => {
   try {
+    if (!connectionId) return;
     if (executionTime >= SLOW_THRESHOLD) {
       const suggestion = generateSuggestion(query, executionTime);
       await SlowQuery.create({
+        connection: connectionId,
         user: userId,
         query,
         executionTime,
@@ -39,14 +41,18 @@ exports.saveSlowQuery = async (userId, query, executionTime, rowsExamined) => {
       });
     }
   } catch (err) {
-    console.error('Slow query save nahi hui:', err.message);
+    console.error('Slow query not saved:', err.message);
   }
 };
 
 // Slow queries dekho
 exports.getSlowQueries = async (req, res) => {
   try {
-    const queries = await SlowQuery.find({ user: req.user.id })
+    const { connectionId } = req.query;
+    if (!connectionId) {
+      return res.status(400).json({ message: 'connectionId parameter required!' });
+    }
+    const queries = await SlowQuery.find({ user: req.user.id, connection: connectionId })
       .sort({ executionTime: -1 }) // Sabse slow pehle
       .limit(50);
 
@@ -84,8 +90,12 @@ exports.deleteSlowQuery = async (req, res) => {
 // Poori history clear karo
 exports.clearSlowQueries = async (req, res) => {
   try {
-    await SlowQuery.deleteMany({ user: req.user.id });
-    res.status(200).json({ success: true, message: 'Clear ho gaya!' });
+    const { connectionId } = req.query;
+    if (!connectionId) {
+      return res.status(400).json({ message: 'connectionId parameter required!' });
+    }
+    await SlowQuery.deleteMany({ user: req.user.id, connection: connectionId });
+    res.status(200).json({ success: true, message: 'Query history cleared successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
   }

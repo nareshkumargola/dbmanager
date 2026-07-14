@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import API from '../api/axios';
 
-export default function SlowQueryPanel() {
+export default function SlowQueryPanel({ connectionId }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [queries, setQueries] = useState([]);
@@ -12,16 +12,17 @@ export default function SlowQueryPanel() {
 
   useEffect(() => {
     fetchSlowQueries();
-  }, []);
+  }, [connectionId]);
 
   const fetchSlowQueries = async () => {
     try {
       setLoading(true);
-      const res = await API.get('/slow-queries');
+      const url = `/slow-queries${connectionId ? `?connectionId=${connectionId}` : ''}`;
+      const res = await API.get(url);
       setQueries(res.data.queries);
       setStats(res.data.stats);
     } catch (err) {
-      setError('Data load nahi hua');
+      setError('Failed to load slow query data.');
     } finally {
       setLoading(false);
     }
@@ -32,18 +33,19 @@ export default function SlowQueryPanel() {
       await API.delete(`/slow-queries/${id}`);
       setQueries(queries.filter(q => q._id !== id));
     } catch (err) {
-      setError('Delete nahi hua');
+      setError('Failed to delete query.');
     }
   };
 
   const clearAll = async () => {
-    if (!window.confirm('Poori slow query history delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to clear all slow query history?')) return;
     try {
-      await API.delete('/slow-queries');
+      const url = `/slow-queries${connectionId ? `?connectionId=${connectionId}` : ''}`;
+      await API.delete(url);
       setQueries([]);
       setStats({ totalSlowQueries: 0, avgExecutionTime: 0, slowestTime: 0 });
     } catch (err) {
-      setError('Clear nahi hua');
+      setError('Failed to clear history.');
     }
   };
 
@@ -126,13 +128,13 @@ export default function SlowQueryPanel() {
       {queries.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <p className="text-2xl mb-2">🎉</p>
-          <p className="text-gray-700 font-medium mb-1">Koi slow query nahi!</p>
-          <p className="text-gray-400 text-sm mb-4">Saari queries 100ms se kam mein chal rahi hain</p>
+          <p className="text-gray-700 font-medium mb-1">No slow queries detected!</p>
+          <p className="text-gray-400 text-sm mb-4">All queries are executing under 100ms.</p>
           <button
             onClick={() => useQuery('')}
             className="text-sm text-gray-900 underline"
           >
-            Query Editor pe jao
+            Go to Query Editor
           </button>
         </div>
       ) : (

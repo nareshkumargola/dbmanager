@@ -15,14 +15,19 @@ exports.saveHistory = async (userId, query, status, rowsAffected, executionTime,
       database,
     });
   } catch (err) {
-    console.error('History save nahi hui:', err.message);
+    console.error('History not saved:', err.message);
   }
 };
 
-// User ki poori history dekho
+// User ki poori history dekho (connection-specific optionally)
 exports.getHistory = async (req, res) => {
   try {
-    const history = await QueryHistory.find({ user: req.user.id })
+    const filter = { user: req.user.id };
+    if (req.query.connectionId) {
+      filter.connectionId = req.query.connectionId;
+    }
+
+    const history = await QueryHistory.find(filter)
       .sort({ createdAt: -1 })  // Nayi pehle
       .limit(50);               // Max 50
 
@@ -39,12 +44,12 @@ exports.deleteHistory = async (req, res) => {
 
     const record = await QueryHistory.findById(id);
     if (!record) {
-      return res.status(404).json({ message: 'Record nahi mila!' });
+      return res.status(404).json({ message: 'Record not found!' });
     }
 
     // Sirf apni history delete karo
     if (record.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: 'Permission nahi hai!' });
+      return res.status(403).json({ message: 'Permission denied!' });
     }
 
     await QueryHistory.findByIdAndDelete(id);
@@ -58,7 +63,7 @@ exports.deleteHistory = async (req, res) => {
 exports.clearHistory = async (req, res) => {
   try {
     await QueryHistory.deleteMany({ user: req.user.id });
-    res.status(200).json({ success: true, message: 'History clear ho gayi!' });
+    res.status(200).json({ success: true, message: 'History cleared successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
   }
@@ -137,7 +142,7 @@ exports.getTodayQueriesForConnection = async (req, res) => {
   try {
     const { connectionId, userId } = req.query;
     if (!connectionId || !userId) {
-      return res.status(400).json({ message: 'connectionId aur userId specify karo!' });
+      return res.status(400).json({ message: 'Please specify connectionId and userId!' });
     }
 
     const startOfDay = new Date();

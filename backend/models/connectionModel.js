@@ -32,6 +32,12 @@ const connectionSchema = new mongoose.Schema({
   connectionString: { type: String, default: null },
 
   isActive: { type: Boolean, default: true },
+  
+  // Alerts settings
+  alertsEnabled: { type: Boolean, default: false },
+  alertEmail: { type: String, default: null },
+  alertSlackWebhook: { type: String, default: null },
+  alertThreshold: { type: Number, default: 90 },
 
   createdAt: {
     type: Date,

@@ -2,6 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
+
+// Prevent unexpected library crashes from terminating server process
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err.stack || err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
 const http = require('http');
@@ -36,8 +44,8 @@ app.use(cookieParser());
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Bahut zyada requests!',
+  max: process.env.NODE_ENV === 'production' ? 150 : 5000, // Secure in prod, flexible in dev
+  message: 'Too many requests, please try again later.',
   skip: (req) => req.originalUrl && req.originalUrl.includes('/binlog/events'),
 });
 app.use('/api', limiter);
@@ -61,6 +69,7 @@ const userRoutes = require('./routes/userRoutes');
 const monitorRoutes = require('./routes/monitorRoutes');
 const backupRoutes = require('./routes/backupRoutes');
 const dbRoutes = require('./routes/dbRoutes');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/connections', connectionRoutes);
@@ -70,6 +79,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/monitor', monitorRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/db', dbRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -78,6 +88,7 @@ app.use((err, req, res, next) => {
 });
 
 const { startBackgroundBinlogPoller } = require('./services/binlogPollerService');
+const { startBackgroundHealthMonitor } = require('./services/healthMonitoringService');
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, async () => {
@@ -86,4 +97,7 @@ server.listen(PORT, async () => {
   
   // Start persistent background binlog poller daemon
   startBackgroundBinlogPoller(io);
+
+  // Start background database health monitor
+  startBackgroundHealthMonitor(io);
 });

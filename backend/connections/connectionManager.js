@@ -16,6 +16,7 @@ const connectMySQL = async (config) => {
     connectionLimit: 5,
     authPlugins: undefined,
     ssl: false,
+    multipleStatements: true,
   };
 
   // Database optional hai — sirf tab add karo jab ho

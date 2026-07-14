@@ -1,9 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import Navbar from '../components/Navbar';
+import { useAuth } from '../context/AuthContext';
 
 export default function QueryHistory() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  if (user?.role !== 'admin' && user?.permissions && !user.permissions.history) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
+          <p className="text-4xl mb-4">🚫</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-gray-500 mb-6">You do not have permission to access Query History features.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,7 +37,7 @@ export default function QueryHistory() {
       const res = await API.get('/history');
       setHistory(res.data.history);
     } catch (err) {
-      setError('History load nahi hui');
+      setError('Failed to load query history');
     } finally {
       setLoading(false);
     }
@@ -29,17 +48,17 @@ export default function QueryHistory() {
       await API.delete(`/history/${id}`);
       setHistory(history.filter(h => h._id !== id));
     } catch (err) {
-      setError('Delete nahi hua');
+      setError('Failed to delete history record');
     }
   };
 
   const clearAll = async () => {
-    if (!window.confirm('Poori history delete karni hai?')) return;
+    if (!window.confirm('Are you sure you want to clear all query history?')) return;
     try {
       await API.delete('/history');
       setHistory([]);
     } catch (err) {
-      setError('Clear nahi hua');
+      setError('Failed to clear history');
     }
   };
 
@@ -72,15 +91,7 @@ export default function QueryHistory() {
     <div className="min-h-screen bg-gray-50">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-gray-900">DB Manager</h1>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Dashboard
-        </button>
-      </nav>
+      <Navbar backTo="/dashboard" backText="Dashboard" />
 
       <div className="max-w-4xl mx-auto px-6 py-8">
 
@@ -115,7 +126,7 @@ export default function QueryHistory() {
         {history.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
             <p className="text-gray-400 text-sm mb-2">
-              Abhi koi query history nahi hai
+              No query history found
             </p>
             <button
               onClick={() => navigate('/query')}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import Navbar from '../components/Navbar';
 
 export default function DatabaseSelector() {
   const { id } = useParams();
@@ -31,7 +32,7 @@ export default function DatabaseSelector() {
       const res = await API.get(`/connections/${id}/databases`);
       setDatabases(res.data.databases);
     } catch (err) {
-      setError('Databases load nahi hue');
+      setError('Failed to load databases');
     } finally {
       setLoading(false);
     }
@@ -59,20 +60,15 @@ export default function DatabaseSelector() {
     <div className="min-h-screen bg-gray-50">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/connections')}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            ← Connections
-          </button>
-          <span className="text-gray-300">|</span>
+      <Navbar
+        backTo="/connections"
+        backText="Connections"
+        extraLeft={
           <span className="text-sm font-medium text-gray-900">
             {getTypeIcon(connectionType)} {connectionName}
           </span>
-        </div>
-      </nav>
+        }
+      />
 
       <div className="max-w-2xl mx-auto px-6 py-8">
 
@@ -82,7 +78,7 @@ export default function DatabaseSelector() {
             Select Database
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Kaunsa database manage karna hai?
+            Select database to manage
           </p>
         </div>
 
@@ -98,10 +94,10 @@ export default function DatabaseSelector() {
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
             <p className="text-3xl mb-3">🗄️</p>
             <p className="text-gray-700 font-medium mb-1">
-              Koi database nahi mila
+              No databases found
             </p>
             <p className="text-gray-400 text-sm">
-              Server pe koi database nahi hai ya access nahi hai
+              No databases found on this server or you do not have access permissions
             </p>
           </div>
         ) : (
@@ -122,7 +118,7 @@ export default function DatabaseSelector() {
                         {db}
                       </p>
                       <p className="text-xs text-gray-400">
-                        Click karo manage karne ke liye
+                        Click here to manage
                       </p>
                     </div>
                   </div>

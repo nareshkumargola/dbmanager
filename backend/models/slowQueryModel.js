@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const slowQuerySchema = new mongoose.Schema({
+  connection: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Connection',
+    required: true,
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

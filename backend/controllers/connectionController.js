@@ -878,8 +878,49 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
     console.warn('Failed to query MySQL user:', err.message);
   }
 
+  let rows = [];
   try {
-    const [rows] = await conn.query(`SHOW BINLOG EVENTS IN '${activeFile}' FROM ${startPos} LIMIT 100`);
+    const [qRows] = await conn.query(`SHOW BINLOG EVENTS IN '${activeFile}' FROM ${startPos} LIMIT 100`);
+    rows = qRows;
+  } catch (err) {
+    const errMsg = err.message || '';
+    const isFileNotFound = 
+      err.code === 'ER_NO_BINARY_LOG' || 
+      err.errno === 1781 || 
+      err.errno === 1236 || 
+      errMsg.includes('not found') || 
+      errMsg.includes('does not exist') ||
+      errMsg.includes('could not find');
+
+    if (isFileNotFound) {
+      console.warn(`[Self-Healing] Binlog file "${activeFile}" not found on connection ${connectionId}. Attempting recovery...`);
+      try {
+        const [binlogs] = await conn.query('SHOW BINARY LOGS');
+        if (binlogs && binlogs.length > 0) {
+          const oldestLog = binlogs[0].Log_name;
+          console.log(`[Self-Healing] Resetting connection ${connectionId} state to oldest log "${oldestLog}" at position 4.`);
+          
+          const BinlogState = require('../models/binlogStateModel');
+          await BinlogState.updateOne(
+            { connectionId: connection._id },
+            { $set: { logFile: oldestLog, position: 4, updatedAt: new Date() } }
+          );
+
+          return {
+            success: true,
+            events: [],
+            nextLogFile: oldestLog,
+            nextPosition: 4
+          };
+        }
+      } catch (recoveryErr) {
+        console.error('[Self-Healing] Recovery failed during SHOW BINARY LOGS:', recoveryErr.message);
+      }
+    }
+    throw err;
+  }
+
+  try {
     
     // Map table ID to table name dynamically during the current batch run
     const lastTableMap = {};
@@ -1022,10 +1063,11 @@ exports.getBinlogEvents = async (req, res) => {
   }
 };
 
-// ─── GET BINLOG HISTORY (GET) ──────────────────────────
 exports.getBinlogHistory = async (req, res) => {
   try {
     const { id } = req.params;
+    const { timeFilter, startDate, endDate } = req.query;
+    
     const connection = await Connection.findById(id);
     if (!connection) {
       return res.status(404).json({ message: 'Connection nahi mila!' });
@@ -1035,10 +1077,50 @@ exports.getBinlogHistory = async (req, res) => {
       return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
     }
 
-    const history = await BinlogAudit.find({ connectionId: id })
+    const query = { connectionId: id };
+
+    if (timeFilter && timeFilter !== 'ALL') {
+      const now = new Date();
+      let timeLimit = null;
+
+      if (timeFilter === '1hour') {
+        timeLimit = new Date(now.getTime() - 1 * 60 * 60 * 1000);
+      } else if (timeFilter === '3hour') {
+        timeLimit = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+      } else if (timeFilter === '6hour') {
+        timeLimit = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      } else if (timeFilter === '12hour') {
+        timeLimit = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+      } else if (timeFilter === '24hour') {
+        timeLimit = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      } else if (timeFilter === '1month') {
+        timeLimit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      } else if (timeFilter === '3month') {
+        timeLimit = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      } else if (timeFilter === 'custom') {
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+        if (start || end) {
+          query.timestamp = {};
+          if (start) query.timestamp.$gte = start;
+          if (end) {
+            const endOfDay = new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1);
+            query.timestamp.$lte = endOfDay;
+          }
+        }
+      }
+
+      if (timeLimit) {
+        query.timestamp = { $gte: timeLimit };
+      }
+    }
+
+    const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
+
+    const history = await BinlogAudit.find(query)
       .populate('user', 'name email')
       .sort({ timestamp: -1 })
-      .limit(100);
+      .limit(limitVal);
 
     res.status(200).json({ success: true, history });
   } catch (err) {
@@ -1064,5 +1146,78 @@ exports.clearBinlogHistory = async (req, res) => {
     res.status(200).json({ success: true, message: 'Binlog audit log history cleared successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error clearing binlog history', error: err.message });
+  }
+};
+
+// ─── GET CONNECTION AUDIT LOGS (GET) ──────────────────────
+exports.getConnectionAuditLogs = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const AuditLog = require('../models/auditLogModel');
+    const Connection = require('../models/connectionModel');
+
+    const connection = await Connection.findById(id);
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection not found!' });
+    }
+
+    if (!checkAccess(connection, req.user)) {
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
+    }
+
+    const { userId, action, startDate, endDate, queryType } = req.query;
+    const filter = { connection: id };
+
+    if (userId) {
+      filter.user = userId;
+    }
+    if (action) {
+      filter.action = action;
+    }
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        filter.createdAt.$gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        filter.createdAt.$lte = end;
+      }
+    }
+
+    let logs = await AuditLog.find(filter)
+      .populate('user', 'name email role')
+      .populate('connection', 'name type')
+      .sort({ createdAt: -1 })
+      .limit(1000);
+
+    if (queryType) {
+      const typeLower = queryType.toLowerCase();
+      logs = logs.filter(log => {
+        if (log.action !== 'RUN_QUERY') return false;
+        const detailsLower = (log.details || '').toLowerCase().trim();
+        if (typeLower === 'select') {
+          return detailsLower.startsWith('select') || detailsLower.includes('select ');
+        }
+        if (typeLower === 'insert') {
+          return detailsLower.startsWith('insert') || detailsLower.includes('insert ');
+        }
+        if (typeLower === 'update') {
+          return detailsLower.startsWith('update') || detailsLower.includes('update ');
+        }
+        if (typeLower === 'delete') {
+          return detailsLower.startsWith('delete') || detailsLower.includes('delete ') || detailsLower.includes('drop ') || detailsLower.includes('truncate ');
+        }
+        return detailsLower.includes(typeLower);
+      });
+    }
+
+    res.status(200).json({ success: true, logs });
+  } catch (err) {
+    console.error('Connection audit logs fetch error:', err.message);
+    res.status(500).json({ message: 'Error fetching connection audit logs', error: err.message });
   }
 };

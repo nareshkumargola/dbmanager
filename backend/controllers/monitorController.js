@@ -1,6 +1,7 @@
 const { getConnection } = require('../connections/connectionManager');
 const Connection = require('../models/connectionModel');
 const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
+const Alert = require('../models/alertModel');
 
 // ─── HELPER: Group snapshots by hour ──────────────────
 const groupByHour = (snapshots) => {
@@ -18,13 +19,16 @@ const groupByHour = (snapshots) => {
 };
 
 // ─── HELPER: Calculate average for hour ──────────────
-const getHourlyAverage = (snapshots) => {
+const getHourlyAverage = (snapshots, includeDate = false) => {
   if (snapshots.length === 0) return null;
   
+  const dateObj = new Date(snapshots[0].createdAt);
+  const timeLabel = includeDate
+    ? dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' + dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+
   const avg = {
-    hour: new Date(snapshots[0].createdAt).toLocaleTimeString('en-IN', { 
-      hour: '2-digit', minute: '2-digit' 
-    }),
+    hour: timeLabel,
     activeConnections: Math.round(snapshots.reduce((sum, s) => sum + s.activeConnections, 0) / snapshots.length),
     maxConnections: snapshots[snapshots.length - 1]?.maxConnections || 0,
     queriesPerSecond: parseFloat((snapshots.reduce((sum, s) => sum + s.queriesPerSecond, 0) / snapshots.length).toFixed(2)),
@@ -381,18 +385,64 @@ exports.getMonitoringHistory = async (req, res) => {
       console.warn('Snapshot save failed:', e.message);
     }
 
-    // Get last 5 hours of data
-    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
-    const snapshots = await MonitoringSnapshot.find({
-      connection: connection._id,
-      database,
-      createdAt: { $gte: fiveHoursAgo },
-    }).sort({ createdAt: 1 });
+    const range = req.query.range || 'current';
+    const query = {
+      connection: connection._id
+    };
+
+    if (database) {
+      query.$or = [
+        { database: database },
+        { database: null },
+        { database: { $exists: false } }
+      ];
+    }
+    
+    let timeAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
+    let includeDate = false;
+
+    if (range === '1day') {
+      timeAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      includeDate = true;
+      query.createdAt = { $gte: timeAgo };
+    } else if (range === '2day') {
+      timeAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+      includeDate = true;
+      query.createdAt = { $gte: timeAgo };
+    } else if (range === '3day') {
+      timeAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      includeDate = true;
+      query.createdAt = { $gte: timeAgo };
+    } else if (range === '4day') {
+      timeAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+      includeDate = true;
+      query.createdAt = { $gte: timeAgo };
+    } else if (range === '5day') {
+      timeAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+      includeDate = true;
+      query.createdAt = { $gte: timeAgo };
+    } else if (range === 'custom') {
+      includeDate = true;
+      const start = req.query.startDate ? new Date(req.query.startDate) : null;
+      const end = req.query.endDate ? new Date(req.query.endDate) : null;
+      if (start || end) {
+        query.createdAt = {};
+        if (start) query.createdAt.$gte = start;
+        if (end) {
+          const endOfDay = new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1);
+          query.createdAt.$lte = endOfDay;
+        }
+      }
+    } else {
+      query.createdAt = { $gte: timeAgo };
+    }
+
+    const snapshots = await MonitoringSnapshot.find(query).sort({ createdAt: 1 });
 
     // Group by hour
     const grouped = groupByHour(snapshots);
     const hourlyData = Object.entries(grouped)
-      .map(([, snaps]) => getHourlyAverage(snaps))
+      .map(([, snaps]) => getHourlyAverage(snaps, includeDate))
       .filter(Boolean);
 
     res.status(200).json({
@@ -404,5 +454,67 @@ exports.getMonitoringHistory = async (req, res) => {
   } catch (err) {
     console.error('Monitoring history error:', err);
     res.status(500).json({ message: 'Monitoring history error', error: err.message });
+  }
+};
+
+// ─── GET ALERT LOGS FOR CONNECTION ────────────────────
+exports.getConnectionAlerts = async (req, res) => {
+  try {
+    const alerts = await Alert.find({ connection: req.params.id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.status(200).json({ success: true, alerts });
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching alerts', error: err.message });
+  }
+};
+
+// ─── MANUALLY RESOLVE AN ALERT ───────────────────────
+exports.resolveAlert = async (req, res) => {
+  try {
+    const alert = await Alert.findById(req.params.alertId);
+    if (!alert) {
+      return res.status(404).json({ message: 'Alert not found!' });
+    }
+    alert.resolved = true;
+    alert.resolvedAt = new Date();
+    await alert.save();
+    res.status(200).json({ success: true, message: 'Alert marked as resolved successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: 'Error resolving alert', error: err.message });
+  }
+};
+
+// ─── SAVE CONNECTION ALERT CONFIGURATIONS ────────────
+exports.updateAlertSettings = async (req, res) => {
+  try {
+    const { alertsEnabled, alertEmail, alertSlackWebhook, alertThreshold } = req.body;
+    const connection = await Connection.findByIdAndUpdate(
+      req.params.id,
+      {
+        alertsEnabled: !!alertsEnabled,
+        alertEmail: alertEmail || null,
+        alertSlackWebhook: alertSlackWebhook || null,
+        alertThreshold: parseInt(alertThreshold) || 90
+      },
+      { new: true }
+    );
+
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection not found!' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Alert configurations saved successfully!',
+      connection: {
+        alertsEnabled: connection.alertsEnabled,
+        alertEmail: connection.alertEmail,
+        alertSlackWebhook: connection.alertSlackWebhook,
+        alertThreshold: connection.alertThreshold
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error saving settings', error: err.message });
   }
 };

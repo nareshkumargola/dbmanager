@@ -36,7 +36,7 @@ export default function MySQLUsersPanel({ connectionId }) {
       const res = await API.get(`/connections/${connectionId}/mysql-users`);
       setUsers(res.data.users || []);
     } catch (err) {
-      setError(err.response?.data?.message || 'MySQL users load nahi ho paaye.');
+      setError(err.response?.data?.message || 'Failed to load MySQL users.');
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function MySQLUsersPanel({ connectionId }) {
       setPrivileges(res.data.privileges || {});
       setPrivilegeNames(res.data.privilegeNames || {});
     } catch (err) {
-      setError(err.response?.data?.message || 'User privileges load nahi ho paayi.');
+      setError(err.response?.data?.message || 'Failed to load user privileges.');
       setManageUser(null);
     } finally {
       setManageLoading(false);
@@ -70,11 +70,11 @@ export default function MySQLUsersPanel({ connectionId }) {
         `/connections/${connectionId}/mysql-users/${manageUser.user}/${encodeURIComponent(manageUser.host)}/privileges`,
         { privileges }
       );
-      setSuccessMsg(res.data.message || 'Permissions successfully update ho gayi hain!');
+      setSuccessMsg(res.data.message || 'Permissions updated successfully!');
       setManageUser(null);
       fetchUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'Permissions update nahi ho paayi.');
+      setError(err.response?.data?.message || 'Failed to update permissions.');
     } finally {
       setManageLoading(false);
     }
@@ -92,14 +92,14 @@ export default function MySQLUsersPanel({ connectionId }) {
         host: newHost,
         password: newPassword
       });
-      setSuccessMsg(res.data.message || 'MySQL User successfully create ho gaya!');
+      setSuccessMsg(res.data.message || 'MySQL user created successfully!');
       setCreateUserOpen(false);
       setNewUsername('');
       setNewHost('%');
       setNewPassword('');
       fetchUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'User create nahi ho paaya.');
+      setError(err.response?.data?.message || 'Failed to create user.');
     } finally {
       setCreateLoading(false);
     }
@@ -107,7 +107,7 @@ export default function MySQLUsersPanel({ connectionId }) {
 
   const handleDeleteUser = async () => {
     if (!manageUser) return;
-    if (!window.confirm(`Kya aap sach mein user '${manageUser.user}@${manageUser.host}' ko delete karna chahte hain?`)) return;
+    if (!window.confirm(`Are you sure you want to delete user '${manageUser.user}@${manageUser.host}'?`)) return;
     try {
       setManageLoading(true);
       setError('');
@@ -115,11 +115,11 @@ export default function MySQLUsersPanel({ connectionId }) {
       const res = await API.delete(
         `/connections/${connectionId}/mysql-users/${manageUser.user}/${encodeURIComponent(manageUser.host)}`
       );
-      setSuccessMsg(res.data.message || 'User successfully delete ho gaya!');
+      setSuccessMsg(res.data.message || 'User deleted successfully!');
       setManageUser(null);
       fetchUsers();
     } catch (err) {
-      setError(err.response?.data?.message || 'User delete nahi ho paaya.');
+      setError(err.response?.data?.message || 'Failed to delete user.');
     } finally {
       setManageLoading(false);
     }
@@ -136,11 +136,11 @@ export default function MySQLUsersPanel({ connectionId }) {
         `/connections/${connectionId}/mysql-users/${manageUser.user}/${encodeURIComponent(manageUser.host)}/password`,
         { password: passwordInput }
       );
-      setSuccessMsg(res.data.message || 'Password successfully change ho gaya!');
+      setSuccessMsg(res.data.message || 'Password changed successfully!');
       setChangePasswordOpen(false);
       setPasswordInput('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Password update nahi ho paaya.');
+      setError(err.response?.data?.message || 'Failed to update password.');
     } finally {
       setPasswordLoading(false);
     }
@@ -200,7 +200,7 @@ export default function MySQLUsersPanel({ connectionId }) {
               <tr>
                 <td colSpan="4" className="px-6 py-12 text-center text-gray-400">
                   <span className="text-2xl block mb-2">👤</span>
-                  Koi MySQL user nahi mila ya access denied hai.
+                  No MySQL users found or access denied.
                 </td>
               </tr>
             ) : (

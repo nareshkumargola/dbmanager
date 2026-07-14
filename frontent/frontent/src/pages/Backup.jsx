@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import Navbar from '../components/Navbar';
 
 export default function Backup() {
   const navigate = useNavigate();
@@ -21,23 +22,21 @@ export default function Backup() {
       const res = await API.get('/backup/info');
       setInfo(res.data.info);
     } catch (err) {
-      setError('Info load nahi hui');
+      setError('Failed to load backup information');
     } finally {
       setLoading(false);
     }
   };
 
-  // Backup download karo
   const takeBackup = async () => {
     setBackupLoading(true);
     setError('');
     setSuccess('');
     try {
       const res = await API.get('/backup/download', {
-        responseType: 'blob', // File download ke liye
+        responseType: 'blob',
       });
 
-      // File download trigger karo
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -47,7 +46,7 @@ export default function Backup() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      setSuccess('Backup download ho gaya!');
+      setSuccess('Backup downloaded successfully!');
     } catch (err) {
       setError('Backup failed!');
     } finally {
@@ -55,26 +54,24 @@ export default function Backup() {
     }
   };
 
-  // File select karo
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file && file.name.endsWith('.sql')) {
       setSelectedFile(file);
       setError('');
     } else {
-      setError('Sirf .sql file select karo!');
+      setError('Please select only a .sql file!');
       setSelectedFile(null);
     }
   };
 
-  // Restore karo
   const restoreBackup = async () => {
     if (!selectedFile) {
-      setError('Pehle .sql file select karo!');
+      setError('Please select a .sql file first!');
       return;
     }
 
-    if (!window.confirm('Database restore karoge? Existing data replace ho sakta hai!')) {
+    if (!window.confirm('Are you sure you want to restore the database? This might replace existing data!')) {
       return;
     }
 
@@ -88,9 +85,9 @@ export default function Backup() {
 
       const res = await API.post('/backup/restore', formData);
 
-      setSuccess(`Database restore ho gaya! ${res.data.statements} statements run kiye`);
+      setSuccess(`Database restored successfully! Executed ${res.data.statements} statements.`);
       setSelectedFile(null);
-      fetchInfo(); // Info refresh karo
+      fetchInfo();
     } catch (err) {
       setError(err.response?.data?.error || 'Restore failed!');
     } finally {
@@ -108,45 +105,30 @@ export default function Backup() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-
-      {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-gray-900">DB Manager</h1>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Dashboard
-        </button>
-      </nav>
+      <Navbar backTo="/dashboard" backText="Dashboard" />
 
       <div className="max-w-2xl mx-auto px-6 py-8">
-
-        {/* Header */}
         <div className="mb-6">
           <h2 className="text-2xl font-semibold text-gray-900">
             Backup & Restore
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Database ka backup lo ya restore karo
+            Backup or restore the application database
           </p>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mb-4 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg">
             ❌ {error}
           </div>
         )}
 
-        {/* Success */}
         {success && (
           <div className="mb-4 bg-green-50 border border-green-200 text-green-600 text-sm px-4 py-3 rounded-lg">
             ✅ {success}
           </div>
         )}
 
-        {/* Database Info */}
         {info && (
           <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">
@@ -168,33 +150,30 @@ export default function Backup() {
           </div>
         )}
 
-        {/* Backup Section */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">
             Take Backup
           </h3>
           <p className="text-sm text-gray-500 mb-4">
-            Poora database ek .sql file mein download karo
+            Download the entire database structure and data as a .sql file
           </p>
           <button
             onClick={takeBackup}
             disabled={backupLoading}
             className="w-full py-2.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition disabled:opacity-60"
           >
-            {backupLoading ? 'Backup ban raha hai...' : '⬇ Download Backup'}
+            {backupLoading ? 'Creating Backup...' : ' ⬇ Download Backup'}
           </button>
         </div>
 
-        {/* Restore Section */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-2">
             Restore Backup
           </h3>
           <p className="text-sm text-gray-500 mb-4">
-            .sql file upload karo aur database restore karo
+            Upload a .sql backup file to reconstruct and restore the database
           </p>
 
-          {/* File Input */}
           <div
             className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center mb-4 cursor-pointer hover:border-gray-400 transition"
             onClick={() => document.getElementById('sqlFile').click()}
@@ -211,7 +190,7 @@ export default function Backup() {
             ) : (
               <div>
                 <p className="text-sm text-gray-400">
-                  Click karo .sql file select karne ke liye
+                  Click here to select a .sql file
                 </p>
                 <p className="text-xs text-gray-300 mt-1">
                   Max 50MB
@@ -233,10 +212,9 @@ export default function Backup() {
             disabled={restoreLoading || !selectedFile}
             className="w-full py-2.5 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition disabled:opacity-60"
           >
-            {restoreLoading ? 'Restore....' : '⬆ Restore Database'}
+            {restoreLoading ? 'Restoring Database...' : '⬆ Restore Database'}
           </button>
         </div>
-
       </div>
     </div>
   );

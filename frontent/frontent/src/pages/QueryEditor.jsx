@@ -1,11 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import API from '../api/axios';
+import Navbar from '../components/Navbar';
+import { useAuth } from '../context/AuthContext';
 
 export default function QueryEditor() {
+  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  if (user?.role !== 'admin' && user?.permissions && !user.permissions.query) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
+          <p className="text-4xl mb-4">🚫</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-gray-500 mb-6">You do not have permission to access SQL Query Editor features.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
   const [query, setQuery] = useState(
     location.state?.query || 'SELECT * FROM users;'
   );
@@ -14,6 +32,8 @@ export default function QueryEditor() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const textareaRef = useRef(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Connection selection state
   const [connections, setConnections] = useState([]);
@@ -72,11 +92,30 @@ export default function QueryEditor() {
     }
   };
 
-  const runQuery = async () => {
+  const runQuery = async (forceRunAll = false) => {
     setError('');
     setMessage('');
     setResults([]);
     setLoading(true);
+
+    let queryToRun = query;
+    let isSelection = false;
+
+    if (!forceRunAll && textareaRef.current) {
+      const start = textareaRef.current.selectionStart;
+      const end = textareaRef.current.selectionEnd;
+      const selectedText = query.substring(start, end).trim();
+      if (selectedText) {
+        queryToRun = selectedText;
+        isSelection = true;
+      }
+    }
+
+    if (!queryToRun.trim()) {
+      setError('Query cannot be empty!');
+      setLoading(false);
+      return;
+    }
 
     try {
       const params = new URLSearchParams();
@@ -89,7 +128,7 @@ export default function QueryEditor() {
       }
 
       const queryPath = `${path}${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await API.post(queryPath, { query });
+      const res = await API.post(queryPath, { query: queryToRun });
 
       const data = res.data.results;
 
@@ -97,15 +136,15 @@ export default function QueryEditor() {
       if (Array.isArray(data) && data.length > 0) {
         setColumns(Object.keys(data[0]));
         setResults(data);
-        setMessage(`${data.length} rows mili`);
+        setMessage(`${data.length} rows retrieved${isSelection ? ' (Executed selection)' : ''}`);
       }
       // INSERT/UPDATE/DELETE — affected rows aayenge
       else if (data?.affectedRows !== undefined) {
-        setMessage(`Query successful! ${data.affectedRows} rows affected`);
+        setMessage(`Query successful! ${data.affectedRows} rows affected${isSelection ? ' (Executed selection)' : ''}`);
       }
       // Empty result
       else {
-        setMessage('Query successful! Koi rows nahi mili');
+        setMessage(`Query executed successfully! No rows returned${isSelection ? ' (Executed selection)' : ''}`);
       }
 
     } catch (err) {
@@ -118,7 +157,7 @@ export default function QueryEditor() {
   // Keyboard shortcut — Ctrl+Enter se query run
   const handleKeyDown = (e) => {
     if (e.ctrlKey && e.key === 'Enter') {
-      runQuery();
+      runQuery(false);
     }
   };
 
@@ -126,15 +165,7 @@ export default function QueryEditor() {
     <div className="min-h-screen bg-gray-50 text-left">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-gray-900">DB Manager</h1>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Dashboard
-        </button>
-      </nav>
+      <Navbar backTo="/dashboard" backText="Dashboard" />
 
       <div className="max-w-6xl mx-auto px-6 py-8">
 
@@ -227,14 +258,49 @@ export default function QueryEditor() {
             ))}
           </div>
 
+          {/* Query Toolbar */}
+          <div className="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => runQuery(false)}
+                disabled={loading || !query.trim()}
+                title="Execute Selection or Current Statement (Ctrl+Enter)"
+                className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+              >
+                <span>⚡</span> Run Selection
+              </button>
+              <button
+                type="button"
+                onClick={() => runQuery(true)}
+                disabled={loading || !query.trim()}
+                title="Execute Entire Script"
+                className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+              >
+                <span>📜</span> Run All
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              title={isExpanded ? "Collapse Editor View" : "Expand Editor View"}
+              className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 rounded-lg transition shadow-xs flex items-center gap-1.5 text-xs font-bold"
+            >
+              <span>{isExpanded ? '↙️' : '↗️'}</span>
+              <span>{isExpanded ? 'Collapse' : 'Expand'}</span>
+            </button>
+          </div>
+
           {/* Textarea */}
           <textarea
+            ref={textareaRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            rows={6}
+            rows={isExpanded ? 16 : 6}
             placeholder="SQL query yahan likho..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-gray-500 resize-none bg-gray-50"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-gray-500 resize-none bg-gray-50 focus:bg-white transition-colors duration-150 shadow-inner"
           />
 
           {/* Run Button */}

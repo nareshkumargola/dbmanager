@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import Navbar from '../components/Navbar';
 
 export default function MongoCollection() {
   const { collectionName } = useParams();
@@ -19,7 +20,7 @@ export default function MongoCollection() {
       const res = await API.get(`/db/mongo/collection/${collectionName}`);
       setData(res.data.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Data fetch nahi hua');
+      setError(err.response?.data?.message || 'Failed to fetch data');
     } finally {
       setLoading(false);
     }
@@ -37,15 +38,7 @@ export default function MongoCollection() {
     <div className="min-h-screen bg-gray-50">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-gray-900">DB Manager</h1>
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          ← Dashboard
-        </button>
-      </nav>
+      <Navbar backTo="/dashboard" backText="Dashboard" />
 
       <div className="max-w-6xl mx-auto px-6 py-8">
 
@@ -70,7 +63,7 @@ export default function MongoCollection() {
         {data.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
             <p className="text-gray-400 text-sm">
-              Is collection mein koi document nahi hai
+              This collection has no documents
             </p>
           </div>
         ) : (

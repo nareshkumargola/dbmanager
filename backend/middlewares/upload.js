@@ -13,16 +13,18 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    cb(null, `restore_${Date.now()}.sql`);
+    const ext = path.extname(file.originalname);
+    cb(null, `restore_${Date.now()}${ext}`);
   },
 });
 
-// Sirf .sql files allow karo
+// Allow .sql and .json files
 const fileFilter = (req, file, cb) => {
-  if (path.extname(file.originalname) === '.sql') {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ext === '.sql' || ext === '.json') {
     cb(null, true);
   } else {
-    cb(new Error('Sirf .sql files allowed hain!'), false);
+    cb(new Error('Only .sql and .json files are allowed!'), false);
   }
 };
 

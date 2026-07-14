@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Management Workspace Presentation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0d9da4;
+      --primary-dark: #0b7f86;
+      --bg: #0b0f19;
+      --card-bg: rgba(17, 25, 40, 0.75);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Background Gradients */
+    .bg-glows {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .glow {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.15;
+    }
+
+    .glow-1 {
+      top: -10%;
+      left: 10%;
+      width: 400px;
+      height: 400px;
+      background: var(--primary);
+    }
+
+    .glow-2 {
+      bottom: -10%;
+      right: 15%;
+      width: 450px;
+      height: 450px;
+      background: #fce688;
+    }
+
+    /* Container */
+    .presentation-container {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    /* Slides - Slide-Fade Transition styling */
+    .slide {
+      position: absolute;
+      width: 92%;
+      max-width: 1100px;
+      height: 82vh;
+      max-height: 640px;
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 2.5rem 3rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      opacity: 0;
+      transform: translateX(100px);
+      pointer-events: none;
+      transition: opacity 0.5s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: all;
+    }
+
+    .slide.prev {
+      opacity: 0;
+      transform: translateX(-100px);
+    }
+
+    /* Header info */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.8rem;
+      margin-bottom: 1rem;
+    }
+
+    .project-tag {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--primary);
+    }
+
+    .slide-number {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* Content styles */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide-title {
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 0.8rem;
+      background: linear-gradient(135deg, #ffffff 30%, #a5f3fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.2;
+    }
+
+    .slide-subtitle {
+      font-size: 1rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+
+    /* Sequential Text Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(15px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .slide.active .animate-item-1 { animation: fadeInUp 0.5s ease forwards 0.2s; opacity: 0; }
+    .slide.active .animate-item-2 { animation: fadeInUp 0.5s ease forwards 0.4s; opacity: 0; }
+    .slide.active .animate-item-3 { animation: fadeInUp 0.5s ease forwards 0.6s; opacity: 0; }
+    .slide.active .animate-item-4 { animation: fadeInUp 0.5s ease forwards 0.8s; opacity: 0; }
+
+    /* Lists and grids */
+    .bullets-list {
+      list-style: none;
+    }
+
+    .bullets-list li {
+      position: relative;
+      padding-left: 2rem;
+      margin-bottom: 1rem;
+      font-size: 1.05rem;
+      line-height: 1.5;
+    }
+
+    .bullets-list li::before {
+      content: '✦';
+      position: absolute;
+      left: 0;
+      color: var(--primary);
+      font-weight: bold;
+    }
+
+    .grid-2x2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+    }
+
+    .grid-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.2rem;
+      transition: all 0.3s ease;
+    }
+
+    .grid-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-text {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Centered Screenshot layout styling */
+    .centered-image-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin: 0.8rem 0;
+    }
+
+    .centered-screenshot {
+      width: 75%;
+      max-width: 680px;
+      height: auto;
+      max-height: 310px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .centered-screenshot:hover {
+      transform: scale(1.02);
+    }
+
+    /* Horizontal Highlights Bar styling */
+    .bottom-highlights-bar {
+      width: 100%;
+      background: rgba(13, 157, 164, 0.08);
+      border: 1px solid var(--primary);
+      border-radius: 10px;
+      padding: 0.6rem;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.5px;
+      margin-top: 1rem;
+    }
+
+    /* Footer / Speaker Notes toggle */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      padding-top: 0.8rem;
+      margin-top: 1rem;
+    }
+
+    /* Navigation Panel */
+    .nav-bar {
+      background: rgba(10, 15, 25, 0.9);
+      border-top: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 1rem;
+    }
+
+    .btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .btn:hover:not(:disabled) {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: rgba(13, 157, 164, 0.05);
+    }
+
+    .btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    /* Speaker Notes Box */
+    .speaker-notes-toggle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-bottom: 1px dashed var(--text-muted);
+    }
+
+    .speaker-notes-panel {
+      position: fixed;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 92%;
+      max-width: 1100px;
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 12px;
+      padding: 1.2rem;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: #e5e7eb;
+      display: none;
+      z-index: 20;
+      box-shadow: 0 -10px 25px rgba(0,0,0,0.5);
+    }
+
+    .speaker-notes-panel.active {
+      display: block;
+    }
+
+    .notes-title {
+      font-weight: 700;
+      color: #f3f4f6;
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 1px;
+    }
+
+    /* Title Slide Specifics */
+    .title-slide {
+      text-align: center;
+      justify-content: center;
+      align-items: center;
+      transform: translateX(0);
+    }
+
+    .title-slide .slide-body {
+      align-items: center;
+      justify-content: center;
+    }
+
+    .main-logo {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      animation: float 4s ease-in-out infinite;
+    }
+
+    .author-info {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+      100% { transform: translateY(0px); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-glows">
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+  </div>
+
+  <div class="presentation-container">
+
+    <!-- SLIDE 1: TITLE -->
+    <div class="slide title-slide active" id="slide-1" data-notes="Welcome everyone to the Database Management Workspace presentation. Today, we will discuss our modern database management workspace which provides unified, secure, and performant operations across MySQL, MongoDB, and PostgreSQL database servers.">
+      <div class="slide-header">
+        <span class="project-tag">Introduction</span>
+        <span class="slide-number">Slide 1 / 12</span>
+      </div>
+      <div class="slide-body">
+        <div class="main-logo">🗄️</div>
+        <h1 class="slide-title" style="font-size: 2.6rem; margin-bottom: 0.5rem;">Database Management Workspace</h1>
+        <p style="font-size: 1.15rem; color: var(--primary); font-weight: 600; margin-bottom: 1.2rem;">Unified Control Plane for Relational & Document DBs</p>
+        <p class="slide-subtitle" style="max-w: 600px; margin: 0 auto;">An enterprise-grade administration interface enabling query execution, activity auditing, automatic backups, and server monitoring.</p>
+        <div class="author-info">
+          <p>Presented by: Core Engineering Team</p>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: WHAT IS THIS APP -->
+    <div class="slide" id="slide-2" data-notes="First, let us describe what this application actually does. It is an all-in-one console environment designed to replace native CLI shell tools and eliminate workflow friction. It provides a Unified Query Hub, maps User Access Controls, serializes backup dumps, and writes immutable compliance records for audits.">
+      <div class="slide-header">
+        <span class="project-tag">Overview</span>
+        <span class="slide-number">Slide 2 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">What is this Application?</h2>
+        <p class="slide-subtitle" style="margin-bottom: 1rem;">An all-in-one administration and developer environment designed to consolidate multiple database engines into a single secure control plane.</p>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">🔌 Unified Query Hub</h4>
+            <p class="card-text">Allows developers to write and run queries across MySQL, MongoDB, and PostgreSQL databases using a single clean web editor console.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">🔐 User Access & Roles</h4>
+            <p class="card-text">Provides administrators a UI to manage database roles, grant CREATEDB/CREATEROLE options, and alter passwords directly from the client.</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">💾 SaaS Backup Engine</h4>
+            <p class="card-text">Exports selective schemas or complete server data dumps without requiring native shell CLI commands or local setup configuration.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">📜 Compliance Auditing</h4>
+            <p class="card-text">Chronologically logs all logins, query actions, restores, and exports to support enterprise auditing and security rules.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: WHY USE THIS APP -->
+    <div class="slide" id="slide-3" data-notes="Now, let us examine why organizations should use it. We solve tool context-switching by running relational and NoSQL commands side-by-side. We safeguard data by restricting dangerous queries for developer roles, create immutable audit trails, and run rollback-safe restores inside transaction blocks.">
+      <div class="slide-header">
+        <span class="project-tag">Value Proposition</span>
+        <span class="slide-number">Slide 3 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">Why Should You Use It?</h2>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">🚫 Zero Tool Context-Switching</h4>
+            <p class="card-text">Stop switching between pgAdmin, MongoDB Compass, and terminal clients. Run relational SQL and NoSQL collections queries side-by-side.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">🛡️ Prevent Accidental Deletions</h4>
+            <p class="card-text">Enforce access rules. Restrict destructive operations (DROP, TRUNCATE) for developer roles to avoid accidental data loss.</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">📜 Guaranteed Audit Compliance</h4>
+            <p class="card-text">Every connection test, query ran, export, and credentials change writes an immutable audit trail. Critical for security auditing logs.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">🔄 Rollback-Safe Restores</h4>
+            <p class="card-text">All database restores execute inside transaction blocks (BEGIN/COMMIT). If a query fails midway, the database rolls back cleanly.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: ARCHITECTURE -->
+    <div class="slide" id="slide-4" data-notes="Let us review the application architecture. The frontend uses React 18 with high-performance hooks. The Node/Express API runs JWT middlewares, mapped to target servers using pg, mysql2, and mongodb client connection pools.">
+      <div class="slide-header">
+        <span class="project-tag">Architecture</span>
+        <span class="slide-number">Slide 4 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">System Tech Stack & Connection Pools</h2>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">⚛️ React 18 Frontend</h4>
+            <p class="card-text">Single Page App (SPA) built with responsive glassmorphism styles, stateful data panels, and local presentation pages.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">🚀 Express.js Server</h4>
+            <p class="card-text">Secure API gateways implementing JWT session management, permission verification, and audit pipelines.</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">🔌 Connection Pooling</h4>
+            <p class="card-text">Maintains thread-safe, direct pools for pg, mysql2, and mongodb driver clients to maximize execution speeds.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">🔒 System DB (Mongoose)</h4>
+            <p class="card-text">Central database storing credentials secrets, connection profiles configurations, query history, and logs.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: CONNECTION MANAGER -->
+    <div class="slide" id="slide-5" data-notes="The Connection Manager allows administrators to register database nodes and test configurations in real-time. Once saved, the sidebar navigation loads schema details dynamically.">
+      <div class="slide-header">
+        <span class="project-tag">Key Features</span>
+        <span class="slide-number">Slide 5 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">Connection Manager & Sidebar Nav</h2>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">🔗 Multi-Server Registration</h4>
+            <p class="card-text">Connect to remote database nodes by defining DB Type, Host, Port, and access credentials.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">⚡ Dynamic Sidebar Navigation</h4>
+            <p class="card-text">Automatically retrieves database lists, relational tables, and document collections dynamically on select.</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">💡 Connection Testing</h4>
+            <p class="card-text">Validates server status, network latencies, and logins prior to saving connection profiles.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">🔒 Scope Permissions</h4>
+            <p class="card-text">Restrict connection scopes so only specific user groups or administrators can manage them.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: QUERY EDITOR -->
+    <div class="slide" id="slide-6" data-notes="Let us look at the SQL Query Editor. The interface is clean and supports fullscreen canvas editing, Ctrl+Enter keybinds, and query speed tracking. We can see the centered application snapshot showing the tabs, workspace logs, and query history table.">
+      <div class="slide-header">
+        <span class="project-tag">Key Features</span>
+        <span class="slide-number">Slide 6 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title" style="text-align: center;">Interactive SQL Query Editor</h2>
+        
+        <div class="centered-image-container animate-item-1">
+          <img src="db_dashboard.png" alt="SQL Query Editor Dashboard" class="centered-screenshot">
+        </div>
+
+        <div class="bottom-highlights-bar animate-item-2">
+          ✦ Run SQL/NoSQL queries  |  ✦ Auto-saves query history  |  ✦ Fullscreen mode toggles  |  ✦ Records run speed metrics
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: USER MANAGEMENT -->
+    <div class="slide" id="slide-7" data-notes="The User & Privilege Management module manages connection roles. For PostgreSQL, it controls CREATEDB, CREATEROLE, and SUPERUSER attributes. For MySQL, it regulates host mapping like localhost or percentage wildcards. The centered mockup shows clean status badges.">
+      <div class="slide-header">
+        <span class="project-tag">Key Features</span>
+        <span class="slide-number">Slide 7 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title" style="text-align: center;">Database User & Privilege Manager</h2>
+        
+        <div class="centered-image-container animate-item-1">
+          <img src="user_manager.png" alt="Database User Privilege Manager" class="centered-screenshot">
+        </div>
+
+        <div class="bottom-highlights-bar animate-item-2">
+          ✦ Postgres roles manager  |  ✦ MySQL accounts provisioning  |  ✦ MongoDB namespace scope  |  ✦ Safe credentials reset
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: BACKUP SUBSYSTEM -->
+    <div class="slide" id="slide-8" data-notes="Here is the Database Backup & Restore interface. Users can choose databases, view tables count, download SQL dumps, or upload files for schema restorers. All operations execute inside backend transaction pools.">
+      <div class="slide-header">
+        <span class="project-tag">Data Safety</span>
+        <span class="slide-number">Slide 8 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title" style="text-align: center;">Backup & Selective Exports</h2>
+        
+        <div class="centered-image-container animate-item-1">
+          <img src="backup_restore.png" alt="Database Backup and Restore View" class="centered-screenshot">
+        </div>
+
+        <div class="bottom-highlights-bar animate-item-2">
+          ✦ Selective database backups  |  ✦ Pure JS schema extraction  |  ✦ Table-level configurations  |  ✦ Document collections JSON dumps
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: TRANSACTIONAL RESTORE -->
+    <div class="slide" id="slide-9" data-notes="Let us review the restore mechanics. When a user uploads a .sql script, the server initializes a transaction. It processes multi-statement queries. If any query fails, the transaction rolls back cleanly, protecting production data.">
+      <div class="slide-header">
+        <span class="project-tag">Data Safety</span>
+        <span class="slide-number">Slide 9 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">Transactional Database Restore</h2>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">🔄 Transaction Blocks</h4>
+            <p class="card-text">Executes the entire backup script inside transaction blocks (BEGIN/COMMIT). Assures all tables recreate together.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">🚫 Zero Partial Writes</h4>
+            <p class="card-text">If any query throws an error, a ROLLBACK triggers immediately, wiping half-completed modifications.</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">🛠️ Sequential SQL Parsing</h4>
+            <p class="card-text">Parses complex multi-line INSERT, CREATE, and ALTER commands sequentially via driver connection pipelines.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">🍃 Mongo Collection Rebuilder</h4>
+            <p class="card-text">Reconstructs document structures, fields definitions, indexes, and imports records from JSON objects.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 10: ALERTS & MONITORING -->
+    <div class="slide" id="slide-10" data-notes="We also support monitoring. Administrators configure warning flags. When threshold alerts are triggered, notifications are sent to email addresses and posted directly to operational Slack channels via Webhooks.">
+      <div class="slide-header">
+        <span class="project-tag">Operations</span>
+        <span class="slide-number">Slide 10 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title">Performance Monitoring & Alerts</h2>
+        <div class="grid-2x2">
+          <div class="grid-card animate-item-1">
+            <h4 class="card-title">📈 Sizing Dashboards</h4>
+            <p class="card-text">Live statistics showing active connection nodes status, databases size, and tables counts.</p>
+          </div>
+          <div class="grid-card animate-item-2">
+            <h4 class="card-title">⚙️ Warning Thresholds</h4>
+            <p class="card-text">Define database metrics alerts (e.g., flag when a database disk usage exceeds 90% space).</p>
+          </div>
+          <div class="grid-card animate-item-3">
+            <h4 class="card-title">💬 Slack webhook integration</h4>
+            <p class="card-text">Configure Slack webhooks to dispatch structured alert notifications directly to development channels.</p>
+          </div>
+          <div class="grid-card animate-item-4">
+            <h4 class="card-title">📧 Email Alert Pipelines</h4>
+            <p class="card-text">Routes warning emails to configured administrators immediately upon health status shifts.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 11: COMPLIANCE AUDITING -->
+    <div class="slide" id="slide-11" data-notes="This is the Compliance Logging tab. It records logins, query runs, database creations, backups, and restores chronologically. Users can apply advanced user/action/date range filters, print details, or export the audit trail to CSV/PDF reports.">
+      <div class="slide-header">
+        <span class="project-tag">Governance</span>
+        <span class="slide-number">Slide 11 / 12</span>
+      </div>
+      <div class="slide-body">
+        <h2 class="slide-title" style="text-align: center;">System Compliance & Auditing</h2>
+        
+        <div class="centered-image-container animate-item-1">
+          <img src="audit_logs.png" alt="System Audit Logs Grid" class="centered-screenshot">
+        </div>
+
+        <div class="bottom-highlights-bar animate-item-2">
+          ✦ Chronological compliance ledger  |  ✦ User, query & date range filters  |  ✦ Real-time Slack notifications  |  ✦ Excel & PDF reports exports
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+    <!-- SLIDE 12: CONCLUSION -->
+    <div class="slide" id="slide-12" data-notes="Thank you for your time. In summary, our project consolidates DB operations, reinforces administrative security, and guarantees full compliance trails. I am happy to open the floor to any questions.">
+      <div class="slide-header">
+        <span class="project-tag">Summary</span>
+        <span class="slide-number">Slide 12 / 12</span>
+      </div>
+      <div class="slide-body" style="text-align: center;">
+        <h2 class="slide-title">Conclusion & Thank You</h2>
+        <p class="slide-subtitle" style="max-w: 600px; margin: 0 auto 2rem;">A secure, performant, and reliable workspace to manage databases without friction.</p>
+        <div style="font-size: 1.3rem; color: var(--primary); font-weight: 700; margin-bottom: 2rem;">
+          🚀 Ready to Simplify Database Administration
+        </div>
+        <p class="text-sm text-gray-500">Press <strong>Left/Right Arrow Keys</strong> or click the controls below to navigate slides.</p>
+      </div>
+      <div class="slide-footer">
+        <span class="speaker-notes-toggle" onclick="toggleNotes()">🎤 View Speaker Notes</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- NAVIGATION BAR -->
+  <div class="nav-bar">
+    <div class="nav-buttons">
+      <button class="btn" id="prev-btn" onclick="navigateSlide(-1)" disabled>◀ Previous</button>
+      <button class="btn" id="play-btn" onclick="toggleAutoPlay()" style="background-color: rgba(13, 157, 164, 0.1); border-color: var(--primary); color: var(--primary);">▶ Auto-Play Show</button>
+      <button class="btn btn-primary" id="next-btn" onclick="navigateSlide(1)">Next ▶</button>
+    </div>
+    <div class="slide-indicator" id="slide-ind">Slide 1 / 12</div>
+  </div>
+
+  <!-- SPEAKER NOTES PANEL -->
+  <div class="speaker-notes-panel" id="notes-panel">
+    <div class="notes-title">🎤 Speaker Notes / Presentation Script</div>
+    <div id="notes-content">Welcome everyone to the Database Management Platform presentation...</div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 12;
+    let autoPlayInterval = null;
+
+    function navigateSlide(direction) {
+      const activeSlide = document.getElementById(`slide-${currentSlide}`);
+      activeSlide.classList.remove('active');
+      
+      if (direction === 1) {
+        activeSlide.classList.add('prev');
+      } else {
+        activeSlide.classList.remove('prev');
+      }
+
+      currentSlide += direction;
+      
+      // Looping for auto play mode
+      if (currentSlide < 1) currentSlide = totalSlides;
+      if (currentSlide > totalSlides) currentSlide = 1;
+
+      const newSlide = document.getElementById(`slide-${currentSlide}`);
+      newSlide.classList.remove('prev');
+      newSlide.classList.add('active');
+
+      // Update UI buttons state
+      document.getElementById('prev-btn').disabled = currentSlide === 1;
+      document.getElementById('next-btn').disabled = currentSlide === totalSlides;
+      document.getElementById('slide-ind').innerText = `Slide ${currentSlide} / ${totalSlides}`;
+
+      // Update Speaker Notes
+      const notesContent = newSlide.getAttribute('data-notes');
+      document.getElementById('notes-content').innerText = notesContent;
+    }
+
+    function toggleAutoPlay() {
+      const btn = document.getElementById('play-btn');
+      if (autoPlayInterval) {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        btn.innerText = '▶ Auto-Play Show';
+        btn.style.backgroundColor = 'rgba(13, 157, 164, 0.1)';
+      } else {
+        btn.innerText = '⏸ Pause Show';
+        btn.style.backgroundColor = 'rgba(252, 230, 136, 0.2)';
+        autoPlayInterval = setInterval(() => {
+          navigateSlide(1);
+        }, 5000); // Transitions slide every 5 seconds automatically
+      }
+    }
+
+    function toggleNotes() {
+      const panel = document.getElementById('notes-panel');
+      panel.classList.toggle('active');
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        navigateSlide(1);
+      } else if (e.key === 'ArrowLeft') {
+        navigateSlide(-1);
+      } else if (e.key === 's' || e.key === 'S') {
+        toggleNotes();
+      }
+    });
+
+    // Initialize notes
+    document.getElementById('notes-content').innerText = document.getElementById('slide-1').getAttribute('data-notes');
+  </script>
+</body>
+</html>

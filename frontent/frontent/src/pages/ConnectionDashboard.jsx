@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import SlowQueryPanel from '../components/SlowQueryPanel';
-import BinlogMonitorPanel from '../components/BinlogMonitorPanel';
-import MySQLUsersPanel from '../components/MySQLUsersPanel';
+import Navbar from '../components/Navbar';
+import AuditLogsPanel from '../components/AuditLogsPanel';
+import { useAuth } from '../context/AuthContext';
+
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid,
@@ -14,11 +16,24 @@ import { useLocation } from 'react-router-dom';
 export default function ConnectionDashboard() {
   const { id, database } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  const textareaRef = useRef(null);
+  const fullscreenTextareaRef = useRef(null);
+  
   const [objects, setObjects] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isOwner, setIsOwner] = useState(false);
+  const [isQueryMaximized, setIsQueryMaximized] = useState(false);
+
+  // Database context states
+  const [databases, setDatabases] = useState([]);
+  const [activeDb, setActiveDb] = useState(null);
+  const [dbLoading, setDbLoading] = useState(false);
 
   // Table data
   const [selectedTable, setSelectedTable] = useState(null);
@@ -53,8 +68,40 @@ export default function ConnectionDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(false);
 
   useEffect(() => {
-    fetchAll();
-  }, [id]);
+    const initializeConnection = async () => {
+      try {
+        setLoading(true);
+        // 1. Fetch connection details to check default database config
+        const connRes = await API.get('/connections');
+        const conn = connRes.data.connections.find(c => c._id === id);
+        const configuredDefault = conn ? conn.database : null;
+
+        if (conn) {
+          const ownerCheck = conn.user?._id === user?._id || user?.role === 'admin';
+          setIsOwner(ownerCheck);
+        }
+
+        // 2. Fetch list of databases on this connection
+        const dbRes = await API.get(`/connections/${id}/databases`);
+        const dbList = dbRes.data.databases || [];
+        setDatabases(dbList);
+
+        // 3. Determine initial database to activate
+        const initialDb = database || configuredDefault || dbList[0] || '';
+        setActiveDb(initialDb);
+
+        if (initialDb) {
+          await selectDatabase(initialDb);
+        }
+      } catch (err) {
+        console.error('Failed to initialize connection:', err);
+        setError('Failed to load databases - connection check query failed');
+      } finally {
+        setLoading(false);
+      }
+    };
+    initializeConnection();
+  }, [id, user]);
 
   // Handle external requests to open a specific tab (e.g., slow query -> query editor)
   const location = useLocation();
@@ -76,43 +123,56 @@ export default function ConnectionDashboard() {
     return () => clearInterval(interval);
   }, [autoRefresh, id]);
 
- const fetchAll = async () => {
-  try {
-    setLoading(true);
-    const [objRes, statsRes] = await Promise.all([
-      API.get(`/connections/${id}/objects${database ? `?database=${database}` : ''}`),
-      API.get(`/connections/${id}/stats${database ? `?database=${database}` : ''}`),
-    ]);
-    setObjects(objRes.data);
-    setStats(statsRes.data.stats);
-  } catch (err) {
-    setError('Data load nahi hua — connection check karo');
-  } finally {
-    setLoading(false);
-  }
-};
+  const selectDatabase = async (dbName) => {
+    if (!dbName) return;
+    setActiveDb(dbName);
+    setSelectedTable(null);
+    setTableData([]);
+    setTableColumns([]);
+    
+    try {
+      setDbLoading(true);
+      const [objRes, statsRes] = await Promise.all([
+        API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`),
+        API.get(`/connections/${id}/stats?database=${encodeURIComponent(dbName)}`),
+      ]);
+      setObjects(objRes.data);
+      setStats(statsRes.data.stats);
+    } catch (err) {
+      console.error('Failed to select database:', err);
+      setError('Data load failed - check database connection');
+    } finally {
+      setDbLoading(false);
+    }
+  };
 
-const fetchTableData = async (tableName) => {
-  setTableLoading(true);
-  setSelectedTable(tableName);
-  setActiveTab('table');
-  try {
-    const res = await API.get(
-      `/connections/${id}/table/${tableName}${database ? `?database=${database}` : ''}`
-    );
-    setTableData(res.data.rows);
-    setTableColumns(res.data.columns);
-  } catch (err) {
-    setError('Table data load nahi hua');
-  } finally {
-    setTableLoading(false);
-  }
-};
+  const fetchAll = () => {
+    if (activeDb) {
+      selectDatabase(activeDb);
+    }
+  };
+
+  const fetchTableData = async (tableName) => {
+    setTableLoading(true);
+    setSelectedTable(tableName);
+    setActiveTab('table');
+    try {
+      const res = await API.get(
+        `/connections/${id}/table/${tableName}${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`
+      );
+      setTableData(res.data.rows);
+      setTableColumns(res.data.columns);
+    } catch (err) {
+      setError('Failed to load table data');
+    } finally {
+      setTableLoading(false);
+    }
+  };
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
     try {
-      const res = await API.get('/history');
+      const res = await API.get(`/history?connectionId=${id}`);
       setHistory(res.data.history);
     } catch (err) {
       console.error(err);
@@ -125,8 +185,8 @@ const fetchTableData = async (tableName) => {
     setMonitorLoading(true);
     try {
       const [res, histRes] = await Promise.all([
-        API.get(`/monitor/${id}${database ? `?database=${database}` : ''}`),
-        API.get(`/monitor/${id}/history${database ? `?database=${database}` : ''}`),
+        API.get(`/monitor/${id}${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`),
+        API.get(`/monitor/${id}/history${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`),
       ]);
       const newData = res.data.data;
       setMonitorData(newData);
@@ -151,7 +211,7 @@ const fetchTableData = async (tableName) => {
 
       // Fetch table details separately (non-blocking)
       try {
-        const tableRes = await API.get(`/monitor/${id}/tables${database ? `?database=${database}` : ''}`);
+        const tableRes = await API.get(`/monitor/${id}/tables${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`);
         if (tableRes.data.tables) {
           setTableDetails(tableRes.data.tables);
         }
@@ -167,7 +227,7 @@ const fetchTableData = async (tableName) => {
 
   const downloadMonitoringPDF = async () => {
     if (!monitorData) {
-      alert('Pehle data load karo');
+      alert('Please load data first');
       return;
     }
 
@@ -181,7 +241,7 @@ const fetchTableData = async (tableName) => {
       <div style="margin-bottom: 20px;">
         <strong>Database Connection:</strong> ${objects?.name || 'N/A'}<br/>
         <strong>Type:</strong> ${dbType?.toUpperCase() || 'N/A'}<br/>
-        <strong>Database:</strong> ${database || 'All'}<br/>
+        <strong>Database:</strong> ${activeDb || 'All'}<br/>
         <strong>Generated:</strong> ${new Date().toLocaleString('en-IN')}<br/>
       </div>
 
@@ -336,25 +396,57 @@ const fetchTableData = async (tableName) => {
     }
   };
 
-  const runQuery = async () => {
-    if (!query.trim()) return;
+  const runQuery = async (forceRunAll = false) => {
+    let queryToRun = query;
+    let isSelection = false;
+
+    // Check if fullscreen editor is open and has selection
+    if (!forceRunAll && isQueryMaximized && fullscreenTextareaRef.current) {
+      const start = fullscreenTextareaRef.current.selectionStart;
+      const end = fullscreenTextareaRef.current.selectionEnd;
+      const selectedText = query.substring(start, end).trim();
+      if (selectedText) {
+        queryToRun = selectedText;
+        isSelection = true;
+      }
+    } 
+    // Check if inline editor has selection
+    else if (!forceRunAll && textareaRef.current) {
+      const start = textareaRef.current.selectionStart;
+      const end = textareaRef.current.selectionEnd;
+      const selectedText = query.substring(start, end).trim();
+      if (selectedText) {
+        queryToRun = selectedText;
+        isSelection = true;
+      }
+    }
+
+    if (!queryToRun.trim()) return;
     setQueryLoading(true);
     setQueryError('');
     setQueryMsg('');
     setQueryResults([]);
     setQueryColumns([]);
     try {
-      const queryPath = `/connections/${id}/query${database ? `?database=${encodeURIComponent(database)}` : ''}`;
-      const res = await API.post(queryPath, { query });
+      const queryPath = `/connections/${id}/query${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`;
+      const res = await API.post(queryPath, { query: queryToRun });
+      
+      if (res.data.databaseChanged) {
+        setQueryMsg(`Database changed to ${res.data.databaseChanged}`);
+        selectDatabase(res.data.databaseChanged);
+        return;
+      }
+
       const data = res.data.results;
+      const selectionSuffix = isSelection ? ' (Executed selection)' : '';
       if (Array.isArray(data) && data.length > 0) {
         setQueryColumns(Object.keys(data[0]));
         setQueryResults(data);
-        setQueryMsg(`${data.length} rows — ${res.data.executionTime}ms`);
+        setQueryMsg(`${data.length} rows — ${res.data.executionTime}ms${selectionSuffix}`);
       } else if (data?.affectedRows !== undefined) {
-        setQueryMsg(`✅ ${data.affectedRows} rows affected`);
+        setQueryMsg(`✅ ${data.affectedRows} rows affected${selectionSuffix}`);
       } else {
-        setQueryMsg('Query successful!');
+        setQueryMsg(`Query executed successfully!${selectionSuffix}`);
       }
     } catch (err) {
       setQueryError(err.response?.data?.error || 'Query failed!');
@@ -363,59 +455,7 @@ const fetchTableData = async (tableName) => {
     }
   };
 
-  const getBackupQuery = () => {
-    const params = new URLSearchParams();
-    if (id) params.append('connectionId', id);
-    if (database) params.append('database', database);
-    const query = params.toString();
-    return query ? `?${query}` : '';
-  };
 
-  const takeBackup = async () => {
-    setBackupLoading(true);
-    setBackupError('');
-    setBackupMsg('');
-    try {
-      const res = await API.get(`/backup/download${getBackupQuery()}`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `backup_${Date.now()}.sql`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      setBackupMsg('✅ Backup download ho gaya!');
-    } catch (err) {
-      setBackupError('❌ Backup failed!');
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
-  const restoreBackup = async () => {
-    if (!selectedFile) {
-      setBackupError('Pehle .sql file select karo!');
-      return;
-    }
-    if (!window.confirm('Database restore karoge?')) return;
-    setRestoreLoading(true);
-    setBackupError('');
-    setBackupMsg('');
-    try {
-      const formData = new FormData();
-      formData.append('sqlFile', selectedFile);
-      const res = await API.post(`/backup/restore${getBackupQuery()}`, formData);
-      setBackupMsg(`✅ Restore ho gaya! ${res.data.statements} statements run kiye`);
-      setSelectedFile(null);
-    } catch (err) {
-      setBackupError(err.response?.data?.error || '❌ Restore failed!');
-    } finally {
-      setRestoreLoading(false);
-    }
-  };
 
   const deleteHistory = async (histId) => {
     try {
@@ -445,19 +485,29 @@ const fetchTableData = async (tableName) => {
   const dbType = objects?.type;
   const tables = getTablesArray();
 
+  const hasPermission = (permKey) => {
+    if (user?.role === 'admin') return true;
+    if (!user?.permissions) return false;
+    return !!user.permissions[permKey];
+  };
+
   const tabs = [
     { id: 'overview', label: '📊 Overview' },
-    { id: 'table', label: '📋 Table Data' },
-    { id: 'query', label: '⚡ Query Editor' },
-    { id: 'history', label: '🕐 History' },
-    { id: 'monitoring', label: '📈 Monitoring' },
-    { id: 'slow-queries', label: '🐢 Slow Query' },
-    ...(dbType === 'mysql' ? [
-      { id: 'backup', label: '💾 Backup' },
-      { id: 'binlog', label: '📡 Binlog Monitor' },
-      { id: 'mysql-users', label: '👤 MySQL Users' }
-    ] : []),
+    { id: 'table', label: '📋 Table Data' }
   ];
+
+  if (hasPermission('query')) {
+    tabs.push({ id: 'query', label: '⚡ Query Editor' });
+  }
+  if (hasPermission('history')) {
+    tabs.push({ id: 'history', label: '🕐 History' });
+  }
+  if (hasPermission('slowQuery')) {
+    tabs.push({ id: 'slow-queries', label: '🐢 Slow Query' });
+  }
+  if (isOwner && hasPermission('auditLogs')) {
+    tabs.push({ id: 'audit-logs', label: '📜 Audit Logs' });
+  }
 
   if (loading) {
     return (
@@ -474,89 +524,127 @@ const fetchTableData = async (tableName) => {
     <div className="min-h-screen bg-gray-50">
 
       {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/connections')}
-            className="text-sm text-gray-500 hover:text-gray-700"
-          >
-            ← Connections
-          </button>
-          <span className="text-gray-300">|</span>
-          <span className="text-sm font-medium text-gray-900">
-            {getTypeIcon(dbType)} {stats?.database}
-          </span>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-            dbType === 'mysql' ? 'bg-blue-100 text-blue-700' :
-            dbType === 'postgresql' ? 'bg-indigo-100 text-indigo-700' :
-            'bg-green-100 text-green-700'
-          }`}>
-            {dbType}
-          </span>
-        </div>
-      </nav>
+      <Navbar
+        backTo="/connections"
+        backText="Connections"
+        extraLeft={
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-900">
+              {getTypeIcon(dbType)} {activeDb || stats?.database || 'Select Database'}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              dbType === 'mysql' ? 'bg-blue-100 text-blue-700' :
+              dbType === 'postgresql' ? 'bg-indigo-100 text-indigo-700' :
+              'bg-green-100 text-green-700'
+            }`}>
+              {dbType}
+            </span>
+          </div>
+        }
+      />
 
-      <div className="flex h-[calc(100vh-53px)]">
+      <div className="flex h-[calc(100vh-53px)] relative">
 
-        {/* Sidebar */}
-        <div className="w-56 bg-white border-r border-gray-200 flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {dbType === 'mongodb' ? 'Collections' : 'Tables'} ({tables.length})
+        {/* Sidebar (on the left showing databases) */}
+        <div className={`${sidebarOpen ? 'w-44' : 'w-0 overflow-hidden'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shrink-0`}>
+          <div className="px-3 py-3 border-b border-gray-100 flex items-center justify-between">
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              Databases ({databases.length})
             </p>
             <button
-              onClick={fetchAll}
-              title="Refresh Schema"
-              className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-gray-800 transition"
+              onClick={async () => {
+                try {
+                  const dbRes = await API.get(`/connections/${id}/databases`);
+                  setDatabases(dbRes.data.databases || []);
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              title="Refresh Databases"
+              className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
               </svg>
             </button>
           </div>
-          <div className="overflow-y-auto flex-1">
-            {tables.length === 0 ? (
-              <p className="text-xs text-gray-400 px-4 py-3">Koi table nahi mili</p>
+          <div className="overflow-y-auto flex-1 py-1">
+            {databases.length === 0 ? (
+              <p className="text-[10px] text-gray-400 px-3 py-3">No databases</p>
             ) : (
-              tables.map((table, i) => (
+              databases.map((db, i) => (
                 <button
                   key={i}
-                  onClick={() => fetchTableData(table)}
-                  className={`w-full text-left px-4 py-2.5 text-sm border-b border-gray-50 transition ${
-                    selectedTable === table
+                  onClick={() => selectDatabase(db)}
+                  className={`w-full text-left px-3 py-2 text-xs font-semibold border-b border-gray-50/50 transition flex items-center gap-1.5 ${
+                    activeDb === db
                       ? 'bg-gray-900 text-white'
-                      : 'text-gray-700 hover:bg-gray-50'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
+                  title={db}
                 >
-                  {dbType === 'mongodb' ? '📁' : '📋'} {table}
+                  <span className="shrink-0 text-sm">🗄️</span>
+                  <span className="truncate">{db}</span>
                 </button>
               ))
             )}
           </div>
         </div>
 
+        {/* Sidebar Toggle Button */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
+          style={{
+            left: sidebarOpen ? '164px' : '4px',
+            transform: 'translateY(-50%)',
+          }}
+          title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+        >
+          {sidebarOpen ? (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+        </button>
+
         {/* Main */}
         <div className="flex-1 flex flex-col overflow-hidden">
 
           {/* Tabs */}
-          <div className="bg-white border-b border-gray-200 px-6 flex gap-1 overflow-x-auto">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  if (tab.id === 'history') fetchHistory();
-                  if (tab.id === 'monitoring') fetchMonitoring();
-                }}
-                className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition ${
-                  activeTab === tab.id
-                    ? 'border-gray-900 text-gray-900'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="bg-white border-b border-gray-200 px-6 flex justify-between items-center overflow-x-auto gap-4">
+            <div className="flex gap-1">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (tab.id === 'history') fetchHistory();
+                  }}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition ${
+                    activeTab === tab.id
+                      ? 'border-gray-900 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Active Database Badge on the Right Side */}
+            {activeDb && (
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 border border-gray-200 rounded-full text-xs font-bold text-gray-700 shrink-0 select-none shadow-2xs">
+                <span>Active DB:</span>
+                <span className="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-gray-150">
+                  {activeDb}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Content */}
@@ -568,8 +656,15 @@ const fetchTableData = async (tableName) => {
               </div>
             )}
 
-            {/* OVERVIEW */}
-            {activeTab === 'overview' && stats && (
+            {dbLoading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-gray-800 rounded-full animate-spin mb-3"></div>
+                <p className="text-gray-500 text-xs font-semibold">Switching database schema...</p>
+              </div>
+            ) : (
+              <>
+                {/* OVERVIEW */}
+                {activeTab === 'overview' && stats && (
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-6">Database Overview</h2>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -633,7 +728,7 @@ const fetchTableData = async (tableName) => {
               <div>
                 {!selectedTable ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <p className="text-gray-400 text-sm">Left sidebar se table select karo</p>
+                    <p className="text-gray-400 text-sm">Left sidebar se table select karein</p>
                   </div>
                 ) : tableLoading ? (
                   <div className="text-center py-12">
@@ -647,7 +742,7 @@ const fetchTableData = async (tableName) => {
                     </div>
                     {tableData.length === 0 ? (
                       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                        <p className="text-gray-400 text-sm">Koi data nahi hai</p>
+                        <p className="text-gray-400 text-sm">No data found</p>
                       </div>
                     ) : dbType === 'mongodb' ? (
                       <div className="space-y-3">
@@ -698,29 +793,60 @@ const fetchTableData = async (tableName) => {
             {activeTab === 'query' && (
               <div>
                 <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-                  <div className="flex gap-2 flex-wrap mb-3">
-                    {['SHOW TABLES', 'SELECT * FROM users', 'SHOW DATABASES'].map((hint, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setQuery(hint)}
-                        className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200"
-                      >
-                        {hint}
-                      </button>
-                    ))}
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex gap-2 flex-wrap">
+                      {['SHOW TABLES', 'SELECT * FROM users', 'SHOW DATABASES'].map((hint, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setQuery(hint)}
+                          className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200"
+                        >
+                          {hint}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setIsQueryMaximized(true)}
+                      className="text-xs font-semibold text-[#0d9da4] hover:underline flex items-center gap-1.5"
+                    >
+                      🗖 Expand Fullscreen
+                    </button>
                   </div>
+
+                  {/* Query Toolbar */}
+                  <div className="flex items-center gap-2 mb-3 border-t border-gray-100 pt-3">
+                    <button
+                      type="button"
+                      onClick={() => runQuery(false)}
+                      disabled={queryLoading || !query.trim()}
+                      title="Execute Selection or Current Statement (Ctrl+Enter)"
+                      className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                    >
+                      <span>⚡</span> Run Selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runQuery(true)}
+                      disabled={queryLoading || !query.trim()}
+                      title="Execute Entire Script"
+                      className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                    >
+                      <span>📜</span> Run All
+                    </button>
+                  </div>
+
                   <textarea
+                    ref={textareaRef}
                     value={query}
                     onChange={e => setQuery(e.target.value)}
-                    onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') runQuery(); }}
+                    onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') runQuery(false); }}
                     rows={6}
-                    placeholder="SQL query yahan likho — Ctrl+Enter se run karo"
+                    placeholder="Write SQL query here — Press Ctrl+Enter to run"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-gray-500 resize-none bg-gray-50"
                   />
                   <div className="flex justify-between items-center mt-3">
-                    <p className="text-xs text-gray-400">⚠️ DROP, TRUNCATE allowed nahi</p>
                     <button
-                      onClick={runQuery}
+                      onClick={() => runQuery(false)}
                       disabled={queryLoading}
                       className="px-6 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:opacity-60"
                     >
@@ -728,6 +854,91 @@ const fetchTableData = async (tableName) => {
                     </button>
                   </div>
                 </div>
+
+                {/* Full-screen Editor Modal */}
+                {isQueryMaximized && (
+                  <div className="fixed inset-0 z-50 bg-gray-950/70 backdrop-blur-xs flex items-center justify-center p-6 text-left">
+                    <div className="bg-white rounded-xl shadow-2xl border border-gray-250 w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+                      
+                      {/* Header */}
+                      <div className="px-5 py-4 border-b border-gray-250 flex items-center justify-between bg-gray-50">
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900">⚡ Full-screen Query Editor</h3>
+                          <p className="text-[10px] text-gray-400 mt-0.5">Ctrl+Enter to run query, Escape to minimize.</p>
+                        </div>
+                        
+                        {/* Modal Toolbar */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button; hover:bg-gray-800"
+                            onClick={() => runQuery(false)}
+                            disabled={queryLoading || !query.trim()}
+                            title="Execute Highlighted Selection (Ctrl+Enter)"
+                            className="px-3 py-1.5 bg-gray-900 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50 hover:bg-gray-800"
+                          >
+                            <span>⚡</span> Run Selection
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => runQuery(true)}
+                            disabled={queryLoading || !query.trim()}
+                            title="Execute Entire Script"
+                            className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                          >
+                            <span>📜</span> Run All
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            onClick={() => setIsQueryMaximized(false)}
+                            className="text-xs px-3 py-1.5 border border-gray-350 bg-white rounded-lg hover:bg-gray-100 font-bold transition shadow-xs"
+                          >
+                            🗕 Minimize (Esc)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Editor Body */}
+                      <div className="flex-1 p-5 bg-gray-50/50">
+                        <textarea
+                          ref={fullscreenTextareaRef}
+                          value={query}
+                          onChange={e => setQuery(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.ctrlKey && e.key === 'Enter') {
+                              runQuery(false);
+                            } else if (e.key === 'Escape') {
+                              setIsQueryMaximized(false);
+                            }
+                          }}
+                          placeholder="Write SQL query here — Ctrl+Enter to run, Escape to minimize"
+                          className="w-full h-full p-4 border border-gray-350 rounded-xl text-sm font-mono outline-none focus:border-gray-500 bg-white shadow-inner resize-none"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Footer */}
+                      <div className="px-5 py-4 border-t border-gray-250 flex items-center justify-between bg-white">
+                        <button
+                          onClick={() => setIsQueryMaximized(false)}
+                          className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 transition"
+                        >
+                          Close Editor
+                        </button>
+                        <button
+                          onClick={() => {
+                            runQuery();
+                            setIsQueryMaximized(false);
+                          }}
+                          disabled={queryLoading}
+                          className="px-6 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-800 disabled:opacity-60 shadow-md transition"
+                        >
+                          {queryLoading ? 'Running...' : '▶ Run Query'}
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
                 {queryError && (
                   <div className="mb-4 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">❌ {queryError}</div>
                 )}
@@ -777,7 +988,7 @@ const fetchTableData = async (tableName) => {
                   </div>
                 ) : history.length === 0 ? (
                   <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <p className="text-gray-400 text-sm">Koi history nahi hai</p>
+                    <p className="text-gray-400 text-sm">No query history found</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -823,703 +1034,29 @@ const fetchTableData = async (tableName) => {
               </div>
             )}
 
-            {/* MONITORING */}
-            {activeTab === 'monitoring' && (
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-gray-900">Database Monitoring</h2>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={fetchMonitoring}
-                      disabled={monitorLoading}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-60"
-                    >
-                      {monitorLoading ? '...' : '🔄 Refresh'}
-                    </button>
-                    <button
-                      onClick={() => setAutoRefresh(!autoRefresh)}
-                      className={`px-4 py-2 text-sm rounded-lg transition ${
-                        autoRefresh
-                          ? 'bg-green-600 text-white hover:bg-green-700'
-                          : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {autoRefresh ? '⏸ Auto ON' : '▶ Auto OFF'}
-                    </button>
-                    <button
-                      onClick={downloadMonitoringPDF}
-                      disabled={!monitorData}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      📥 Download PDF
-                    </button>
-                  </div>
-                </div>
 
-                {!monitorData ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <p className="text-gray-400 text-sm mb-4">Click karo data load karne ke liye</p>
-                    <button
-                      onClick={fetchMonitoring}
-                      className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg"
-                    >
-                      Load Monitoring Data
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
 
-                    {/* MySQL - COMPREHENSIVE METRICS */}
-                    {dbType === 'mysql' && (
-                      <>
-                        {/* Row 1: 5 Key Metrics */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-                          {/* Active / Max Connections with Progress Bar */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Connections</p>
-                            <div className="mb-2">
-                              <p className="text-2xl font-bold text-gray-900">
-                                {monitorData.activeConnections}
-                              </p>
-                              <p className="text-xs text-gray-400">
-                                max: {monitorData.maxConnections}
-                              </p>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs text-gray-500">
-                                <span>Usage</span>
-                                <span className={`font-bold ${
-                                  (monitorData.activeConnections / monitorData.maxConnections) * 100 > 80 
-                                    ? 'text-red-600' 
-                                    : (monitorData.activeConnections / monitorData.maxConnections) * 100 > 50 
-                                    ? 'text-yellow-600' 
-                                    : 'text-green-600'
-                                }`}>
-                                  {Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-100 rounded-full h-2">
-                                <div
-                                  className={`h-2 rounded-full transition ${
-                                    (monitorData.activeConnections / monitorData.maxConnections) * 100 > 80 
-                                      ? 'bg-red-500' 
-                                      : (monitorData.activeConnections / monitorData.maxConnections) * 100 > 50 
-                                      ? 'bg-yellow-500' 
-                                      : 'bg-green-500'
-                                  }`}
-                                  style={{ width: `${Math.min((monitorData.activeConnections / monitorData.maxConnections) * 100, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
 
-                          {/* QPS */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Queries/Sec</p>
-                            <p className="text-2xl font-bold text-gray-900 mb-1">{monitorData.queriesPerSecond}</p>
-                            <p className="text-xs text-gray-400">kitna busy hai</p>
-                          </div>
-
-                          {/* Slow Queries */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Slow Queries</p>
-                            <p className="text-2xl font-bold text-gray-900 mb-1">{monitorData.slowQueries}</p>
-                            <p className="text-xs text-gray-400">optimize karo ⚠️</p>
-                          </div>
-
-                          {/* Database Size */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">DB Size</p>
-                            <p className="text-2xl font-bold text-gray-900 mb-1">{monitorData.sizeMB}</p>
-                            <p className="text-xs text-gray-400">MB</p>
-                          </div>
-
-                          {/* Total Tables */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Total Tables</p>
-                            <p className="text-2xl font-bold text-gray-900 mb-1">{monitorData.totalTables}</p>
-                            <p className="text-xs text-gray-400">tables</p>
-                          </div>
-                        </div>
-
-                        {/* Row 2: Uptime, Bytes, Cache Hit Rate */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {/* Uptime */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Uptime</p>
-                            <p className="text-xl font-bold text-gray-900 mb-1">
-                              {Math.floor(monitorData.uptime / 3600)}h {Math.floor((monitorData.uptime % 3600) / 60)}m
-                            </p>
-                            <p className="text-xs text-gray-400">server chal raha hai</p>
-                          </div>
-
-                          {/* Bytes Sent */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Bytes Sent</p>
-                            <p className="text-xl font-bold text-gray-900 mb-1">
-                              {(monitorData.bytesSent / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                            <p className="text-xs text-gray-400">network outgoing</p>
-                          </div>
-
-                          {/* Bytes Received */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Bytes Received</p>
-                            <p className="text-xl font-bold text-gray-900 mb-1">
-                              {(monitorData.bytesReceived / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                            <p className="text-xs text-gray-400">network incoming</p>
-                          </div>
-                        </div>
-
-                        {/* Cache Hit Rate */}
-                        {monitorData.innodbHits > 0 && (
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs text-gray-500 font-medium uppercase">InnoDB Cache Hit Rate</p>
-                              <span className={`text-sm font-bold ${
-                                monitorData.cacheHitRate > 95 ? 'text-green-600' :
-                                monitorData.cacheHitRate > 80 ? 'text-yellow-600' :
-                                'text-red-600'
-                              }`}>
-                                {monitorData.cacheHitRate}%
-                              </span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2.5">
-                              <div
-                                className={`h-2.5 rounded-full ${
-                                  monitorData.cacheHitRate > 95 ? 'bg-green-500' :
-                                  monitorData.cacheHitRate > 80 ? 'bg-yellow-500' :
-                                  'bg-red-500'
-                                }`}
-                                style={{ width: `${Math.min(monitorData.cacheHitRate, 100)}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-gray-400 mt-2">buffer pool efficiency</p>
-                          </div>
-                        )}
-
-                        {/* Table-wise Size - Top 10 */}
-                        {tableDetails && tableDetails.length > 0 && (
-                          <div className="bg-white rounded-xl border border-gray-200 p-5">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">📊 Table-wise Size (Top 10)</h3>
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-xs">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                  <tr>
-                                    <th className="px-3 py-2 text-left text-gray-600 font-medium">Table</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Rows</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Size (MB)</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Data (KB)</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Index (KB)</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                  {tableDetails.map((table, i) => (
-                                    <tr key={i} className="hover:bg-gray-50">
-                                      <td className="px-3 py-2 text-gray-700 font-medium">{table.table}</td>
-                                      <td className="px-3 py-2 text-right text-gray-600">{table.rows.toLocaleString()}</td>
-                                      <td className="px-3 py-2 text-right text-gray-600">{table.sizeMB}</td>
-                                      <td className="px-3 py-2 text-right text-gray-400 text-xs">
-                                        {(table.dataSize / 1024).toFixed(1)}
-                                      </td>
-                                      <td className="px-3 py-2 text-right text-gray-400 text-xs">
-                                        {(table.indexSize / 1024).toFixed(1)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {/* PostgreSQL - COMPREHENSIVE METRICS */}
-                    {dbType === 'postgresql' && (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {/* Active Connections */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Connections</p>
-                            <div className="mb-2">
-                              <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
-                              <p className="text-xs text-gray-400">max: {monitorData.maxConnections}</p>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs text-gray-500">
-                                <span>Usage</span>
-                                <span className="font-bold text-green-600">
-                                  {Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-100 rounded-full h-2">
-                                <div
-                                  className="bg-green-500 h-2 rounded-full"
-                                  style={{ width: `${Math.min((monitorData.activeConnections / monitorData.maxConnections) * 100, 100)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* DB Size */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Database Size</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.size}</p>
-                          </div>
-
-                          {/* Total Tables */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Total Tables</p>
-                            <p className="text-2xl font-bold text-gray-900">{monitorData.totalTables}</p>
-                          </div>
-
-                          {/* Commits */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Commits</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.commits.toLocaleString()}</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          {/* Rollbacks */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Rollbacks</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.rollbacks.toLocaleString()}</p>
-                          </div>
-
-                          {/* Blocks Read */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Blocks Read</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.blocksRead.toLocaleString()}</p>
-                          </div>
-
-                          {/* Blocks Hit */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Blocks Hit</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.blocksHit.toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </>
-                    )}
-
-                    {/* MongoDB - COMPREHENSIVE METRICS */}
-                    {dbType === 'mongodb' && (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                          {/* Active Connections */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Connections</p>
-                            <div className="mb-2">
-                              <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
-                              <p className="text-xs text-gray-400">max: {monitorData.maxConnections}</p>
-                            </div>
-                          </div>
-
-                          {/* Total Collections */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Collections</p>
-                            <p className="text-2xl font-bold text-gray-900">{monitorData.totalCollections}</p>
-                            <p className="text-xs text-gray-400">total</p>
-                          </div>
-
-                          {/* Total Documents */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">Documents</p>
-                            <p className="text-2xl font-bold text-gray-900">{monitorData.totalDocuments.toLocaleString()}</p>
-                          </div>
-
-                          {/* DB Size */}
-                          <div className="bg-white rounded-xl border border-gray-200 p-4">
-                            <p className="text-xs text-gray-500 font-medium uppercase mb-2">DB Size</p>
-                            <p className="text-xl font-bold text-gray-900">{monitorData.sizeMB}</p>
-                            <p className="text-xs text-gray-400">MB</p>
-                          </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl border border-gray-200 p-4">
-                          <p className="text-xs text-gray-500 font-medium uppercase mb-2">Uptime</p>
-                          <p className="text-2xl font-bold text-gray-900">
-                            {Math.round(monitorData.uptime / 60)} min
-                          </p>
-                        </div>
-
-                        <div className="bg-white rounded-xl border border-gray-200 p-5">
-                          <h3 className="text-sm font-semibold text-gray-900 mb-4">Operation Counters</h3>
-                          <ResponsiveContainer width="100%" height={200}>
-                            <BarChart data={[monitorData.opCounters]}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="name" />
-                              <YAxis />
-                              <Tooltip />
-                              <Bar dataKey="insert" fill="#3b82f6" name="Insert" />
-                              <Bar dataKey="query" fill="#10b981" name="Query" />
-                              <Bar dataKey="update" fill="#f59e0b" name="Update" />
-                              <Bar dataKey="delete" fill="#ef4444" name="Delete" />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Hourly Breakdown — Last 5 Hours */}
-                    {monitorHistory && monitorHistory.length > 0 && (
-                      <div className="bg-white rounded-xl border border-gray-200 p-5">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                          📊 5-Hour Hourly Breakdown
-                        </h3>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                              <tr>
-                                <th className="px-3 py-2 text-left text-gray-600 font-medium">Hour</th>
-                                <th className="px-3 py-2 text-right text-gray-600 font-medium">Connections</th>
-                                {dbType === 'mysql' && (
-                                  <>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">QPS</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Slow Queries</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Size (MB)</th>
-                                  </>
-                                )}
-                                {dbType === 'postgresql' && (
-                                  <>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Commits</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Rollbacks</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Blocks Hit</th>
-                                  </>
-                                )}
-                                {dbType === 'mongodb' && (
-                                  <>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Collections</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Documents</th>
-                                    <th className="px-3 py-2 text-right text-gray-600 font-medium">Size (MB)</th>
-                                  </>
-                                )}
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {monitorHistory.map((hour, i) => (
-                                <tr key={i} className="hover:bg-gray-50">
-                                  <td className="px-3 py-2 text-gray-700 font-medium">{hour.hour}</td>
-                                  <td className="px-3 py-2 text-right text-gray-700">{hour.activeConnections}</td>
-                                  {dbType === 'mysql' && (
-                                    <>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.queriesPerSecond}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.slowQueries}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.sizeMB}</td>
-                                    </>
-                                  )}
-                                  {dbType === 'postgresql' && (
-                                    <>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.commits}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.rollbacks}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.blocksHit}</td>
-                                    </>
-                                  )}
-                                  {dbType === 'mongodb' && (
-                                    <>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.totalCollections}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.totalDocuments}</td>
-                                      <td className="px-3 py-2 text-right text-gray-700">{hour.sizeMB}</td>
-                                    </>
-                                  )}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Hourly Trend Charts */}
-                    {monitorHistory && monitorHistory.length > 1 && (
-                      <>
-                        <div className="bg-white rounded-xl border border-gray-200 p-5">
-                          <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                            📈 Active Connections Trend (5 Hours)
-                          </h3>
-                          <ResponsiveContainer width="100%" height={250}>
-                            <LineChart data={monitorHistory}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                              <YAxis />
-                              <Tooltip />
-                              <Legend />
-                              <Line
-                                type="monotone"
-                                dataKey="activeConnections"
-                                stroke="#3b82f6"
-                                strokeWidth={2}
-                                dot={{ r: 4 }}
-                                name="Connections"
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-
-                        {dbType === 'mysql' && (
-                          <>
-                            <div className="bg-white rounded-xl border border-gray-200 p-5">
-                              <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                ⚡ Queries Per Second Trend
-                              </h3>
-                              <ResponsiveContainer width="100%" height={250}>
-                                <LineChart data={monitorHistory}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                                  <YAxis />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Line
-                                    type="monotone"
-                                    dataKey="queriesPerSecond"
-                                    stroke="#10b981"
-                                    strokeWidth={2}
-                                    dot={{ r: 4 }}
-                                    name="QPS"
-                                  />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            </div>
-
-                            <div className="bg-white rounded-xl border border-gray-200 p-5">
-                              <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                                🐢 Slow Queries & Database Size
-                              </h3>
-                              <ResponsiveContainer width="100%" height={250}>
-                                <LineChart data={monitorHistory}>
-                                  <CartesianGrid strokeDasharray="3 3" />
-                                  <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                                  <YAxis yAxisId="left" />
-                                  <YAxis yAxisId="right" orientation="right" />
-                                  <Tooltip />
-                                  <Legend />
-                                  <Line
-                                    yAxisId="left"
-                                    type="monotone"
-                                    dataKey="slowQueries"
-                                    stroke="#f59e0b"
-                                    strokeWidth={2}
-                                    dot={{ r: 4 }}
-                                    name="Slow Queries"
-                                  />
-                                  <Line
-                                    yAxisId="right"
-                                    type="monotone"
-                                    dataKey="sizeMB"
-                                    stroke="#ef4444"
-                                    strokeWidth={2}
-                                    dot={{ r: 4 }}
-                                    name="Size (MB)"
-                                  />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            </div>
-                          </>
-                        )}
-
-                        {dbType === 'postgresql' && (
-                          <div className="bg-white rounded-xl border border-gray-200 p-5">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                              📊 Commits vs Rollbacks Trend
-                            </h3>
-                            <ResponsiveContainer width="100%" height={250}>
-                              <LineChart data={monitorHistory}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line
-                                  type="monotone"
-                                  dataKey="commits"
-                                  stroke="#10b981"
-                                  strokeWidth={2}
-                                  dot={{ r: 4 }}
-                                  name="Commits"
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="rollbacks"
-                                  stroke="#ef4444"
-                                  strokeWidth={2}
-                                  dot={{ r: 4 }}
-                                  name="Rollbacks"
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-
-                        {dbType === 'mongodb' && (
-                          <div className="bg-white rounded-xl border border-gray-200 p-5">
-                            <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                              📁 Collections & Documents Trend
-                            </h3>
-                            <ResponsiveContainer width="100%" height={250}>
-                              <LineChart data={monitorHistory}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
-                                <YAxis yAxisId="left" />
-                                <YAxis yAxisId="right" orientation="right" />
-                                <Tooltip />
-                                <Legend />
-                                <Line
-                                  yAxisId="left"
-                                  type="monotone"
-                                  dataKey="totalCollections"
-                                  stroke="#3b82f6"
-                                  strokeWidth={2}
-                                  dot={{ r: 4 }}
-                                  name="Collections"
-                                />
-                                <Line
-                                  yAxisId="right"
-                                  type="monotone"
-                                  dataKey="totalDocuments"
-                                  stroke="#10b981"
-                                  strokeWidth={2}
-                                  dot={{ r: 4 }}
-                                  name="Documents"
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {/* Real-time Chart */}
-                    {monitorHistory.length > 1 && (
-                      <div className="bg-white rounded-xl border border-gray-200 p-5">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-4">
-                          Real-time Connections
-                        </h3>
-                        <ResponsiveContainer width="100%" height={200}>
-                          <LineChart data={monitorHistory}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="time" tick={{ fontSize: 11 }} />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Line
-                              type="monotone"
-                              dataKey="connections"
-                              stroke="#3b82f6"
-                              strokeWidth={2}
-                              dot={false}
-                              name="Connections"
-                            />
-                            {dbType === 'mysql' && (
-                              <Line
-                                type="monotone"
-                                dataKey="qps"
-                                stroke="#10b981"
-                                strokeWidth={2}
-                                dot={false}
-                                name="Queries/sec"
-                              />
-                            )}
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-
-                    <p className="text-xs text-gray-400 text-right">
-                      {autoRefresh ? '🟢 Auto refresh ON — every 5 sec' : '⚫ Auto refresh OFF'}
-                    </p>
-
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* BACKUP */}
-            {activeTab === 'backup' && (
-              <div className="max-w-lg">
-                <h2 className="text-xl font-semibold text-gray-900 mb-6">Backup & Restore</h2>
-
-                {backupError && (
-                  <div className="mb-4 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{backupError}</div>
-                )}
-                {backupMsg && (
-                  <div className="mb-4 bg-green-50 text-green-600 text-sm px-4 py-3 rounded-lg">{backupMsg}</div>
-                )}
-
-                <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Take Backup</h3>
-                  <p className="text-sm text-gray-500 mb-4">Poora database ek .sql file mein download karo</p>
-                  <button
-                    onClick={takeBackup}
-                    disabled={backupLoading}
-                    className="w-full py-2.5 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:opacity-60"
-                  >
-                    {backupLoading ? 'Backup ban raha hai...' : '⬇ Download Backup'}
-                  </button>
-                </div>
-
-                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-2">Restore Backup</h3>
-                  <p className="text-sm text-gray-500 mb-4">.sql file upload karo aur database restore karo</p>
-                  <div
-                    className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center mb-4 cursor-pointer hover:border-gray-400 transition"
-                    onClick={() => document.getElementById('sqlFileConn').click()}
-                  >
-                    {selectedFile ? (
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{selectedFile.name}</p>
-                        <p className="text-xs text-gray-400 mt-1">{(selectedFile.size / 1024).toFixed(2)} KB</p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-400">Click karo .sql file select karne ke liye</p>
-                    )}
-                  </div>
-                  <input
-                    id="sqlFileConn"
-                    type="file"
-                    accept=".sql"
-                    onChange={e => {
-                      const file = e.target.files[0];
-                      if (file?.name.endsWith('.sql')) setSelectedFile(file);
-                      else setBackupError('Sirf .sql file select karo!');
-                    }}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={restoreBackup}
-                    disabled={restoreLoading || !selectedFile}
-                    className="w-full py-2.5 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 disabled:opacity-60"
-                  >
-                    {restoreLoading ? 'Restore ho raha hai...' : '⬆ Restore Database'}
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* SLOW QUERY */}
             {activeTab === 'slow-queries' && (
               <div>
-                <SlowQueryPanel />
+                <SlowQueryPanel connectionId={id} />
               </div>
             )}
 
-            {/* BINLOG MONITOR */}
-            {dbType === 'mysql' && (
-              <div className={activeTab === 'binlog' ? 'block' : 'hidden'}>
-                <BinlogMonitorPanel connectionId={id} />
+            {/* AUDIT LOGS */}
+            {activeTab === 'audit-logs' && isOwner && (
+              <div>
+                <AuditLogsPanel connectionId={id} />
               </div>
             )}
-
-            {/* MYSQL USER MANAGER */}
-            {dbType === 'mysql' && (
-              <div className={activeTab === 'mysql-users' ? 'block' : 'hidden'}>
-                <MySQLUsersPanel connectionId={id} />
-              </div>
+              </>
             )}
 
           </div>
         </div>
+
       </div>
     </div>
   );

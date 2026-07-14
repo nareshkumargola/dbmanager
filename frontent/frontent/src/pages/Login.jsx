@@ -10,9 +10,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,150 +28,101 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
-        <div className="flex flex-col md:flex-row">
-          
-          {/* LEFT SIDE - Branding Section with COINFINITY, INFINITY & Ps */}
-          <div className="md:w-1/2 bg-gradient-to-br from-gray-800 to-gray-950 p-8 md:p-12 flex flex-col justify-between relative overflow-hidden">
-            {/* Decorative background elements */}
-            <div className="absolute -top-24 -right-24 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-32 -left-32 w-80 h-80 bg-white/5 rounded-full blur-3xl"></div>
-            
-            <div className="relative z-10">
-              {/* COINFINITY */}
-              <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-white drop-shadow-lg">
-                COINFINITY
-              </h1>
-              
-              {/* INFINITY */}
-              <div className="mt-3 flex items-center gap-2">
-                <div className="h-px flex-1 bg-white/20 max-w-16"></div>
-                <p className="text-2xl md:text-3xl font-semibold text-white/90 tracking-wide">
-                  ALL AT ONE Solution 
-                </p>
-                <div className="h-px flex-1 bg-white/20 max-w-16"></div>
-              </div>
-              
-              {/* Ps - Stylish Badge as per design */}
-              <div className="mt-8 inline-flex items-center gap-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-5 py-2.5 shadow-lg">
-                <span className="text-xl font-bold text-white tracking-wider">Ps</span>
-                <span className="text-white/80 text-sm font-mono">✦</span>
-                <span className="w-1.5 h-1.5 bg-white/60 rounded-full"></span>
-                <span className="text-white/70 text-xs uppercase tracking-wider">Edition</span>
-              </div>
-              
-              {/* Additional tagline to match design language */}
-              <div className="mt-10 space-y-1">
-                <p className="text-gray-300 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                  Next-gen database management
-                </p>
-                <p className="text-gray-300 text-sm flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                  Powered by infinite scale
-                </p>
-              </div>
-            </div>
-            
-            {/* Decorative Ps pattern at bottom */}
-            <div className="relative z-10 mt-auto pt-12">
-              <div className="flex items-center gap-2 text-gray-400/40 text-xs font-mono">
-                <span>✦</span>
-                <span>P S</span>
-                <span>✦</span>
-                <span>∞</span>
-                <span>✦</span>
-              </div>
-            </div>
+    <div className="min-h-screen w-full flex bg-white text-left">
+
+      {/* FORM — left side */}
+      <div className="w-full md:w-[55%] flex flex-col justify-center px-8 sm:px-16 md:px-24 py-12">
+        <div className="flex items-center gap-3 mb-4">
+          <img src="/allatone_logo.jpg" className="h-10 w-auto object-contain rounded" alt="Allatone Logo" />
+          <div className="h-6 w-px bg-gray-200"></div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full">
+            Database Monitoring System
+          </span>
+        </div>
+        <h2 className="text-[22px] font-bold mb-1" style={{ color: '#0b7f86' }}>
+          Sign In
+        </h2>
+        <p className="text-[12.5px] text-gray-500 leading-relaxed mb-6">
+          A centralized administration portal to monitor live replication streams, execute secure queries, audit procedure logs, and manage system backups.
+        </p>
+
+        {error && <p className="text-rose-500 text-[12px] mb-3">{error}</p>}
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 max-w-md">
+          <input
+            type="email"
+            name="email"
+            placeholder="Email"
+            value={form.email}
+            onChange={handleChange}
+            required
+            className="w-full px-3.5 py-2.5 rounded-lg text-[13px] outline-none border border-gray-200 transition-colors"
+            onFocus={(e) => e.target.style.borderColor = '#0d9da4'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
+          <input
+            type="password"
+            name="password"
+            placeholder="Password"
+            value={form.password}
+            onChange={handleChange}
+            required
+            className="w-full px-3.5 py-2.5 rounded-lg text-[13px] outline-none border border-gray-200 transition-colors"
+            onFocus={(e) => e.target.style.borderColor = '#0d9da4'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
+
+          <div className="text-right">
+            <Link to="/forgot-password" className="text-[11px] font-medium hover:underline" style={{ color: '#0b7f86' }}>
+              Forgot password?
+            </Link>
           </div>
 
-          {/* RIGHT SIDE - Login Form Section */}
-          <div className="md:w-1/2 p-6 md:p-10 bg-white">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
-              <p className="text-gray-500 text-sm mt-1">
-                Login to access your databases
-              </p>
-            </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 rounded-full text-white text-[13px] font-semibold shadow-sm hover:shadow-md transition disabled:opacity-60"
+            style={{ backgroundColor: '#0d9da4' }}
+          >
+            {loading ? 'Signing in…' : 'Sign In'}
+          </button>
+        </form>
 
-            {/* Error Message */}
-            {error && (
-              <div className="mb-6 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm px-4 py-3 rounded-lg shadow-sm">
-                <span className="font-medium">Error!</span> {error}
-              </div>
-            )}
+        <p className="text-[12px] text-gray-400 mt-6 md:hidden">
+          No account?{' '}
+          <Link to="/signup" className="font-bold" style={{ color: '#0b7f86' }}>
+            Sign Up
+          </Link>
+        </p>
+      </div>
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="vishal@gmail.com"
-                  value={form.email}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all duration-200"
-                />
-              </div>
+      {/* SIDE PANEL — right side (desktop only) */}
+      <div
+        className="hidden md:flex md:w-[45%] flex-col items-center justify-center text-center px-12 py-12 relative overflow-hidden"
+        style={{ background: 'linear-gradient(160deg, #0d9da4 0%, #0b7f86 100%)' }}
+      >
+        <div className="absolute -top-16 -right-10 w-56 h-56 rounded-full blur-3xl" style={{ backgroundColor: 'rgba(252,230,136,0.25)' }}></div>
+        <div className="absolute -bottom-20 -left-16 w-60 h-60 rounded-full blur-3xl bg-white/10"></div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  placeholder="Apna password"
-                  value={form.password}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-100 transition-all duration-200"
-                />
-              </div>
+        <div className="relative z-10 max-w-xs">
+          <h3 className="text-white text-[22px] font-bold mb-2">New here?</h3>
+          <p className="text-teal-50/80 text-[13px] mb-6 leading-relaxed">
+            Create an account and start<br />managing your data in minutes.
+          </p>
+          <Link
+            to="/signup"
+            className="inline-block px-8 py-2.5 rounded-full border-2 text-[13px] font-semibold transition hover:opacity-90"
+            style={{ backgroundColor: '#fce688', color: '#0b7f86', borderColor: '#fce688' }}
+          >
+            Sign Up
+          </Link>
+        </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-gray-900 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Logging in...
-                  </span>
-                ) : (
-                  'Login'
-                )}
-              </button>
-            </form>
-
-            {/* Sign Up Link */}
-            <div className="mt-8 text-center">
-              <p className="text-sm text-gray-500">
-                Account nahi hai?{' '}
-                <Link to="/signup" className="text-gray-900 font-semibold hover:underline transition">
-                  Sign up
-                </Link>
-              </p>
-            </div>
-
-            {/* Additional subtle note */}
-            <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-              <p className="text-xs text-gray-400">
-                Secure access • Infinity powered
-              </p>
-            </div>
-          </div>
+        <div className="absolute bottom-6 flex items-center gap-1.5 text-[10px] font-mono z-10" style={{ color: 'rgba(252,230,136,0.6)' }}>
+          <span>●</span><span>DB</span><span>●</span><span>∞</span><span>●</span>
         </div>
       </div>
+
     </div>
   );
 }
