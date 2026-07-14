@@ -464,71 +464,77 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       </div>
 
       {/* Transaction Activity Graph */}
-      {filteredAuditHistory && filteredAuditHistory.length > 0 && (() => {
+      {(() => {
         const graphData = getGraphData();
-        if (graphData.length === 0) return null;
         return (
-          <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-5 shadow-xs">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
               📊 Query Activity Distribution ({timeFilter === 'ALL' ? 'All Time' : (timeFilter === 'custom' ? 'Custom Range' : timeFilter)})
             </h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={graphData}>
-                <defs>
-                  <linearGradient id="colorInsert" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorUpdate" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorDelete" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  labelStyle={{ fontWeight: 'bold', fontSize: '10px', color: '#111827' }}
-                  itemStyle={{ fontSize: '11px' }}
-                />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }} />
-                <Area
-                  type="monotone"
-                  dataKey="INSERT"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorInsert)"
-                  name="Inserts"
-                  stackId="1"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="UPDATE"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorUpdate)"
-                  name="Updates"
-                  stackId="1"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="DELETE"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorDelete)"
-                  name="Deletes"
-                  stackId="1"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {graphData.length === 0 ? (
+              <div className="h-60 flex flex-col items-center justify-center border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                <span className="text-2xl mb-2">📊</span>
+                <p className="text-xs text-gray-400 dark:text-gray-500 font-semibold">No query write events (Insert/Update/Delete) captured in this time range.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={graphData}>
+                  <defs>
+                    <linearGradient id="colorInsert" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorUpdate" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorDelete" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0, 0, 0, 0.05)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                    labelStyle={{ fontWeight: 'bold', fontSize: '10px', color: '#111827' }}
+                    itemStyle={{ fontSize: '11px' }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingTop: '10px' }} />
+                  <Area
+                    type="monotone"
+                    dataKey="INSERT"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorInsert)"
+                    name="Inserts"
+                    stackId="1"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="UPDATE"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorUpdate)"
+                    name="Updates"
+                    stackId="1"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="DELETE"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorDelete)"
+                    name="Deletes"
+                    stackId="1"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         );
       })()}
