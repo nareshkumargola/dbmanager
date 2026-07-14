@@ -189,7 +189,7 @@ exports.runMysqlQuery = async (req, res) => {
         }
 
         const BinlogAudit = require('../models/binlogAuditModel');
-        await BinlogAudit.create({
+        const auditRecord = await BinlogAudit.create({
           connectionId,
           eventType,
           statement: clean,
@@ -200,6 +200,26 @@ exports.runMysqlQuery = async (req, res) => {
           diff,
           dbUser
         });
+
+        // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
+        const io = req.app.get('io');
+        if (io) {
+          const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+          io.to(`connection_${connectionId}`).emit('binlog_events', {
+            events: [{
+              _id: populatedRecord._id,
+              eventType: populatedRecord.eventType,
+              statement: populatedRecord.statement,
+              originalType: populatedRecord.originalType,
+              pos: populatedRecord.pos,
+              logName: populatedRecord.logName,
+              timestamp: populatedRecord.timestamp,
+              user: populatedRecord.user,
+              diff: populatedRecord.diff,
+              dbUser: populatedRecord.dbUser
+            }]
+          });
+        }
       } catch (binlogErr) {
         console.error('Failed to log query editor command to binlog audit:', binlogErr.message);
       }

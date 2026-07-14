@@ -233,7 +233,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     // 0. Database filter
     if (database) {
       const itemDb = item.diff && item.diff.database;
-      if (!itemDb || itemDb.toLowerCase() !== database.toLowerCase()) {
+      if (itemDb && itemDb.toLowerCase() !== database.toLowerCase()) {
         return false;
       }
     }
