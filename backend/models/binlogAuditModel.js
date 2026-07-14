@@ -8,7 +8,7 @@ const binlogAuditSchema = new mongoose.Schema({
   },
   eventType: {
     type: String,
-    enum: ['INSERT', 'UPDATE', 'DELETE', 'DDL', 'OTHER'],
+    enum: ['INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'],
     required: true,
   },
   statement: {

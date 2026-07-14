@@ -153,7 +153,9 @@ exports.runMysqlQuery = async (req, res) => {
         const upper = clean.toUpperCase();
         let eventType = 'OTHER';
 
-        if (upper.startsWith('INSERT')) {
+        if (upper.startsWith('CALL') || upper.startsWith('EXEC') || upper.includes('PROCEDURE') || upper.includes('FUNCTION')) {
+          eventType = 'SP';
+        } else if (upper.startsWith('INSERT')) {
           eventType = 'INSERT';
         } else if (upper.startsWith('UPDATE')) {
           eventType = 'UPDATE';

@@ -185,6 +185,8 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
         return 'bg-red-50 text-red-700 border-red-200';
       case 'DDL':
         return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 'SP':
+        return 'bg-amber-50 text-amber-700 border-amber-200';
       default:
         return 'bg-gray-50 text-gray-700 border-gray-300';
     }
@@ -214,7 +216,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       }
       
       if (!groups[key]) {
-        groups[key] = { name: key, INSERT: 0, UPDATE: 0, DELETE: 0, DDL: 0, OTHER: 0 };
+        groups[key] = { name: key, INSERT: 0, UPDATE: 0, DELETE: 0, DDL: 0, SP: 0, OTHER: 0 };
       }
       
       const type = event.eventType;
@@ -324,7 +326,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
 
             {/* Operation Type Filters */}
             <div className="flex flex-wrap items-center gap-1.5">
-              {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'OTHER'].map((type) => (
+              {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'].map((type) => (
                 <button
                   key={type}
                   onClick={() => setFilterType(type)}
@@ -428,6 +430,10 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
                       <stop offset="5%" stopColor="#ef4444" stopOpacity={0.25}/>
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
                     </linearGradient>
+                    <linearGradient id="colorSP" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0, 0, 0, 0.05)" />
                   <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
@@ -466,6 +472,16 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
                     fillOpacity={1}
                     fill="url(#colorDelete)"
                     name="Deletes"
+                    stackId="1"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="SP"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorSP)"
+                    name="Stored Procedures"
                     stackId="1"
                   />
                 </AreaChart>

@@ -622,7 +622,9 @@ const parseBinlogEvent = (event) => {
   if (type === 'Query') {
     const cleanInfo = info.replace(/\/\*.*?\*\//g, '').trim(); // Clean comments
     const upper = cleanInfo.toUpperCase();
-    if (upper.startsWith('INSERT')) {
+    if (upper.startsWith('CALL') || upper.startsWith('EXEC') || upper.includes('PROCEDURE') || upper.includes('FUNCTION')) {
+      eventType = 'SP';
+    } else if (upper.startsWith('INSERT')) {
       eventType = 'INSERT';
     } else if (upper.startsWith('UPDATE')) {
       eventType = 'UPDATE';
@@ -813,6 +815,15 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           diff: {
             table: `audit_logs_${rand}`,
             newData: null,
+            oldData: null
+          }
+        },
+        { 
+          type: 'SP', 
+          statement: `CALL calculate_monthly_revenue(${rand}, '2026-07-01')`,
+          diff: {
+            table: 'orders',
+            newData: { procedure: 'calculate_monthly_revenue', args: [rand, '2026-07-01'] },
             oldData: null
           }
         },
