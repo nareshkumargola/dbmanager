@@ -34,6 +34,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   // Interactive UI States
   const [selectedEvent, setSelectedEvent] = useState(null); // Details Inspector Modal
   const [expandedDiffs, setExpandedDiffs] = useState({});
+  const [showGraph, setShowGraph] = useState(false);
 
   // Pagination States
   const [currentPage, setCurrentPage] = useState(1);
@@ -286,6 +287,16 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
             <span>❓</span> {showHelp ? 'Hide Info' : `What is ${connectionType === 'mongodb' ? 'Oplog?' : (connectionType === 'postgresql' ? 'WAL?' : 'Binlog?')}`}
           </button>
           <button
+            onClick={() => setShowGraph(!showGraph)}
+            className={`px-4 py-2 border text-sm font-medium rounded-lg transition flex items-center gap-1.5 ${
+              showGraph
+                ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100/50'
+                : 'border-gray-250 text-gray-700 hover:bg-gray-50 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+            }`}
+          >
+            <span>📈</span> {showGraph ? 'Hide Graph' : 'Show Writes Graph'}
+          </button>
+          <button
             onClick={deleteMongoAuditLogs}
             className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition"
           >
@@ -464,7 +475,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       </div>
 
       {/* Transaction Activity Graph */}
-      {(() => {
+      {showGraph && (() => {
         const graphData = getGraphData();
         return (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-5 shadow-xs">
