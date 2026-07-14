@@ -947,11 +947,15 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         const nameMatch = info.match(/\(([^)]+)\)/);
         if (idMatch && nameMatch) {
           const tableId = idMatch[1];
-          let tableName = nameMatch[1];
-          if (tableName.includes('.')) {
-            tableName = tableName.split('.').pop().replace(/[\`\'\"]/g, '');
+          let rawName = nameMatch[1];
+          let dbName = '';
+          let tableName = rawName;
+          if (rawName.includes('.')) {
+            const parts = rawName.split('.');
+            dbName = parts[0].replace(/[\`\'\"]/g, '');
+            tableName = parts[1].replace(/[\`\'\"]/g, '');
           }
-          lastTableMap[tableId] = tableName;
+          lastTableMap[tableId] = { tableName, dbName };
         }
       }
 
@@ -975,7 +979,8 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         if ((!diff || (!diff.newData && !diff.oldData)) && row.Info) {
           const idMatch = row.Info.match(/table_id:\s*(\d+)/i);
           const tableId = idMatch ? idMatch[1] : null;
-          const tableName = tableId && lastTableMap[tableId] ? lastTableMap[tableId] : 'unknown';
+          const tableInfo = tableId && lastTableMap[tableId] ? lastTableMap[tableId] : null;
+          const tableName = tableInfo ? tableInfo.tableName : 'unknown';
 
           diff = {
             table: tableName,
@@ -996,12 +1001,23 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           };
         }
 
+        let eventDbName = '';
+        if (row.Info) {
+          const idMatch = row.Info.match(/table_id:\s*(\d+)/i);
+          const tableId = idMatch ? idMatch[1] : null;
+          if (tableId && lastTableMap[tableId]) {
+            eventDbName = lastTableMap[tableId].dbName || '';
+          }
+        }
+        
+        const finalDbName = eventDbName || connection.database || 'test';
+
         if (diff) {
-          diff.database = connection.database || 'test';
+          diff.database = finalDbName;
         } else {
           diff = {
             table: 'unknown',
-            database: connection.database || 'test',
+            database: finalDbName,
             newData: null,
             oldData: null
           };
