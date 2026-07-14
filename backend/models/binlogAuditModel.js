@@ -40,7 +40,24 @@ const binlogAuditSchema = new mongoose.Schema({
   },
 });
 
-// Index for query optimization on dashboard
-binlogAuditSchema.index({ connectionId: 1, timestamp: -1 });
+// Index for query optimization on connection specific collections
+binlogAuditSchema.index({ timestamp: -1 });
 
-module.exports = mongoose.model('BinlogAudit', binlogAuditSchema);
+const getBinlogAuditModel = (connectionId) => {
+  if (!connectionId) {
+    throw new Error('Connection ID is required to resolve binlog audit collection!');
+  }
+  const cleanId = connectionId.toString();
+  const collectionName = `binlogaudit_${cleanId}`;
+  
+  if (mongoose.models[collectionName]) {
+    return mongoose.models[collectionName];
+  }
+  
+  return mongoose.model(collectionName, binlogAuditSchema, collectionName);
+};
+
+module.exports = {
+  binlogAuditSchema,
+  getBinlogAuditModel
+};

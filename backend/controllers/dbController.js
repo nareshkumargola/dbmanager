@@ -188,7 +188,8 @@ exports.runMysqlQuery = async (req, res) => {
           dbUser = connectionDoc.username;
         }
 
-        const BinlogAudit = require('../models/binlogAuditModel');
+        const { getBinlogAuditModel } = require('../models/binlogAuditModel');
+        const BinlogAudit = getBinlogAuditModel(connectionId);
         const auditRecord = await BinlogAudit.create({
           connectionId,
           eventType,

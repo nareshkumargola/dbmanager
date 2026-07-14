@@ -1,7 +1,7 @@
 const Connection = require('../models/connectionModel');
 const { getConnection, testConnection, closeConnection } = require('../connections/connectionManager');
 const { saveHistory } = require('./queryHistoryController');
-const BinlogAudit = require('../models/binlogAuditModel');
+const { getBinlogAuditModel } = require('../models/binlogAuditModel');
 
 const checkAccess = (connection, user) => {
   if (user.role === 'admin') return true;
@@ -761,7 +761,7 @@ const parseSQLDiff = (statement, eventType) => {
 // Internal poller accessible by HTTP controller and Socket.io setup
 exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode, userId) => {
   const Connection = require('../models/connectionModel');
-  const BinlogAudit = require('../models/binlogAuditModel');
+  const BinlogAudit = getBinlogAuditModel(connectionId);
   const { getConnection } = require('../connections/connectionManager');
 
   const connection = await Connection.findById(connectionId);
@@ -1157,6 +1157,8 @@ exports.getBinlogHistory = async (req, res) => {
       }
     }
 
+    const BinlogAudit = getBinlogAuditModel(id);
+
     const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
 
     const history = await BinlogAudit.find(query)
@@ -1183,6 +1185,7 @@ exports.clearBinlogHistory = async (req, res) => {
       return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
     }
 
+    const BinlogAudit = getBinlogAuditModel(id);
     await BinlogAudit.deleteMany({ connectionId: id });
 
     res.status(200).json({ success: true, message: 'Binlog audit log history cleared successfully!' });
