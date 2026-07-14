@@ -530,8 +530,19 @@ exports.startBinlogMonitoring = async (req, res) => {
       return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
     }
 
-    if (connection.type !== 'mysql') {
-      return res.status(400).json({ message: 'Binlog monitor sirf MySQL connections ke liye support hota hai!' });
+    if (connection.type !== 'mysql' && connection.type !== 'postgresql' && connection.type !== 'mongodb') {
+      return res.status(400).json({ message: 'Log monitoring is only supported for MySQL, PostgreSQL, and MongoDB connections!' });
+    }
+
+    if (connection.type === 'postgresql' || connection.type === 'mongodb') {
+      return res.status(200).json({
+        success: true,
+        logFile: connection.type === 'mongodb' ? 'mock-oplog.000001' : 'mock-wal.000001',
+        position: 100,
+        logBinEnabled: false,
+        mode: 'simulation',
+        message: `${connection.type === 'mongodb' ? 'Oplog' : 'WAL'} monitoring started in simulation mode.`
+      });
     }
 
     const { conn } = await getConnection(connection);
