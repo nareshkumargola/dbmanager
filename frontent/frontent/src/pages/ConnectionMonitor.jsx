@@ -43,7 +43,8 @@ export default function ConnectionMonitor() {
   const [tableDetails, setTableDetails] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [range, setRange] = useState('current');
-  const [currentHourFilter, setCurrentHourFilter] = useState(5);
+  const [currentHourFilter, setCurrentHourFilter] = useState('live');
+  const [liveHistory, setLiveHistory] = useState([]);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [error, setError] = useState('');
@@ -88,22 +89,26 @@ export default function ConnectionMonitor() {
       // Store hourly data if available
       if (histRes.data.hourly && histRes.data.hourly.length > 0) {
         setMonitorHistory(histRes.data.hourly);
-      } else {
-        setMonitorHistory(prev => {
-          const time = new Date().toLocaleTimeString('en-IN', {
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
-          });
-          const newPoint = {
-            hour: time,
-            activeConnections: newData.activeConnections,
-            queriesPerSecond: newData.queriesPerSecond || 0,
-            slowQueries: newData.slowQueries || 0,
-            sizeMB: newData.sizeMB || 0,
-          };
-          const updated = [...prev, newPoint];
-          return updated.slice(-12);
-        });
       }
+
+      // Record live real-time ticks
+      setLiveHistory(prev => {
+        const time = new Date().toLocaleTimeString('en-IN', {
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+        const newPoint = {
+          hour: time,
+          activeConnections: newData.activeConnections || 0,
+          queriesPerSecond: newData.queriesPerSecond || 0,
+          slowQueries: newData.slowQueries || 0,
+          sizeMB: newData.sizeMB || 0,
+          bytesSent: newData.bytesSent || 0,
+          bytesReceived: newData.bytesReceived || 0,
+          totalTables: newData.totalTables || 0,
+        };
+        const updated = [...prev, newPoint];
+        return updated.slice(-15); // Keep last 15 ticks for real-time tracking
+      });
 
       // Fetch table details separately (non-blocking)
       try {
@@ -161,7 +166,9 @@ export default function ConnectionMonitor() {
   }, [id]);
 
   const displayedHistory = range === 'current'
-    ? monitorHistory.slice(-currentHourFilter)
+    ? (currentHourFilter === 'live'
+      ? (liveHistory.length > 0 ? liveHistory : monitorHistory.slice(-5))
+      : monitorHistory.slice(-currentHourFilter))
     : monitorHistory;
 
   const downloadMonitoringPDF = async () => {
@@ -532,23 +539,25 @@ export default function ConnectionMonitor() {
           <div className="space-y-6">
             {/* Hour Filter buttons for Current Live mode */}
             {range === 'current' && monitorHistory && monitorHistory.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-250 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900">📊 Hourly Breakdown (Live (5 Hours))</h4>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Filter the breakdown timeline display range below.</p>
+                  <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+                    📊 Monitoring Timeline: {currentHourFilter === 'live' ? '⚡ Live Real-Time Feed' : `Last ${currentHourFilter} Hours`}
+                  </h4>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Filter the breakdown timeline display range below.</p>
                 </div>
-                <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl border border-gray-200">
-                  {[1, 2, 3, 4, 5].map(h => (
+                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
+                  {['live', 1, 2, 3, 4, 5].map(h => (
                     <button
                       key={h}
                       onClick={() => setCurrentHourFilter(h)}
                       className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
                         currentHourFilter === h
-                          ? 'bg-white text-gray-900 shadow-xs border border-gray-200/50'
-                          : 'text-gray-500 hover:text-gray-900'
+                          ? 'bg-[#0d9da4] text-white shadow-xs'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                       }`}
                     >
-                      {h}hour
+                      {h === 'live' ? '⚡ Live' : `${h}hour`}
                     </button>
                   ))}
                 </div>
@@ -928,7 +937,7 @@ export default function ConnectionMonitor() {
             {monitorHistory && monitorHistory.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                  📊 Hourly Breakdown ({range === 'current' ? 'Live (5 Hours)' : range})
+                  📊 Hourly Breakdown ({range === 'current' ? (currentHourFilter === 'live' ? 'Live Feed' : `Last ${currentHourFilter} Hours`) : range})
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left border-collapse">
