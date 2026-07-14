@@ -31,6 +31,7 @@ export default function ConnectionBinlog() {
   const [databases, setDatabases] = useState([]);
   const [selectedDb, setSelectedDb] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export default function ConnectionBinlog() {
 
       <div className="flex-1 flex h-[calc(100vh-53px)] relative overflow-hidden">
         {/* Databases Sidebar */}
-        <div className="w-64 bg-white border-r border-gray-250 p-4 flex flex-col gap-2 shrink-0 overflow-y-auto">
+        <div className={`${sidebarOpen ? 'w-64 border-r p-4' : 'w-0 border-r-0 p-0 overflow-hidden'} bg-white border-gray-250 flex flex-col gap-2 shrink-0 overflow-y-auto transition-all duration-300 relative`}>
           <div className="px-2 mb-3">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Schemas / Databases</h3>
             <p className="text-[10px] text-gray-400 mt-1 leading-normal">
@@ -132,6 +133,27 @@ export default function ConnectionBinlog() {
             </div>
           )}
         </div>
+
+        {/* Sidebar Toggle Button */}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-250 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-850 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
+          style={{
+            left: sidebarOpen ? '252px' : '4px',
+            transform: 'translateY(-50%)',
+          }}
+          title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+        >
+          {sidebarOpen ? (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+        </button>
 
         {/* Binlog Monitoring Log Grid on the Right */}
         <div className="flex-1 p-6 overflow-y-auto bg-gray-50/30">

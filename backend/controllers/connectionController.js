@@ -826,6 +826,10 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
       ];
       const dbUser = mockUsers[Math.floor(Math.random() * mockUsers.length)];
 
+      if (selected.diff) {
+        selected.diff.database = connection.database || 'test';
+      }
+
       const auditRecord = await BinlogAudit.create({
         connectionId,
         eventType: selected.type,
@@ -978,6 +982,17 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
               event_type: row.Event_type,
               raw_details: row.Info
             } : null
+          };
+        }
+
+        if (diff) {
+          diff.database = connection.database || 'test';
+        } else {
+          diff = {
+            table: 'unknown',
+            database: connection.database || 'test',
+            newData: null,
+            oldData: null
           };
         }
 

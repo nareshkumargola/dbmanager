@@ -171,6 +171,18 @@ exports.runMysqlQuery = async (req, res) => {
           console.warn('Failed to parse SQL diff:', diffErr.message);
         }
 
+        const activeDatabaseName = database || (connectionDoc ? connectionDoc.database : 'test');
+        if (diff) {
+          diff.database = activeDatabaseName;
+        } else {
+          diff = {
+            table: 'unknown',
+            database: activeDatabaseName,
+            newData: null,
+            oldData: null
+          };
+        }
+
         let dbUser = 'User (App)';
         if (connectionDoc && connectionDoc.username) {
           dbUser = connectionDoc.username;

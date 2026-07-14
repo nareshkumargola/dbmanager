@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import API from '../api/axios';
 import { socket } from '../api/socket';
 import { useAuth } from '../context/AuthContext';
@@ -17,7 +17,8 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   const [loading, setLoading] = useState(false);
   const [monitoring, setMonitoring] = useState(false);
   const [error, setError] = useState('');
-  const [showHelp, setShowHelp] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [pauseFeed, setPauseFeed] = useState(false);
   
   // Coordinates & Mode (from backend poller)
   const [mode, setMode] = useState(''); // 'real' or 'simulation'
@@ -34,11 +35,15 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   // Interactive UI States
   const [selectedEvent, setSelectedEvent] = useState(null); // Details Inspector Modal
   const [expandedDiffs, setExpandedDiffs] = useState({});
-  const [showGraph, setShowGraph] = useState(false);
 
   // Pagination States
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  const pauseFeedRef = useRef(pauseFeed);
+  useEffect(() => {
+    pauseFeedRef.current = pauseFeed;
+  }, [pauseFeed]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -53,7 +58,9 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
 
     const handleBinlogEvents = (data) => {
       // Refresh history when new query events occur
-      fetchAuditHistory();
+      if (!pauseFeedRef.current) {
+        fetchAuditHistory();
+      }
       if (data.logFile) setLogFile(data.logFile);
       if (data.position) setPosition(data.position);
     };
@@ -226,7 +233,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     // 0. Database filter
     if (database) {
       const itemDb = item.diff && item.diff.database;
-      if (itemDb && itemDb.toLowerCase() !== database.toLowerCase()) {
+      if (!itemDb || itemDb.toLowerCase() !== database.toLowerCase()) {
         return false;
       }
     }
@@ -281,103 +288,17 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowHelp(!showHelp)}
-            className="px-4 py-2 border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition flex items-center gap-1.5"
-          >
-            <span>❓</span> {showHelp ? 'Hide Info' : `What is ${connectionType === 'mongodb' ? 'Oplog?' : (connectionType === 'postgresql' ? 'WAL?' : 'Binlog?')}`}
-          </button>
-          <button
-            onClick={() => setShowGraph(!showGraph)}
+            onClick={() => setShowFilters(!showFilters)}
             className={`px-4 py-2 border text-sm font-medium rounded-lg transition flex items-center gap-1.5 ${
-              showGraph
-                ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100/50'
+              showFilters
+                ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 shadow-xs'
                 : 'border-gray-250 text-gray-700 hover:bg-gray-50 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
             }`}
           >
-            <span>📈</span> {showGraph ? 'Hide Graph' : 'Show Writes Graph'}
-          </button>
-          <button
-            onClick={deleteMongoAuditLogs}
-            className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition"
-          >
-            Clear Query History
+            <span>🔍</span> {showFilters ? 'Hide Filters' : 'Show Filters'}
           </button>
         </div>
       </div>
-
-      {showHelp && (
-        <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-sm animate-fadeIn">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="text-2xl">💡</span>
-              <h3 className="text-md font-bold text-gray-900">
-                What is {connectionType === 'mongodb' ? 'MongoDB Operations Log (oplog)' : (connectionType === 'postgresql' ? 'PostgreSQL Write-Ahead Log (WAL)' : 'MySQL Binary Log (binlog)')}?
-              </h3>
-            </div>
-            <button
-              onClick={() => setShowHelp(false)}
-              className="text-gray-400 hover:text-gray-600 text-sm font-semibold"
-            >
-              Close
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mt-2">
-            <div className="bg-white p-4 rounded-lg border border-gray-150 shadow-xs flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🔄</span>
-                <h4 className="font-semibold text-gray-800">1. Replication (Server Sync)</h4>
-              </div>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                {connectionType === 'mongodb'
-                  ? 'The primary replica database node writes changes to oplogs, which are read by secondary nodes to keep all cluster nodes in sync.'
-                  : (connectionType === 'postgresql'
-                    ? 'PostgreSQL WAL files are streamed to replicas to update rows and schemas asynchronously, maintaining secondary nodes in sync.'
-                    : 'The source database server (Master) sends its changes to copy servers (Slaves) via binlogs, keeping all servers synced.')}
-              </p>
-            </div>
-            
-            <div className="bg-white p-4 rounded-lg border border-gray-150 shadow-xs flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🛡️</span>
-                <h4 className="font-semibold text-gray-800">2. Disaster Recovery</h4>
-              </div>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                {connectionType === 'mongodb'
-                  ? 'Oplogs act as a rolling buffer. In case of node failures, replication resume, or recovery, MongoDB replays the oplog to recover state.'
-                  : (connectionType === 'postgresql'
-                    ? 'WAL files record all transactions prior to committing, enabling crash recovery and rollbacks to avoid data corruption.'
-                    : 'If a table is accidentally deleted, you can restore a backup and replay binlog events to recover the database state.')}
-              </p>
-            </div>
-
-            <div className="bg-white p-4 rounded-lg border border-gray-150 shadow-xs flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📋</span>
-                <h4 className="font-semibold text-gray-800">3. Audit & Change Tracking</h4>
-              </div>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                {connectionType === 'mongodb'
-                  ? 'The oplog captures all database mutations in a capped collection, providing a live stream of every insert, update, and delete.'
-                  : (connectionType === 'postgresql'
-                    ? 'The WAL logs logical page and row changes, allowing logical replication streams to capture data changes in real-time.'
-                    : 'The binlog records which query ran, when it ran, and which connection user ran it, allowing detailed change auditing.')}
-              </p>
-            </div>
-          </div>
-          
-          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs text-gray-600 flex items-center gap-2">
-            <span className="text-lg">⚙️</span>
-            <span>
-              <strong>Is App Mein Use:</strong> {connectionType === 'mongodb'
-                ? 'We stream the MongoDB oplog/change history live so you can track mutations, updates, and collection audits in real-time.'
-                : (connectionType === 'postgresql'
-                  ? 'We monitor the PostgreSQL WAL modifications in real-time to show you dynamic updates and transaction audit logs.'
-                  : 'We listen to the MySQL binlog live so you can dynamically monitor data changes and audit trails in real-time.')}
-            </span>
-          </div>
-        </div>
-      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
@@ -385,97 +306,101 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
         </div>
       )}
 
-      {/* Advanced Filters & Search Bar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-        {/* Search Input */}
-        <div className="relative flex-1 max-w-md">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
-          <input
-            type="text"
-            placeholder="Search query, table, or user..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
-          />
-        </div>
+      {showFilters && (
+        <>
+          {/* Advanced Filters & Search Bar */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
+              <input
+                type="text"
+                placeholder="Search query, table, or user..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
+              />
+            </div>
 
-        {/* Operation Type Filters */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'OTHER'].map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
-                filterType === type
-                  ? 'bg-gray-900 text-white border-gray-900'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {type}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Date/Time Filter Panel */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Time Filter:</span>
+            {/* Operation Type Filters */}
             <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { label: 'All Time', value: 'ALL' },
-                { label: '1 Hour', value: '1hour' },
-                { label: '3 Hours', value: '3hour' },
-                { label: '6 Hours', value: '6hour' },
-                { label: '12 Hours', value: '12hour' },
-                { label: '24 Hours', value: '24hour' },
-                { label: '1 Month', value: '1month' },
-                { label: '3 Months', value: '3month' },
-                { label: 'Custom Range', value: 'custom' }
-              ].map((rangeOpt) => (
+              {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'OTHER'].map((type) => (
                 <button
-                  key={rangeOpt.value}
-                  onClick={() => setTimeFilter(rangeOpt.value)}
-                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition ${
-                    timeFilter === rangeOpt.value
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                  key={type}
+                  onClick={() => setFilterType(type)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
+                    filterType === type
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                   }`}
                 >
-                  {rangeOpt.label}
+                  {type}
                 </button>
               ))}
             </div>
           </div>
 
-          {timeFilter === 'custom' && (
-            <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200/50">
-              <div className="flex items-center gap-1.5">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+          {/* Date/Time Filter Panel */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Time Filter:</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: 'All Time', value: 'ALL' },
+                    { label: '1 Hour', value: '1hour' },
+                    { label: '3 Hours', value: '3hour' },
+                    { label: '6 Hours', value: '6hour' },
+                    { label: '12 Hours', value: '12hour' },
+                    { label: '24 Hours', value: '24hour' },
+                    { label: '1 Month', value: '1month' },
+                    { label: '3 Months', value: '3month' },
+                    { label: 'Custom Range', value: 'custom' }
+                  ].map((rangeOpt) => (
+                    <button
+                      key={rangeOpt.value}
+                      onClick={() => setTimeFilter(rangeOpt.value)}
+                      className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition ${
+                        timeFilter === rangeOpt.value
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                      }`}
+                    >
+                      {rangeOpt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+
+              {timeFilter === 'custom' && (
+                <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200/50">
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       {/* Transaction Activity Graph */}
-      {showGraph && (() => {
+      {(() => {
         const graphData = getGraphData();
         return (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-5 shadow-xs">
@@ -553,7 +478,20 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       {/* Unified Query History Stream (Full Width) */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-md font-bold text-gray-900">Query History Logs</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-md font-bold text-gray-900">Query History Logs</h3>
+            <button
+              onClick={() => setPauseFeed(!pauseFeed)}
+              className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition flex items-center gap-1.5 ${
+                pauseFeed
+                  ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900'
+                  : 'bg-green-50 border-green-200 text-green-700 dark:bg-green-950/20 dark:border-green-900'
+              }`}
+            >
+              <span>{pauseFeed ? '▶️' : '⏸️'}</span>
+              {pauseFeed ? 'Resume Stream' : 'Live Stream Active'}
+            </button>
+          </div>
           <span className="text-xs text-gray-500 font-medium">
             Showing {filteredAuditHistory.length} of {auditHistory.length} events
           </span>
