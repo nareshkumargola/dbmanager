@@ -232,11 +232,32 @@ exports.getTableData = async (req, res) => {
   }
 };
 
+// Helper to strip client-side DELIMITER commands and clean trailing delimiters
+const sanitizeQuery = (sql) => {
+  if (!sql) return '';
+  const matches = [...sql.matchAll(/^\s*DELIMITER\s+(\S+)/gim)];
+  let cleaned = sql.replace(/^\s*DELIMITER\s+\S+/gim, '');
+  matches.forEach(m => {
+    const delim = m[1];
+    if (delim && delim !== ';') {
+      const escapedDelim = delim.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const delimRegex = new RegExp(escapedDelim + '\\s*$', 'gm');
+      cleaned = cleaned.replace(delimRegex, ';');
+    }
+  });
+  cleaned = cleaned.replace(/;+/g, ';');
+  return cleaned.trim();
+};
+
 // ─── QUERY RUN KARO ───────────────────────────────
 exports.runQuery = async (req, res) => {
   try {
     const { id } = req.params;
-    const { query } = req.body;
+    const { query: rawQuery } = req.body;
+    const query = sanitizeQuery(rawQuery);
+    if (!query) {
+      return res.status(400).json({ message: 'Query string cannot be empty after sanitization.' });
+    }
     const connection = await Connection.findById(id);
 
     if (!connection) {
