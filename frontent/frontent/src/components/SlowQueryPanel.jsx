@@ -9,10 +9,39 @@ export default function SlowQueryPanel({ connectionId }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [threshold, setThreshold] = useState(100);
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   useEffect(() => {
     fetchSlowQueries();
+    if (connectionId) {
+      fetchConnectionSettings();
+    }
   }, [connectionId]);
+
+  const fetchConnectionSettings = async () => {
+    try {
+      const res = await API.get(`/connections/${connectionId}`);
+      if (res.data.connection && res.data.connection.slowQueryThreshold !== undefined) {
+        setThreshold(res.data.connection.slowQueryThreshold);
+      }
+    } catch (err) {
+      console.error('Failed to load connection settings:', err.message);
+    }
+  };
+
+  const saveThresholdSetting = async () => {
+    try {
+      setSavingThreshold(true);
+      setError('');
+      await API.put(`/connections/${connectionId}/settings`, { slowQueryThreshold: threshold });
+      fetchSlowQueries();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update threshold settings.');
+    } finally {
+      setSavingThreshold(false);
+    }
+  };
 
   const fetchSlowQueries = async () => {
     try {
@@ -78,34 +107,53 @@ export default function SlowQueryPanel({ connectionId }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-semibold text-gray-900">Slow Query Analysis</h2>
-          <p className="text-sm text-gray-500 mt-1">100ms se zyada time lene wali queries</p>
+          <p className="text-sm text-gray-500 mt-1">{threshold}ms se zyada time lene wali queries</p>
         </div>
-        {queries.length > 0 && (
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {connectionId && (
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 shadow-xs">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Threshold:</span>
+              <input
+                type="number"
+                min="1"
+                value={threshold}
+                onChange={(e) => setThreshold(Math.max(1, parseInt(e.target.value) || 0))}
+                className="w-16 px-1.5 py-0.5 text-xs text-center border border-gray-300 rounded-md font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <span className="text-xs font-semibold text-gray-500">ms</span>
+              <button
+                onClick={saveThresholdSetting}
+                disabled={savingThreshold}
+                className="text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded transition disabled:opacity-50"
+              >
+                {savingThreshold ? 'Saving...' : 'Set'}
+              </button>
+            </div>
+          )}
+          {queries.length > 0 && (
             <button
               onClick={clearAll}
               className="px-4 py-2 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition"
             >
               Clear All
             </button>
-            <button
-              onClick={() => {
-                if (location.pathname.startsWith('/connections/')) {
-                  navigate(location.pathname, { state: { openTab: 'query' } });
-                } else {
-                  navigate('/query');
-                }
-              }}
-              className="text-sm text-gray-900 underline"
-            >
-              Query Editor pe jao
-            </button>
-          </div>
-        )}
-
+          )}
+          <button
+            onClick={() => {
+              if (location.pathname.startsWith('/connections/')) {
+                navigate(location.pathname, { state: { openTab: 'query' } });
+              } else {
+                navigate('/query');
+              }
+            }}
+            className="text-sm text-gray-900 underline"
+          >
+            Query Editor pe jao
+          </button>
+        </div>
       </div>
 
       {stats && (

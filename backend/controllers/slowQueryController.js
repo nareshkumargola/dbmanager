@@ -29,7 +29,13 @@ const generateSuggestion = (query, executionTime) => {
 exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsExamined) => {
   try {
     if (!connectionId) return;
-    if (executionTime >= SLOW_THRESHOLD) {
+    const Connection = require('../models/connectionModel');
+    const connection = await Connection.findById(connectionId);
+    const threshold = (connection && connection.slowQueryThreshold) !== undefined
+      ? connection.slowQueryThreshold
+      : SLOW_THRESHOLD;
+
+    if (executionTime >= threshold) {
       const suggestion = generateSuggestion(query, executionTime);
       await SlowQuery.create({
         connection: connectionId,

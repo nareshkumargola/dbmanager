@@ -1370,3 +1370,53 @@ exports.getConnectionAuditLogs = async (req, res) => {
     res.status(500).json({ message: 'Error fetching connection audit logs', error: err.message });
   }
 };
+
+// ─── GET SINGLE CONNECTION (GET) ──────────────────────
+exports.getConnectionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const connection = await Connection.findById(id);
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection nahi mila!' });
+    }
+
+    if (!checkAccess(connection, req.user)) {
+      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+    }
+
+    res.status(200).json({ success: true, connection });
+  } catch (err) {
+    res.status(500).json({ message: 'Error retrieving connection', error: err.message });
+  }
+};
+
+// ─── UPDATE CONNECTION SETTINGS (PUT) ──────────────────
+exports.updateConnectionSettings = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { slowQueryThreshold } = req.body;
+    
+    const connection = await Connection.findById(id);
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection nahi mila!' });
+    }
+
+    if (!checkAccess(connection, req.user)) {
+      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+    }
+
+    if (slowQueryThreshold !== undefined) {
+      connection.slowQueryThreshold = parseInt(slowQueryThreshold) || 100;
+    }
+
+    await connection.save();
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Connection settings updated successfully!', 
+      connection 
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating settings', error: err.message });
+  }
+};

@@ -55,4 +55,8 @@ router.put('/:id/pg-users/:username/roles', protect, pgUserController.updatePGUs
 // Shared audit logs
 router.get('/:id/audit-logs', protect, checkPermission('auditLogs'), connectionController.getConnectionAuditLogs);
 
+// Connection detail and settings update
+router.get('/:id', protect, connectionController.getConnectionById);
+router.put('/:id/settings', protect, checkPermission('connections'), connectionController.updateConnectionSettings);
+
 module.exports = router;
