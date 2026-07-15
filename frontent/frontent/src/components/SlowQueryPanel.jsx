@@ -141,18 +141,6 @@ export default function SlowQueryPanel({ connectionId }) {
               Clear All
             </button>
           )}
-          <button
-            onClick={() => {
-              if (location.pathname.startsWith('/connections/')) {
-                navigate(location.pathname, { state: { openTab: 'query' } });
-              } else {
-                navigate('/query');
-              }
-            }}
-            className="text-sm text-gray-900 underline"
-          >
-            Query Editor pe jao
-          </button>
         </div>
       </div>
 
