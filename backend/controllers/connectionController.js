@@ -1233,7 +1233,7 @@ exports.getBinlogEvents = async (req, res) => {
 exports.getBinlogHistory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { timeFilter, startDate, endDate } = req.query;
+    const { timeFilter, startDate, endDate, filterType, searchQuery, database: reqDatabase } = req.query;
     
     const connection = await Connection.findById(id);
     if (!connection) {
@@ -1279,6 +1279,42 @@ exports.getBinlogHistory = async (req, res) => {
 
       if (timeLimit) {
         query.timestamp = { $gte: timeLimit };
+      }
+    }
+
+    // Database schema filter with loose match fallback
+    if (reqDatabase) {
+      query.$or = [
+        { 'diff.database': reqDatabase },
+        { 'diff.database': { $exists: false } },
+        { 'diff.database': null }
+      ];
+    }
+
+    // Event Type Filter
+    if (filterType && filterType !== 'ALL') {
+      query.eventType = filterType;
+    }
+
+    // Text Search Query Filter
+    if (searchQuery) {
+      const searchRegex = new RegExp(searchQuery.trim(), 'i');
+      const searchOr = [
+        { statement: searchRegex },
+        { dbUser: searchRegex },
+        { originalType: searchRegex },
+        { 'diff.table': searchRegex }
+      ];
+
+      if (query.$or) {
+        const dbOr = query.$or;
+        delete query.$or;
+        query.$and = [
+          { $or: dbOr },
+          { $or: searchOr }
+        ];
+      } else {
+        query.$or = searchOr;
       }
     }
 

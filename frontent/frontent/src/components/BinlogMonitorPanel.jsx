@@ -124,7 +124,11 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   const fetchAuditHistory = async () => {
     try {
       setHistoryLoading(true);
-      const params = {};
+      const params = {
+        filterType,
+        searchQuery: searchQuery || '',
+        database: database || ''
+      };
       if (timeFilter !== 'ALL') {
         params.timeFilter = timeFilter;
         if (timeFilter === 'custom') {
@@ -143,7 +147,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
 
   useEffect(() => {
     fetchAuditHistory();
-  }, [timeFilter, customStartDate, customEndDate, connectionId]);
+  }, [timeFilter, customStartDate, customEndDate, connectionId, filterType, searchQuery, database]);
 
   const deleteMongoAuditLogs = async () => {
     if (!window.confirm('Are you sure you want to clear the database query history?')) return;
