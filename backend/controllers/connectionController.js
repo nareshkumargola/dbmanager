@@ -365,8 +365,8 @@ exports.runQuery = async (req, res) => {
           dbUser = connection.username;
         }
 
-        const BinlogAudit = getBinlogAuditModel(connection, activeDatabaseName, eventType);
-        const auditRecord = await BinlogAudit.create({
+        const BinlogAuditTable = getBinlogAuditModel(connection, activeDatabaseName, 'INSERT');
+        const auditRecord = await BinlogAuditTable.create({
           connectionId: id,
           eventType,
           statement: clean,
@@ -378,10 +378,25 @@ exports.runQuery = async (req, res) => {
           dbUser
         });
 
+        if (eventType === 'SP') {
+          const BinlogAuditSP = getBinlogAuditModel(connection, activeDatabaseName, 'SP');
+          await BinlogAuditSP.create({
+            connectionId: id,
+            eventType,
+            statement: clean,
+            originalType: 'Query Editor',
+            pos: 0,
+            logName: 'Query Editor',
+            user: req.user.id || null,
+            diff,
+            dbUser
+          });
+        }
+
         // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
         const io = req.app.get('io');
         if (io) {
-          const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+          const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
           io.to(`connection_${id}`).emit('binlog_events', {
             events: [{
               _id: populatedRecord._id,
@@ -965,9 +980,9 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         selected.diff.database = connection.database || 'test';
       }
 
-      const BinlogAudit = getBinlogAuditModel(connection, connection.database || 'test', selected.type);
+      const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
 
-      const auditRecord = await BinlogAudit.create({
+      const auditRecord = await BinlogAuditTable.create({
         connectionId,
         eventType: selected.type,
         statement: selected.statement,
@@ -979,7 +994,22 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         dbUser
       });
 
-      const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+      if (selected.type === 'SP') {
+        const BinlogAuditSP = getBinlogAuditModel(connection, connection.database || 'test', 'SP');
+        await BinlogAuditSP.create({
+          connectionId,
+          eventType: selected.type,
+          statement: selected.statement,
+          originalType: 'Query (Simulated)',
+          pos: startPos,
+          logName: activeFile,
+          user: userId || null,
+          diff: selected.diff,
+          dbUser
+        });
+      }
+
+      const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
       events.push({
         _id: populatedRecord._id,
         eventType: populatedRecord.eventType,
@@ -1149,9 +1179,9 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           };
         }
 
-        const BinlogAudit = getBinlogAuditModel(connection, finalDbName, parsed.eventType);
+        const BinlogAuditTable = getBinlogAuditModel(connection, finalDbName, 'INSERT');
 
-        const auditRecord = await BinlogAudit.create({
+        const auditRecord = await BinlogAuditTable.create({
           connectionId,
           eventType: parsed.eventType,
           statement: parsed.statement,
@@ -1163,7 +1193,22 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           dbUser
         });
 
-        const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+        if (parsed.eventType === 'SP') {
+          const BinlogAuditSP = getBinlogAuditModel(connection, finalDbName, 'SP');
+          await BinlogAuditSP.create({
+            connectionId,
+            eventType: parsed.eventType,
+            statement: parsed.statement,
+            originalType: parsed.originalType,
+            pos: parsed.pos,
+            logName: parsed.logName,
+            user: userId || null,
+            diff,
+            dbUser
+          });
+        }
+
+        const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
         events.push({
           _id: populatedRecord._id,
           eventType: populatedRecord.eventType,
@@ -1325,20 +1370,14 @@ exports.getBinlogHistory = async (req, res) => {
     const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
 
     let history = [];
-    if (!filterType || filterType === 'ALL') {
-      const TableAudit = getBinlogAuditModel(connection, targetDbName, 'INSERT');
-      const SPAudit = getBinlogAuditModel(connection, targetDbName, 'SP');
-
-      const [tableHistory, spHistory] = await Promise.all([
-        TableAudit.find(query).populate('user', 'name email').sort({ timestamp: -1 }).limit(limitVal),
-        SPAudit.find(query).populate('user', 'name email').sort({ timestamp: -1 }).limit(limitVal)
-      ]);
-
-      history = [...tableHistory, ...spHistory]
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-        .slice(0, limitVal);
+    if (filterType === 'SP') {
+      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, 'SP');
+      history = await BinlogAudit.find(query)
+        .populate('user', 'name email')
+        .sort({ timestamp: -1 })
+        .limit(limitVal);
     } else {
-      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, filterType);
+      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, 'INSERT');
       history = await BinlogAudit.find(query)
         .populate('user', 'name email')
         .sort({ timestamp: -1 })

@@ -191,8 +191,8 @@ exports.runMysqlQuery = async (req, res) => {
         }
 
         const { getBinlogAuditModel } = require('../models/binlogAuditModel');
-        const BinlogAudit = getBinlogAuditModel(connectionDoc, activeDatabaseName, eventType);
-        const auditRecord = await BinlogAudit.create({
+        const BinlogAuditTable = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'INSERT');
+        const auditRecord = await BinlogAuditTable.create({
           connectionId,
           eventType,
           statement: clean,
@@ -204,10 +204,25 @@ exports.runMysqlQuery = async (req, res) => {
           dbUser
         });
 
+        if (eventType === 'SP') {
+          const BinlogAuditSP = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'SP');
+          await BinlogAuditSP.create({
+            connectionId,
+            eventType,
+            statement: clean,
+            originalType: 'Query Editor',
+            pos: 0,
+            logName: 'Query Editor',
+            user: req.user.id || null,
+            diff,
+            dbUser
+          });
+        }
+
         // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
         const io = req.app.get('io');
         if (io) {
-          const populatedRecord = await BinlogAudit.findById(auditRecord._id).populate('user', 'name email');
+          const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
           io.to(`connection_${connectionId}`).emit('binlog_events', {
             events: [{
               _id: populatedRecord._id,
