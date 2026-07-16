@@ -45,9 +45,22 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     pauseFeedRef.current = pauseFeed;
   }, [pauseFeed]);
 
+  const stopMonitoring = async () => {
+    try {
+      setMonitoring(false);
+      socket.emit('stop_binlog_monitoring', { connectionId });
+      await API.post(`/connections/${connectionId}/binlog/stop`);
+    } catch (err) {
+      console.error('Failed to stop live monitoring:', err);
+    }
+  };
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterType, timeFilter]);
+    if (filterType !== 'ALL' || timeFilter !== 'ALL' || searchQuery.trim() !== '') {
+      stopMonitoring();
+    }
+  }, [filterType, timeFilter, searchQuery]);
 
   // Connect socket, fetch audit history and start monitoring automatically
   useEffect(() => {
@@ -313,96 +326,83 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       )}
 
       {showFilters && (
-        <>
-          {/* Advanced Filters & Search Bar */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4 flex-1">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative w-full md:w-80">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
               <input
                 type="text"
                 placeholder="Search query, table, or user..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
+                className="w-full pl-9 pr-4 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
               />
             </div>
 
-            {/* Operation Type Filters */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'].map((type) => (
-                <button
-                  key={type}
-                  onClick={() => setFilterType(type)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
-                    filterType === type
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
+            {/* Operation Type Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Type:</span>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-750 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'].map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
             </div>
-          </div>
 
-          {/* Date/Time Filter Panel */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Time Filter:</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[
-                    { label: 'All Time', value: 'ALL' },
-                    { label: '1 Hour', value: '1hour' },
-                    { label: '3 Hours', value: '3hour' },
-                    { label: '6 Hours', value: '6hour' },
-                    { label: '12 Hours', value: '12hour' },
-                    { label: '24 Hours', value: '24hour' },
-                    { label: '1 Month', value: '1month' },
-                    { label: '3 Months', value: '3month' },
-                    { label: 'Custom Range', value: 'custom' }
-                  ].map((rangeOpt) => (
-                    <button
-                      key={rangeOpt.value}
-                      onClick={() => setTimeFilter(rangeOpt.value)}
-                      className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition ${
-                        timeFilter === rangeOpt.value
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                      }`}
-                    >
-                      {rangeOpt.label}
-                    </button>
-                  ))}
+            {/* Time Filter Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Time:</span>
+              <select
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-750 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                {[
+                  { label: 'All Time', value: 'ALL' },
+                  { label: '1 Hour', value: '1hour' },
+                  { label: '3 Hours', value: '3hour' },
+                  { label: '6 Hours', value: '6hour' },
+                  { label: '12 Hours', value: '12hour' },
+                  { label: '24 Hours', value: '24hour' },
+                  { label: '1 Month', value: '1month' },
+                  { label: '3 Months', value: '3month' },
+                  { label: 'Custom Range', value: 'custom' }
+                ].map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom Date Picker Inputs */}
+            {timeFilter === 'custom' && (
+              <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
+                  />
                 </div>
               </div>
-
-              {timeFilter === 'custom' && (
-                <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-2 rounded-xl border border-gray-200/50">
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-medium text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
-        </>
+        </div>
       )}
 
       {/* Transaction Activity Graph */}

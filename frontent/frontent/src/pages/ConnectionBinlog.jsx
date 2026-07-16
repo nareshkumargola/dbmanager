@@ -137,10 +137,9 @@ export default function ConnectionBinlog() {
         {/* Sidebar Toggle Button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-250 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-850 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
+          className="absolute top-4 z-20 w-6 h-6 bg-white border border-gray-250 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-850 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
           style={{
             left: sidebarOpen ? '252px' : '4px',
-            transform: 'translateY(-50%)',
           }}
           title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
         >
@@ -159,12 +158,6 @@ export default function ConnectionBinlog() {
         <div className="flex-1 p-6 overflow-y-auto bg-gray-50/30">
           {selectedDb ? (
             <div className="max-w-6xl mx-auto space-y-4">
-              <div className="bg-white px-5 py-3.5 border border-gray-200 rounded-xl shadow-xs flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-bold text-gray-900">Active Filter: <span className="font-mono bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-xs border border-gray-200">{selectedDb}</span></h2>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Showing queries and writes made specifically on database schema "{selectedDb}".</p>
-                </div>
-              </div>
               <BinlogMonitorPanel connectionId={id} database={selectedDb} connectionType={connectionType} />
             </div>
           ) : (
