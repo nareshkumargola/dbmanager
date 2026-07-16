@@ -392,7 +392,17 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
             </div>
           )}
         </div>
+
+        {/* Manage Binlog Auditing Configuration Button */}
+        <div className="flex items-center">
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="px-3 py-1.5 border border-gray-250 text-xs font-bold rounded-lg hover:bg-gray-50 bg-white text-gray-700 transition flex items-center gap-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <span>⚙️</span> Manage Binlog
+          </button>
       </div>
+    </div>
 
       {/* Transaction Activity Graph */}
       {(() => {
