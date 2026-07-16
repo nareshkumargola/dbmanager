@@ -283,127 +283,84 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
 
   return (
     <div className="space-y-6">
-      {/* Top Banner and Controls */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-gray-900">📡 {connectionType === 'mongodb' ? 'Oplog' : (connectionType === 'postgresql' ? 'WAL' : 'Binlog')} Query History & Logs</h2>
-            {monitoring ? (
-              <span className="flex items-center gap-1.5 px-2.5 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
-                <span className="w-2 h-2 rounded-full bg-green-600 animate-pulse"></span>
-                Live
-              </span>
-            ) : loading ? (
-              <span className="flex items-center gap-1.5 px-2.5 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full text-xs font-semibold animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-yellow-550"></span>
-                Connecting...
-              </span>
-            ) : null}
+      {/* Permanently shown Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-4 flex-1">
+          {/* Search Input */}
+          <div className="relative w-full md:w-80">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
+            <input
+              type="text"
+              placeholder="Search query, table, or user..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
+            />
           </div>
-          <p className="text-sm text-gray-500 mt-1">
-            View the live record and audit history of queries executed on this database here.
-          </p>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-2 border text-sm font-medium rounded-lg transition flex items-center gap-1.5 ${
-              showFilters
-                ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 shadow-xs'
-                : 'border-gray-250 text-gray-700 hover:bg-gray-50 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
-            }`}
-          >
-            <span>🔍</span> {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </button>
+          {/* Operation Type Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Type:</span>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-755 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'].map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Time Filter Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Time:</span>
+            <select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-755 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {[
+                { label: 'All Time', value: 'ALL' },
+                { label: '1 Hour', value: '1hour' },
+                { label: '3 Hours', value: '3hour' },
+                { label: '6 Hours', value: '6hour' },
+                { label: '12 Hours', value: '12hour' },
+                { label: '24 Hours', value: '24hour' },
+                { label: '1 Month', value: '1month' },
+                { label: '3 Months', value: '3month' },
+                { label: 'Custom Range', value: 'custom' }
+              ].map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Custom Date Picker Inputs */}
+          {timeFilter === 'custom' && (
+            <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
-          <span>❌</span> {error}
-        </div>
-      )}
-
-      {showFilters && (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4 flex-1">
-            {/* Search Input */}
-            <div className="relative w-full md:w-80">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">🔍</span>
-              <input
-                type="text"
-                placeholder="Search query, table, or user..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-gray-400 transition"
-              />
-            </div>
-
-            {/* Operation Type Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Type:</span>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-750 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                {['ALL', 'INSERT', 'UPDATE', 'DELETE', 'DDL', 'SP', 'OTHER'].map((type) => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Time Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-405 uppercase tracking-wider">Time:</span>
-              <select
-                value={timeFilter}
-                onChange={(e) => setTimeFilter(e.target.value)}
-                className="px-2.5 py-1.5 text-xs font-semibold bg-white border border-gray-200 text-gray-750 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                {[
-                  { label: 'All Time', value: 'ALL' },
-                  { label: '1 Hour', value: '1hour' },
-                  { label: '3 Hours', value: '3hour' },
-                  { label: '6 Hours', value: '6hour' },
-                  { label: '12 Hours', value: '12hour' },
-                  { label: '24 Hours', value: '24hour' },
-                  { label: '1 Month', value: '1month' },
-                  { label: '3 Months', value: '3month' },
-                  { label: 'Custom Range', value: 'custom' }
-                ].map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Custom Date Picker Inputs */}
-            {timeFilter === 'custom' && (
-              <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">Start:</label>
-                  <input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
-                  />
-                </div>
-                <div className="flex items-center gap-1">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase">End:</label>
-                  <input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 focus:outline-none"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Transaction Activity Graph */}
       {(() => {
@@ -500,6 +457,17 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-md font-bold text-gray-900">Query History Logs</h3>
+            {monitoring ? (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[10px] font-bold animate-fade-in">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse"></span>
+                Live
+              </span>
+            ) : loading ? (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full text-[10px] font-bold animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-550"></span>
+                Connecting...
+              </span>
+            ) : null}
             <button
               onClick={() => setPauseFeed(!pauseFeed)}
               className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition flex items-center gap-1.5 ${
