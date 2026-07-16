@@ -365,20 +365,25 @@ exports.runQuery = async (req, res) => {
           dbUser = connection.username;
         }
 
-        const BinlogAuditTable = getBinlogAuditModel(connection, activeDatabaseName, 'INSERT');
-        const auditRecord = await BinlogAuditTable.create({
-          connectionId: id,
-          eventType,
-          statement: clean,
-          originalType: 'Query Editor',
-          pos: 0,
-          logName: 'Query Editor',
-          user: req.user.id || null,
-          diff,
-          dbUser
-        });
+        const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
 
-        if (eventType === 'SP') {
+        let auditRecord = null;
+        if (filterSettings[eventType]) {
+          const BinlogAuditTable = getBinlogAuditModel(connection, activeDatabaseName, 'INSERT');
+          auditRecord = await BinlogAuditTable.create({
+            connectionId: id,
+            eventType,
+            statement: clean,
+            originalType: 'Query Editor',
+            pos: 0,
+            logName: 'Query Editor',
+            user: req.user.id || null,
+            diff,
+            dbUser
+          });
+        }
+
+        if (eventType === 'SP' && filterSettings['SP']) {
           const BinlogAuditSP = getBinlogAuditModel(connection, activeDatabaseName, 'SP');
           await BinlogAuditSP.create({
             connectionId: id,
@@ -395,7 +400,8 @@ exports.runQuery = async (req, res) => {
 
         // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
         const io = req.app.get('io');
-        if (io) {
+        if (io && auditRecord) {
+          const BinlogAuditTable = getBinlogAuditModel(connection, activeDatabaseName, 'INSERT');
           const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
           io.to(`connection_${id}`).emit('binlog_events', {
             events: [{
@@ -980,21 +986,25 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         selected.diff.database = connection.database || 'test';
       }
 
-      const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
+      const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
 
-      const auditRecord = await BinlogAuditTable.create({
-        connectionId,
-        eventType: selected.type,
-        statement: selected.statement,
-        originalType: 'Query (Simulated)',
-        pos: startPos,
-        logName: activeFile,
-        user: userId || null,
-        diff: selected.diff,
-        dbUser
-      });
+      let auditRecord = null;
+      if (filterSettings[selected.type]) {
+        const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
+        auditRecord = await BinlogAuditTable.create({
+          connectionId,
+          eventType: selected.type,
+          statement: selected.statement,
+          originalType: 'Query (Simulated)',
+          pos: startPos,
+          logName: activeFile,
+          user: userId || null,
+          diff: selected.diff,
+          dbUser
+        });
+      }
 
-      if (selected.type === 'SP') {
+      if (selected.type === 'SP' && filterSettings['SP']) {
         const BinlogAuditSP = getBinlogAuditModel(connection, connection.database || 'test', 'SP');
         await BinlogAuditSP.create({
           connectionId,
@@ -1009,19 +1019,22 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         });
       }
 
-      const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
-      events.push({
-        _id: populatedRecord._id,
-        eventType: populatedRecord.eventType,
-        statement: populatedRecord.statement,
-        originalType: populatedRecord.originalType,
-        pos: populatedRecord.pos,
-        logName: populatedRecord.logName,
-        timestamp: populatedRecord.timestamp,
-        user: populatedRecord.user,
-        diff: populatedRecord.diff,
-        dbUser: populatedRecord.dbUser
-      });
+      if (auditRecord) {
+        const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
+        const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
+        events.push({
+          _id: populatedRecord._id,
+          eventType: populatedRecord.eventType,
+          statement: populatedRecord.statement,
+          originalType: populatedRecord.originalType,
+          pos: populatedRecord.pos,
+          logName: populatedRecord.logName,
+          timestamp: populatedRecord.timestamp,
+          user: populatedRecord.user,
+          diff: populatedRecord.diff,
+          dbUser: populatedRecord.dbUser
+        });
+      }
     }
 
     return {
@@ -1179,21 +1192,25 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           };
         }
 
-        const BinlogAuditTable = getBinlogAuditModel(connection, finalDbName, 'INSERT');
+        const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
 
-        const auditRecord = await BinlogAuditTable.create({
-          connectionId,
-          eventType: parsed.eventType,
-          statement: parsed.statement,
-          originalType: parsed.originalType,
-          pos: parsed.pos,
-          logName: parsed.logName,
-          user: userId || null,
-          diff,
-          dbUser
-        });
+        let auditRecord = null;
+        if (filterSettings[parsed.eventType]) {
+          const BinlogAuditTable = getBinlogAuditModel(connection, finalDbName, 'INSERT');
+          auditRecord = await BinlogAuditTable.create({
+            connectionId,
+            eventType: parsed.eventType,
+            statement: parsed.statement,
+            originalType: parsed.originalType,
+            pos: parsed.pos,
+            logName: parsed.logName,
+            user: userId || null,
+            diff,
+            dbUser
+          });
+        }
 
-        if (parsed.eventType === 'SP') {
+        if (parsed.eventType === 'SP' && filterSettings['SP']) {
           const BinlogAuditSP = getBinlogAuditModel(connection, finalDbName, 'SP');
           await BinlogAuditSP.create({
             connectionId,
@@ -1208,19 +1225,22 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           });
         }
 
-        const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
-        events.push({
-          _id: populatedRecord._id,
-          eventType: populatedRecord.eventType,
-          statement: populatedRecord.statement,
-          originalType: populatedRecord.originalType,
-          pos: populatedRecord.pos,
-          logName: populatedRecord.logName,
-          timestamp: populatedRecord.timestamp,
-          user: populatedRecord.user,
-          diff: populatedRecord.diff,
-          dbUser: populatedRecord.dbUser
-        });
+        if (auditRecord) {
+          const BinlogAuditTable = getBinlogAuditModel(connection, finalDbName, 'INSERT');
+          const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
+          events.push({
+            _id: populatedRecord._id,
+            eventType: populatedRecord.eventType,
+            statement: populatedRecord.statement,
+            originalType: populatedRecord.originalType,
+            pos: populatedRecord.pos,
+            logName: populatedRecord.logName,
+            timestamp: populatedRecord.timestamp,
+            user: populatedRecord.user,
+            diff: populatedRecord.diff,
+            dbUser: populatedRecord.dbUser
+          });
+        }
       }
       
       nextPosition = row.End_log_pos;
@@ -1514,7 +1534,7 @@ exports.getConnectionById = async (req, res) => {
 exports.updateConnectionSettings = async (req, res) => {
   try {
     const { id } = req.params;
-    const { slowQueryThreshold } = req.body;
+    const { slowQueryThreshold, binlogFilterSettings } = req.body;
     
     const connection = await Connection.findById(id);
     if (!connection) {
@@ -1527,6 +1547,17 @@ exports.updateConnectionSettings = async (req, res) => {
 
     if (slowQueryThreshold !== undefined) {
       connection.slowQueryThreshold = parseInt(slowQueryThreshold) || 100;
+    }
+
+    if (binlogFilterSettings !== undefined) {
+      connection.binlogFilterSettings = {
+        INSERT: !!binlogFilterSettings.INSERT,
+        UPDATE: !!binlogFilterSettings.UPDATE,
+        DELETE: !!binlogFilterSettings.DELETE,
+        DDL: !!binlogFilterSettings.DDL,
+        SP: !!binlogFilterSettings.SP,
+        OTHER: !!binlogFilterSettings.OTHER
+      };
     }
 
     await connection.save();

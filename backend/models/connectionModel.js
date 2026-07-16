@@ -39,6 +39,14 @@ const connectionSchema = new mongoose.Schema({
   alertSlackWebhook: { type: String, default: null },
   alertThreshold: { type: Number, default: 90 },
   slowQueryThreshold: { type: Number, default: 100 },
+  binlogFilterSettings: {
+    INSERT: { type: Boolean, default: true },
+    UPDATE: { type: Boolean, default: true },
+    DELETE: { type: Boolean, default: true },
+    DDL: { type: Boolean, default: true },
+    SP: { type: Boolean, default: true },
+    OTHER: { type: Boolean, default: true },
+  },
 
   createdAt: {
     type: Date,

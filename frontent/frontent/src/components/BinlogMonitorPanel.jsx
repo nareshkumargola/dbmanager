@@ -35,6 +35,16 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   // Interactive UI States
   const [selectedEvent, setSelectedEvent] = useState(null); // Details Inspector Modal
   const [expandedDiffs, setExpandedDiffs] = useState({});
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [filterSettings, setFilterSettings] = useState({
+    INSERT: true,
+    UPDATE: true,
+    DELETE: true,
+    DDL: true,
+    SP: true,
+    OTHER: true
+  });
 
   // Pagination States
   const [currentPage, setCurrentPage] = useState(1);
@@ -133,6 +143,28 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       setMonitoring(false);
     };
   }, [connectionId, authUser]);
+
+  useEffect(() => {
+    const fetchConnectionSettings = async () => {
+      try {
+        const res = await API.get(`/connections/${connectionId}`);
+        if (res.data.success && res.data.connection) {
+          const settings = res.data.connection.binlogFilterSettings || {
+            INSERT: true,
+            UPDATE: true,
+            DELETE: true,
+            DDL: true,
+            SP: true,
+            OTHER: true
+          };
+          setFilterSettings(settings);
+        }
+      } catch (err) {
+        console.error('Failed to fetch filter settings:', err);
+      }
+    };
+    fetchConnectionSettings();
+  }, [connectionId]);
 
   const fetchAuditHistory = async () => {
     try {
@@ -479,6 +511,12 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
               <span>{pauseFeed ? '▶️' : '⏸️'}</span>
               {pauseFeed ? 'Resume Stream' : 'Live Stream Active'}
             </button>
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-gray-250 bg-white hover:bg-gray-50 text-gray-700 transition flex items-center gap-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <span>⚙️</span> Manage Binlog
+            </button>
           </div>
           <span className="text-xs text-gray-500 font-medium">
             Showing {filteredAuditHistory.length} of {auditHistory.length} events
@@ -737,6 +775,91 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
                 className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition"
               >
                 Close Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Manage Binlog Auditing Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-gray-200 w-full max-w-md p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                ⚙️ Manage Binlog Auditing
+              </h3>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="text-gray-400 hover:text-gray-650 transition text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Select which query operations you want to capture and store in the MongoDB audit logs. Unchecked events will be ignored.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 py-2">
+              {[
+                { label: 'Insert Queries', key: 'INSERT', desc: 'New row/doc writes' },
+                { label: 'Update Queries', key: 'UPDATE', desc: 'Row/doc updates' },
+                { label: 'Delete Queries', key: 'DELETE', desc: 'Row/doc removals' },
+                { label: 'DDL Changes', key: 'DDL', desc: 'Table/schema mutations' },
+                { label: 'Stored Proc (SP)', key: 'SP', desc: 'Stored Procedure runs' },
+                { label: 'Other Queries', key: 'OTHER', desc: 'General statements' },
+              ].map((opt) => (
+                <label
+                  key={opt.key}
+                  className="flex items-start gap-3 p-3 bg-gray-50/50 hover:bg-gray-50 border border-gray-150 rounded-xl cursor-pointer transition select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!filterSettings[opt.key]}
+                    onChange={(e) =>
+                      setFilterSettings((prev) => ({
+                        ...prev,
+                        [opt.key]: e.target.checked,
+                      }))
+                    }
+                    className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-gray-800 block">{opt.label}</span>
+                    <span className="text-[10px] text-gray-400 font-medium block">{opt.desc}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                disabled={savingSettings}
+                className="px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    setSavingSettings(true);
+                    await API.put(`/connections/${connectionId}/settings`, {
+                      binlogFilterSettings: filterSettings,
+                    });
+                    setShowSettingsModal(false);
+                    alert('Binlog auditing configurations updated successfully!');
+                  } catch (err) {
+                    alert('Failed to save auditing configurations.');
+                  } finally {
+                    setSavingSettings(false);
+                  }
+                }}
+                disabled={savingSettings}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-750 disabled:bg-blue-400 rounded-lg transition shadow-xs flex items-center gap-1.5"
+              >
+                {savingSettings && <span className="inline-block animate-spin text-[10px]">⚙️</span>}
+                Save Settings
               </button>
             </div>
           </div>

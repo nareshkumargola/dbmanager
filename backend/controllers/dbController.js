@@ -191,20 +191,25 @@ exports.runMysqlQuery = async (req, res) => {
         }
 
         const { getBinlogAuditModel } = require('../models/binlogAuditModel');
-        const BinlogAuditTable = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'INSERT');
-        const auditRecord = await BinlogAuditTable.create({
-          connectionId,
-          eventType,
-          statement: clean,
-          originalType: 'Query Editor',
-          pos: 0,
-          logName: 'Query Editor',
-          user: req.user.id || null,
-          diff,
-          dbUser
-        });
+        const filterSettings = connectionDoc.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
 
-        if (eventType === 'SP') {
+        let auditRecord = null;
+        if (filterSettings[eventType]) {
+          const BinlogAuditTable = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'INSERT');
+          auditRecord = await BinlogAuditTable.create({
+            connectionId,
+            eventType,
+            statement: clean,
+            originalType: 'Query Editor',
+            pos: 0,
+            logName: 'Query Editor',
+            user: req.user.id || null,
+            diff,
+            dbUser
+          });
+        }
+
+        if (eventType === 'SP' && filterSettings['SP']) {
           const BinlogAuditSP = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'SP');
           await BinlogAuditSP.create({
             connectionId,
@@ -221,7 +226,8 @@ exports.runMysqlQuery = async (req, res) => {
 
         // Broadcast to the connection's room over Socket.io so the frontend updates instantly!
         const io = req.app.get('io');
-        if (io) {
+        if (io && auditRecord) {
+          const BinlogAuditTable = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'INSERT');
           const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
           io.to(`connection_${connectionId}`).emit('binlog_events', {
             events: [{
