@@ -43,18 +43,47 @@ const binlogAuditSchema = new mongoose.Schema({
 // Index for query optimization on connection specific collections
 binlogAuditSchema.index({ timestamp: -1 });
 
-const getBinlogAuditModel = (connectionId) => {
-  if (!connectionId) {
-    throw new Error('Connection ID is required to resolve binlog audit collection!');
+const slugifyName = (name) => {
+  if (!name) return 'default';
+  return name
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+};
+
+const getBinlogAuditModel = (connectionDoc, databaseSchemaName, eventType) => {
+  if (!connectionDoc) {
+    throw new Error('Connection details are required to resolve binlog audit database!');
   }
-  const cleanId = connectionId.toString();
-  const collectionName = `binlogaudit_${cleanId}`;
+
+  let connId = '';
+  let connName = 'default';
+  let defaultDb = 'test';
+
+  if (connectionDoc._id || connectionDoc.id) {
+    connId = (connectionDoc._id || connectionDoc.id).toString();
+    connName = connectionDoc.name || 'default';
+    defaultDb = connectionDoc.database || 'test';
+  } else {
+    connId = connectionDoc.toString();
+  }
+
+  const machineName = slugifyName(connName);
+  const dbSchemaName = slugifyName(databaseSchemaName || defaultDb);
+  const suffix = eventType === 'SP' ? 'sp' : 'table';
+
+  const targetDbName = `${machineName}_${dbSchemaName}_${suffix}`;
   
-  if (mongoose.models[collectionName]) {
-    return mongoose.models[collectionName];
+  const targetDb = mongoose.connection.useDb(targetDbName, { useCache: true });
+  const collectionName = 'binlogaudits';
+  
+  if (targetDb.models['BinlogAudit']) {
+    return targetDb.models['BinlogAudit'];
   }
   
-  return mongoose.model(collectionName, binlogAuditSchema, collectionName);
+  return targetDb.model('BinlogAudit', binlogAuditSchema, collectionName);
 };
 
 module.exports = {

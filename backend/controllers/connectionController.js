@@ -365,7 +365,7 @@ exports.runQuery = async (req, res) => {
           dbUser = connection.username;
         }
 
-        const BinlogAudit = getBinlogAuditModel(id);
+        const BinlogAudit = getBinlogAuditModel(connection, activeDatabaseName, eventType);
         const auditRecord = await BinlogAudit.create({
           connectionId: id,
           eventType,
@@ -877,7 +877,6 @@ const parseSQLDiff = (statement, eventType) => {
 // Internal poller accessible by HTTP controller and Socket.io setup
 exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode, userId) => {
   const Connection = require('../models/connectionModel');
-  const BinlogAudit = getBinlogAuditModel(connectionId);
   const { getConnection } = require('../connections/connectionManager');
 
   const connection = await Connection.findById(connectionId);
@@ -965,6 +964,8 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
       if (selected.diff) {
         selected.diff.database = connection.database || 'test';
       }
+
+      const BinlogAudit = getBinlogAuditModel(connection, connection.database || 'test', selected.type);
 
       const auditRecord = await BinlogAudit.create({
         connectionId,
@@ -1148,6 +1149,8 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
           };
         }
 
+        const BinlogAudit = getBinlogAuditModel(connection, finalDbName, parsed.eventType);
+
         const auditRecord = await BinlogAudit.create({
           connectionId,
           eventType: parsed.eventType,
@@ -1318,14 +1321,29 @@ exports.getBinlogHistory = async (req, res) => {
       }
     }
 
-    const BinlogAudit = getBinlogAuditModel(id);
-
+    const targetDbName = reqDatabase || connection.database || 'test';
     const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
 
-    const history = await BinlogAudit.find(query)
-      .populate('user', 'name email')
-      .sort({ timestamp: -1 })
-      .limit(limitVal);
+    let history = [];
+    if (!filterType || filterType === 'ALL') {
+      const TableAudit = getBinlogAuditModel(connection, targetDbName, 'INSERT');
+      const SPAudit = getBinlogAuditModel(connection, targetDbName, 'SP');
+
+      const [tableHistory, spHistory] = await Promise.all([
+        TableAudit.find(query).populate('user', 'name email').sort({ timestamp: -1 }).limit(limitVal),
+        SPAudit.find(query).populate('user', 'name email').sort({ timestamp: -1 }).limit(limitVal)
+      ]);
+
+      history = [...tableHistory, ...spHistory]
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limitVal);
+    } else {
+      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, filterType);
+      history = await BinlogAudit.find(query)
+        .populate('user', 'name email')
+        .sort({ timestamp: -1 })
+        .limit(limitVal);
+    }
 
     res.status(200).json({ success: true, history });
   } catch (err) {
@@ -1346,8 +1364,14 @@ exports.clearBinlogHistory = async (req, res) => {
       return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
     }
 
-    const BinlogAudit = getBinlogAuditModel(id);
-    await BinlogAudit.deleteMany({ connectionId: id });
+    const targetDbName = connection.database || 'test';
+    const TableAudit = getBinlogAuditModel(connection, targetDbName, 'INSERT');
+    const SPAudit = getBinlogAuditModel(connection, targetDbName, 'SP');
+
+    await Promise.all([
+      TableAudit.deleteMany({ connectionId: id }),
+      SPAudit.deleteMany({ connectionId: id })
+    ]);
 
     res.status(200).json({ success: true, message: 'Binlog audit log history cleared successfully!' });
   } catch (err) {
