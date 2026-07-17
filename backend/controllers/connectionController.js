@@ -1,7 +1,7 @@
 const Connection = require('../models/connectionModel');
 const { getConnection, testConnection, closeConnection } = require('../connections/connectionManager');
 const { saveHistory } = require('./queryHistoryController');
-const { getBinlogAuditModel } = require('../models/binlogAuditModel');
+const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 
 const checkAccess = (connection, user) => {
   if (user.role === 'admin') return true;
@@ -366,9 +366,10 @@ exports.runQuery = async (req, res) => {
         }
 
         const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
+        const auditCheckKey = getAuditCheckKey(clean, 'Query');
 
         let auditRecord = null;
-        if (filterSettings[eventType]) {
+        if (filterSettings[auditCheckKey]) {
           const BinlogAuditTable = getBinlogAuditModel(connection, activeDatabaseName, 'INSERT');
           auditRecord = await BinlogAuditTable.create({
             connectionId: id,
@@ -987,9 +988,10 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
       }
 
       const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
+      const auditCheckKey = getAuditCheckKey(selected.statement, 'Query');
 
       let auditRecord = null;
-      if (filterSettings[selected.type]) {
+      if (filterSettings[auditCheckKey]) {
         const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
         auditRecord = await BinlogAuditTable.create({
           connectionId,
@@ -1193,9 +1195,10 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
         }
 
         const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
+        const auditCheckKey = getAuditCheckKey(parsed.statement, parsed.originalType);
 
         let auditRecord = null;
-        if (filterSettings[parsed.eventType]) {
+        if (filterSettings[auditCheckKey]) {
           const BinlogAuditTable = getBinlogAuditModel(connection, finalDbName, 'INSERT');
           auditRecord = await BinlogAuditTable.create({
             connectionId,

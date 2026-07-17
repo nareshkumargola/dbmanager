@@ -37,10 +37,68 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   const [expandedDiffs, setExpandedDiffs] = useState({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [expandedCategory, setExpandedCategory] = useState(0);
   const [filterSettings, setFilterSettings] = useState({
+    // DML (Data Changes)
     INSERT: true,
     UPDATE: true,
     DELETE: true,
+    REPLACE: true,
+    LOAD_DATA_INFILE: true,
+
+    // DDL (Schema Changes)
+    CREATE_DATABASE: true,
+    DROP_DATABASE: true,
+    ALTER_DATABASE: true,
+    CREATE_TABLE: true,
+    DROP_TABLE: true,
+    ALTER_TABLE: true,
+    TRUNCATE_TABLE: true,
+    RENAME_TABLE: true,
+    CREATE_INDEX: true,
+    DROP_INDEX: true,
+    CREATE_VIEW: true,
+    DROP_VIEW: true,
+
+    // Stored Program Objects
+    CREATE_PROCEDURE: true,
+    ALTER_PROCEDURE: true,
+    DROP_PROCEDURE: true,
+    CREATE_FUNCTION: true,
+    ALTER_FUNCTION: true,
+    DROP_FUNCTION: true,
+    CREATE_TRIGGER: true,
+    DROP_TRIGGER: true,
+    CREATE_EVENT: true,
+    ALTER_EVENT: true,
+    DROP_EVENT: true,
+
+    // Transactions
+    BEGIN: true,
+    START_TRANSACTION: true,
+    COMMIT: true,
+    ROLLBACK: true,
+
+    // User & Privileges
+    CREATE_USER: true,
+    ALTER_USER: true,
+    DROP_USER: true,
+    GRANT: true,
+    REVOKE: true,
+    SET_PASSWORD: true,
+
+    // Binlog Event Types
+    QueryEvent: true,
+    TableMapEvent: true,
+    WriteRowsEvent: true,
+    UpdateRowsEvent: true,
+    DeleteRowsEvent: true,
+    XIDEvent: true,
+    RotateEvent: true,
+    FormatDescriptionEvent: true,
+    GTIDEvent: true,
+
+    // Fallbacks
     DDL: true,
     SP: true,
     OTHER: true
@@ -818,37 +876,174 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
               Select which query operations you want to capture and store in the MongoDB audit logs. Unchecked events will be ignored.
             </p>
 
-            <div className="grid grid-cols-2 gap-3 py-2">
-              {[
-                { label: 'Insert Queries', key: 'INSERT', desc: 'New row/doc writes' },
-                { label: 'Update Queries', key: 'UPDATE', desc: 'Row/doc updates' },
-                { label: 'Delete Queries', key: 'DELETE', desc: 'Row/doc removals' },
-                { label: 'DDL Changes', key: 'DDL', desc: 'Table/schema mutations' },
-                { label: 'Stored Proc (SP)', key: 'SP', desc: 'Stored Procedure runs' },
-                { label: 'Other Queries', key: 'OTHER', desc: 'General statements' },
-              ].map((opt) => (
-                <label
-                  key={opt.key}
-                  className="flex items-start gap-3 p-3 bg-gray-50/50 hover:bg-gray-50 border border-gray-150 rounded-xl cursor-pointer transition select-none"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!filterSettings[opt.key]}
-                    onChange={(e) =>
-                      setFilterSettings((prev) => ({
-                        ...prev,
-                        [opt.key]: e.target.checked,
-                      }))
-                    }
-                    className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
-                  />
-                  <div>
-                    <span className="text-xs font-bold text-gray-800 block">{opt.label}</span>
-                    <span className="text-[10px] text-gray-400 font-medium block">{opt.desc}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
+            {(() => {
+              const categories = [
+                {
+                  title: "DML (Data Changes)",
+                  icon: "📝",
+                  items: [
+                    { label: 'INSERT', key: 'INSERT' },
+                    { label: 'UPDATE', key: 'UPDATE' },
+                    { label: 'DELETE', key: 'DELETE' },
+                    { label: 'REPLACE', key: 'REPLACE' },
+                    { label: 'LOAD DATA INFILE', key: 'LOAD_DATA_INFILE' }
+                  ]
+                },
+                {
+                  title: "DDL (Schema Changes)",
+                  icon: "🏗️",
+                  items: [
+                    { label: 'CREATE DATABASE', key: 'CREATE_DATABASE' },
+                    { label: 'DROP DATABASE', key: 'DROP_DATABASE' },
+                    { label: 'ALTER DATABASE', key: 'ALTER_DATABASE' },
+                    { label: 'CREATE TABLE', key: 'CREATE_TABLE' },
+                    { label: 'DROP TABLE', key: 'DROP_TABLE' },
+                    { label: 'ALTER TABLE', key: 'ALTER_TABLE' },
+                    { label: 'TRUNCATE TABLE', key: 'TRUNCATE_TABLE' },
+                    { label: 'RENAME TABLE', key: 'RENAME_TABLE' },
+                    { label: 'CREATE INDEX', key: 'CREATE_INDEX' },
+                    { label: 'DROP INDEX', key: 'DROP_INDEX' },
+                    { label: 'CREATE VIEW', key: 'CREATE_VIEW' },
+                    { label: 'DROP VIEW', key: 'DROP_VIEW' }
+                  ]
+                },
+                {
+                  title: "Stored Program Objects",
+                  icon: "⚙️",
+                  items: [
+                    { label: 'CREATE PROCEDURE', key: 'CREATE_PROCEDURE' },
+                    { label: 'ALTER PROCEDURE', key: 'ALTER_PROCEDURE' },
+                    { label: 'DROP PROCEDURE', key: 'DROP_PROCEDURE' },
+                    { label: 'CREATE FUNCTION', key: 'CREATE_FUNCTION' },
+                    { label: 'ALTER FUNCTION', key: 'ALTER_FUNCTION' },
+                    { label: 'DROP FUNCTION', key: 'DROP_FUNCTION' },
+                    { label: 'CREATE TRIGGER', key: 'CREATE_TRIGGER' },
+                    { label: 'DROP TRIGGER', key: 'DROP_TRIGGER' },
+                    { label: 'CREATE EVENT', key: 'CREATE_EVENT' },
+                    { label: 'ALTER EVENT', key: 'ALTER_EVENT' },
+                    { label: 'DROP EVENT', key: 'DROP_EVENT' }
+                  ]
+                },
+                {
+                  title: "Transactions",
+                  icon: "🔄",
+                  items: [
+                    { label: 'BEGIN', key: 'BEGIN' },
+                    { label: 'START TRANSACTION', key: 'START_TRANSACTION' },
+                    { label: 'COMMIT', key: 'COMMIT' },
+                    { label: 'ROLLBACK', key: 'ROLLBACK' }
+                  ]
+                },
+                {
+                  title: "User & Privileges",
+                  icon: "👤",
+                  items: [
+                    { label: 'CREATE USER', key: 'CREATE_USER' },
+                    { label: 'ALTER USER', key: 'ALTER_USER' },
+                    { label: 'DROP USER', key: 'DROP_USER' },
+                    { label: 'GRANT', key: 'GRANT' },
+                    { label: 'REVOKE', key: 'REVOKE' },
+                    { label: 'SET PASSWORD', key: 'SET_PASSWORD' }
+                  ]
+                },
+                {
+                  title: "Binlog Event Types",
+                  icon: "📡",
+                  items: [
+                    { label: 'QueryEvent', key: 'QueryEvent' },
+                    { label: 'TableMapEvent', key: 'TableMapEvent' },
+                    { label: 'WriteRowsEvent', key: 'WriteRowsEvent' },
+                    { label: 'UpdateRowsEvent', key: 'UpdateRowsEvent' },
+                    { label: 'DeleteRowsEvent', key: 'DeleteRowsEvent' },
+                    { label: 'XIDEvent', key: 'XIDEvent' },
+                    { label: 'RotateEvent', key: 'RotateEvent' },
+                    { label: 'FormatDescriptionEvent', key: 'FormatDescriptionEvent' },
+                    { label: 'GTIDEvent', key: 'GTIDEvent' }
+                  ]
+                }
+              ];
+
+              return (
+                <div className="max-h-[360px] overflow-y-auto pr-1 space-y-3">
+                  {categories.map((cat, catIdx) => {
+                    const isExpanded = expandedCategory === catIdx;
+                    return (
+                      <div key={cat.title} className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedCategory(isExpanded ? null : catIdx)}
+                          className="w-full flex items-center justify-between p-3 bg-gray-50/50 hover:bg-gray-50 transition text-left focus:outline-none"
+                        >
+                          <span className="text-xs font-bold text-gray-800 flex items-center gap-2">
+                            <span>{cat.icon}</span> {cat.title}
+                          </span>
+                          <span className="text-xs text-gray-400 font-bold">{isExpanded ? '▲' : '▼'}</span>
+                        </button>
+                        {isExpanded && (
+                          <div className="p-3 bg-white border-t border-gray-150 space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase">
+                              <span>Event Types</span>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newSettings = { ...filterSettings };
+                                    cat.items.forEach(item => {
+                                      newSettings[item.key] = true;
+                                    });
+                                    setFilterSettings(newSettings);
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800"
+                                >
+                                  Select All
+                                </button>
+                                <span>|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newSettings = { ...filterSettings };
+                                    cat.items.forEach(item => {
+                                      newSettings[item.key] = false;
+                                    });
+                                    setFilterSettings(newSettings);
+                                  }}
+                                  className="text-gray-500 hover:text-gray-700"
+                                >
+                                  Deselect All
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                              {cat.items.map((opt) => (
+                                <label
+                                  key={opt.key}
+                                  className="flex items-start gap-2.5 p-2 bg-gray-50/30 hover:bg-gray-50 border border-gray-150 rounded-lg cursor-pointer transition select-none"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={!!filterSettings[opt.key]}
+                                    onChange={(e) =>
+                                      setFilterSettings((prev) => ({
+                                        ...prev,
+                                        [opt.key]: e.target.checked,
+                                      }))
+                                    }
+                                    className="mt-0.5 w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                                  />
+                                  <span className="text-[11px] font-bold text-gray-700 font-mono truncate" title={opt.label}>
+                                    {opt.label}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
               <button

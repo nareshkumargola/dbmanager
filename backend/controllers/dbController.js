@@ -190,11 +190,12 @@ exports.runMysqlQuery = async (req, res) => {
           dbUser = connectionDoc.username;
         }
 
-        const { getBinlogAuditModel } = require('../models/binlogAuditModel');
+        const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
         const filterSettings = connectionDoc.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
+        const auditCheckKey = getAuditCheckKey(clean, 'Query');
 
         let auditRecord = null;
-        if (filterSettings[eventType]) {
+        if (filterSettings[auditCheckKey]) {
           const BinlogAuditTable = getBinlogAuditModel(connectionDoc, activeDatabaseName, 'INSERT');
           auditRecord = await BinlogAuditTable.create({
             connectionId,
