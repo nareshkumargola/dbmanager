@@ -55,11 +55,15 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     pauseFeedRef.current = pauseFeed;
   }, [pauseFeed]);
 
+  const monitoringRef = useRef(monitoring);
+  useEffect(() => {
+    monitoringRef.current = monitoring;
+  }, [monitoring]);
+
   const stopMonitoring = async () => {
     try {
       setMonitoring(false);
       socket.emit('stop_binlog_monitoring', { connectionId });
-      await API.post(`/connections/${connectionId}/binlog/stop`);
     } catch (err) {
       console.error('Failed to stop live monitoring:', err);
     }
@@ -80,8 +84,8 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     socket.emit('join_connection', connectionId);
 
     const handleBinlogEvents = (data) => {
-      // Refresh history when new query events occur
-      if (!pauseFeedRef.current) {
+      // Refresh history when new query events occur if monitoring is active
+      if (monitoringRef.current && !pauseFeedRef.current) {
         fetchAuditHistory();
       }
       if (data.logFile) setLogFile(data.logFile);
