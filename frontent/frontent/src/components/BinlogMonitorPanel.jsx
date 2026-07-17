@@ -69,12 +69,16 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     }
   };
 
+  const isFirstMountRef = useRef(true);
+
   useEffect(() => {
-    setCurrentPage(1);
-    if (filterType !== 'ALL' || timeFilter !== 'ALL' || searchQuery.trim() !== '') {
-      stopMonitoring();
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
     }
-  }, [filterType, timeFilter, searchQuery]);
+    setCurrentPage(1);
+    stopMonitoring();
+  }, [filterType, timeFilter, searchQuery, database]);
 
   // Connect socket, fetch audit history and start monitoring automatically
   useEffect(() => {
