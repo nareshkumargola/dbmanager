@@ -1,4 +1,5 @@
 const SlowQuery = require('../models/slowQueryModel');
+const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } = require('../services/notificationService');
 
 // Slow query threshold — 100ms se zyada = slow
 const SLOW_THRESHOLD = 100;
@@ -45,6 +46,20 @@ exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsE
         rowsExamined,
         suggestion,
       });
+
+      // Send Alert notification if alerts are enabled
+      if (connection && connection.alertsEnabled) {
+        const alertPayload = {
+          connectionName: connection.name,
+          type: 'slow_query',
+          message: `Query execution took ${executionTime}ms (threshold: ${threshold}ms).\nQuery: \`${query.substring(0, 150)}\`...\nSuggestion: ${suggestion}`,
+          severity: 'warning',
+          resolved: false
+        };
+        await sendSlackNotification(connection.alertSlackWebhook, alertPayload);
+        await sendDiscordNotification(connection.alertDiscordWebhook, alertPayload);
+        await sendEmailNotification(connection.alertEmail, alertPayload);
+      }
     }
   } catch (err) {
     console.error('Slow query not saved:', err.message);

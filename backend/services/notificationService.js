@@ -193,3 +193,83 @@ exports.sendEmailNotification = async (emailAddress, alert) => {
     console.log(`[Email Alert] SMTP configuration missing. Simulated email log above.`);
   }
 };
+
+/**
+ * Dispatch an alert payload directly to a Discord Incoming Webhook
+ */
+exports.sendDiscordNotification = (webhookUrl, alert) => {
+  return new Promise((resolve) => {
+    if (!webhookUrl) return resolve();
+
+    try {
+      const parsedUrl = url.parse(webhookUrl);
+      const payload = JSON.stringify({
+        content: `🚨 **Database Alert Notification**`,
+        embeds: [
+          {
+            title: `System Alert: ${alert.severity.toUpperCase()}`,
+            color: alert.resolved ? 3066993 : alert.severity === 'critical' ? 15158332 : 15105570,
+            fields: [
+              {
+                name: "Connection",
+                value: alert.connectionName,
+                inline: true
+              },
+              {
+                name: "Severity",
+                value: alert.severity === 'critical' ? "🔴 CRITICAL" : "🟡 WARNING",
+                inline: true
+              },
+              {
+                name: "Event Type",
+                value: `\`${alert.type}\``,
+                inline: true
+              },
+              {
+                name: "Status",
+                value: alert.resolved ? "✅ RESOLVED" : "⚠️ ACTIVE",
+                inline: true
+              },
+              {
+                name: "Message",
+                value: alert.message
+              }
+            ],
+            footer: {
+              text: `Time: ${new Date().toISOString()}`
+            }
+          }
+        ]
+      });
+
+      const options = {
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.path,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          resolve();
+        });
+      });
+
+      req.on('error', (err) => {
+        console.error('Discord webhook dispatch failed:', err.message);
+        resolve();
+      });
+
+      req.write(payload);
+      req.end();
+    } catch (e) {
+      console.error('Error constructing Discord webhook payload:', e.message);
+      resolve();
+    }
+  });
+};

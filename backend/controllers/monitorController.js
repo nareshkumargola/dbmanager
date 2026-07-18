@@ -488,14 +488,16 @@ exports.resolveAlert = async (req, res) => {
 // ─── SAVE CONNECTION ALERT CONFIGURATIONS ────────────
 exports.updateAlertSettings = async (req, res) => {
   try {
-    const { alertsEnabled, alertEmail, alertSlackWebhook, alertThreshold } = req.body;
+    const { alertsEnabled, alertEmail, alertSlackWebhook, alertDiscordWebhook, alertThreshold, slowQueryThreshold } = req.body;
     const connection = await Connection.findByIdAndUpdate(
       req.params.id,
       {
         alertsEnabled: !!alertsEnabled,
         alertEmail: alertEmail || null,
         alertSlackWebhook: alertSlackWebhook || null,
-        alertThreshold: parseInt(alertThreshold) || 90
+        alertDiscordWebhook: alertDiscordWebhook || null,
+        alertThreshold: parseInt(alertThreshold) || 90,
+        slowQueryThreshold: parseInt(slowQueryThreshold) || 100
       },
       { new: true }
     );
@@ -511,7 +513,9 @@ exports.updateAlertSettings = async (req, res) => {
         alertsEnabled: connection.alertsEnabled,
         alertEmail: connection.alertEmail,
         alertSlackWebhook: connection.alertSlackWebhook,
-        alertThreshold: connection.alertThreshold
+        alertDiscordWebhook: connection.alertDiscordWebhook,
+        alertThreshold: connection.alertThreshold,
+        slowQueryThreshold: connection.slowQueryThreshold
       }
     });
   } catch (err) {

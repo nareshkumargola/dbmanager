@@ -37,6 +37,7 @@ const connectionSchema = new mongoose.Schema({
   alertsEnabled: { type: Boolean, default: false },
   alertEmail: { type: String, default: null },
   alertSlackWebhook: { type: String, default: null },
+  alertDiscordWebhook: { type: String, default: null },
   alertThreshold: { type: Number, default: 90 },
   slowQueryThreshold: { type: Number, default: 100 },
   binlogFilterSettings: {

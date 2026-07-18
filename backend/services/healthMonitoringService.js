@@ -2,7 +2,7 @@ const Connection = require('../models/connectionModel');
 const Alert = require('../models/alertModel');
 const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
 const { getConnection } = require('../connections/connectionManager');
-const { sendSlackNotification, sendEmailNotification } = require('./notificationService');
+const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } = require('./notificationService');
 
 const evaluateConnectionHealth = async (connDoc, io) => {
   let dbConnection = null;
@@ -26,6 +26,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
       };
 
       await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
+      await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
       await sendEmailNotification(connDoc.alertEmail, alertPayload);
       io.emit('alert-resolved', { ...activeDownAlert.toJSON(), connectionName: connDoc.name });
     }
@@ -80,6 +81,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
         };
 
         await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
+        await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
         await sendEmailNotification(connDoc.alertEmail, alertPayload);
         io.emit('new-alert', { ...alert.toJSON(), connectionName: connDoc.name });
       }
@@ -99,6 +101,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
         };
 
         await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
+        await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
         await sendEmailNotification(connDoc.alertEmail, alertPayload);
         io.emit('alert-resolved', { ...activeResourceAlert.toJSON(), connectionName: connDoc.name });
       }
@@ -126,6 +129,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
       };
 
       await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
+      await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
       await sendEmailNotification(connDoc.alertEmail, alertPayload);
       io.emit('new-alert', { ...alert.toJSON(), connectionName: connDoc.name });
     }

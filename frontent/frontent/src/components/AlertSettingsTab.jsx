@@ -5,7 +5,9 @@ export default function AlertSettingsTab({ connectionId }) {
   const [enabled, setEnabled] = useState(false);
   const [email, setEmail] = useState('');
   const [slackWebhook, setSlackWebhook] = useState('');
+  const [discordWebhook, setDiscordWebhook] = useState('');
   const [threshold, setThreshold] = useState(90);
+  const [slowQueryThreshold, setSlowQueryThreshold] = useState(100);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [success, setSuccess] = useState('');
@@ -26,7 +28,9 @@ export default function AlertSettingsTab({ connectionId }) {
         setEnabled(conn.alertsEnabled || false);
         setEmail(conn.alertEmail || '');
         setSlackWebhook(conn.alertSlackWebhook || '');
+        setDiscordWebhook(conn.alertDiscordWebhook || '');
         setThreshold(conn.alertThreshold || 90);
+        setSlowQueryThreshold(conn.slowQueryThreshold || 100);
       }
     } catch (e) {
       console.error(e);
@@ -45,8 +49,10 @@ export default function AlertSettingsTab({ connectionId }) {
       const res = await API.put(`/monitor/${connectionId}/alert-settings`, {
         alertsEnabled: enabled,
         alertEmail: email,
-        alertSlackWebhook: null,
-        alertThreshold: threshold
+        alertSlackWebhook: slackWebhook || null,
+        alertDiscordWebhook: discordWebhook || null,
+        alertThreshold: threshold,
+        slowQueryThreshold: slowQueryThreshold
       });
       setSuccess(res.data.message || 'Alert configurations saved successfully!');
     } catch (err) {
@@ -120,6 +126,34 @@ export default function AlertSettingsTab({ connectionId }) {
               />
             </div>
 
+            {/* Slack Webhook */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Slack Channel Webhook URL
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. https://hooks.slack.com/services/..."
+                value={slackWebhook}
+                onChange={e => setSlackWebhook(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-gray-400 transition"
+              />
+            </div>
+
+            {/* Discord Webhook */}
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                Discord Channel Webhook URL
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. https://discord.com/api/webhooks/..."
+                value={discordWebhook}
+                onChange={e => setDiscordWebhook(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-gray-400 transition"
+              />
+            </div>
+
             {/* Connection Threshold Slider */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
@@ -143,6 +177,33 @@ export default function AlertSettingsTab({ connectionId }) {
               </div>
               <p className="text-[9px] text-gray-400 mt-1 leading-normal">
                 Active connection counts max connections limit ka ye percentage cross karte hi warning trigger hogi.
+              </p>
+            </div>
+
+            {/* Slow Query Warning Threshold Slider */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-bold text-gray-700">
+                  Slow Query Warning Threshold
+                </label>
+                <span className="text-xs font-bold text-[#0d9da4]">
+                  {slowQueryThreshold}ms
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min="50"
+                  max="2000"
+                  step="50"
+                  value={slowQueryThreshold}
+                  onChange={e => setSlowQueryThreshold(parseInt(e.target.value))}
+                  className="flex-grow accent-[#0d9da4] h-1.5 bg-gray-200 rounded-lg cursor-pointer"
+                />
+                <span className="text-[10px] text-gray-400 font-medium font-mono min-w-[20px]">50-2000ms</span>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1 leading-normal">
+                Koi bhi database query execution agar is milliseconds limits se zyada time legi, to warning dispatch ki jayegi.
               </p>
             </div>
           </div>
