@@ -313,18 +313,18 @@ export default function SystemAuditLogsPanel() {
 
           {/* Query type query filter (Select, Insert, etc) */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">SQL Query Type</label>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Query Operation</label>
             <select
               value={queryType}
               onChange={e => setQueryType(e.target.value)}
               className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
               disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY'}
             >
-              <option value="">All SQL Types</option>
-              <option value="select">SELECT Queries</option>
-              <option value="insert">INSERT Queries</option>
-              <option value="update">UPDATE Queries</option>
-              <option value="delete">DELETE / DROP Queries</option>
+              <option value="">All Operations</option>
+              <option value="select">Read / Select (SELECT/FIND)</option>
+              <option value="insert">Write / Insert (INSERT)</option>
+              <option value="update">Write / Update (UPDATE)</option>
+              <option value="delete">Write / Delete (DELETE/DROP)</option>
             </select>
           </div>
 
