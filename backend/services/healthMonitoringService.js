@@ -4,8 +4,21 @@ const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
 const { getConnection } = require('../connections/connectionManager');
 const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } = require('./notificationService');
 
+const resolveRecipientEmails = async (connDoc) => {
+  if (connDoc.alertEmail) return connDoc.alertEmail;
+  try {
+    const User = require('../models/userModel');
+    const admins = await User.find({ role: 'admin' }, 'email');
+    return admins.map(u => u.email).filter(Boolean).join(',');
+  } catch (e) {
+    console.error('Failed to resolve fallback admin emails:', e.message);
+    return null;
+  }
+};
+
 const evaluateConnectionHealth = async (connDoc, io) => {
   let dbConnection = null;
+  const recipientEmail = await resolveRecipientEmails(connDoc);
   try {
     const { conn, type } = await getConnection(connDoc);
     dbConnection = conn;
@@ -27,7 +40,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
 
       await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
       await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
-      await sendEmailNotification(connDoc.alertEmail, alertPayload);
+      await sendEmailNotification(recipientEmail, alertPayload);
       io.emit('alert-resolved', { ...activeDownAlert.toJSON(), connectionName: connDoc.name });
     }
 
@@ -82,7 +95,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
 
         await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
         await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
-        await sendEmailNotification(connDoc.alertEmail, alertPayload);
+        await sendEmailNotification(recipientEmail, alertPayload);
         io.emit('new-alert', { ...alert.toJSON(), connectionName: connDoc.name });
       }
     } else {
@@ -102,7 +115,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
 
         await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
         await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
-        await sendEmailNotification(connDoc.alertEmail, alertPayload);
+        await sendEmailNotification(recipientEmail, alertPayload);
         io.emit('alert-resolved', { ...activeResourceAlert.toJSON(), connectionName: connDoc.name });
       }
     }
@@ -130,7 +143,7 @@ const evaluateConnectionHealth = async (connDoc, io) => {
 
       await sendSlackNotification(connDoc.alertSlackWebhook, alertPayload);
       await sendDiscordNotification(connDoc.alertDiscordWebhook, alertPayload);
-      await sendEmailNotification(connDoc.alertEmail, alertPayload);
+      await sendEmailNotification(recipientEmail, alertPayload);
       io.emit('new-alert', { ...alert.toJSON(), connectionName: connDoc.name });
     }
   }

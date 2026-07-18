@@ -58,7 +58,20 @@ exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsE
         };
         await sendSlackNotification(connection.alertSlackWebhook, alertPayload);
         await sendDiscordNotification(connection.alertDiscordWebhook, alertPayload);
-        await sendEmailNotification(connection.alertEmail, alertPayload);
+        
+        let recipientEmail = connection.alertEmail;
+        if (!recipientEmail) {
+          try {
+            const User = require('../models/userModel');
+            const admins = await User.find({ role: 'admin' }, 'email');
+            recipientEmail = admins.map(u => u.email).filter(Boolean).join(',');
+          } catch (e) {
+            console.error('Failed to resolve fallback admin emails for slow query:', e.message);
+          }
+        }
+        if (recipientEmail) {
+          await sendEmailNotification(recipientEmail, alertPayload);
+        }
       }
     }
   } catch (err) {

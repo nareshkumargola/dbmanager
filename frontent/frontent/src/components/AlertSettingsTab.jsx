@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 export default function AlertSettingsTab({ connectionId }) {
+  const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [email, setEmail] = useState('');
   const [slackWebhook, setSlackWebhook] = useState('');
@@ -26,7 +28,7 @@ export default function AlertSettingsTab({ connectionId }) {
       const conn = res.data.connections.find(c => c._id === connectionId);
       if (conn) {
         setEnabled(conn.alertsEnabled || false);
-        setEmail(conn.alertEmail || '');
+        setEmail(conn.alertEmail || (user && user.email) || '');
         setSlackWebhook(conn.alertSlackWebhook || '');
         setDiscordWebhook(conn.alertDiscordWebhook || '');
         setThreshold(conn.alertThreshold || 90);
@@ -126,33 +128,42 @@ export default function AlertSettingsTab({ connectionId }) {
               />
             </div>
 
-            {/* Slack Webhook */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Slack Channel Webhook URL
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. https://hooks.slack.com/services/..."
-                value={slackWebhook}
-                onChange={e => setSlackWebhook(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-gray-400 transition"
-              />
-            </div>
+            {/* Advanced Slack/Discord Webhooks collapsible (Optional) */}
+            <details className="group border border-gray-200 rounded-lg p-3 bg-gray-50/50">
+              <summary className="text-xs font-bold text-gray-750 cursor-pointer list-none flex justify-between items-center select-none">
+                <span>🔗 Slack & Discord Webhooks (Optional)</span>
+                <span className="text-[10px] text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+              </summary>
+              <div className="mt-3.5 space-y-4 pt-3 border-t border-gray-200/60">
+                {/* Slack Webhook */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Slack Channel Webhook URL
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. https://hooks.slack.com/services/..."
+                    value={slackWebhook}
+                    onChange={e => setSlackWebhook(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-white focus:border-gray-450 transition"
+                  />
+                </div>
 
-            {/* Discord Webhook */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">
-                Discord Channel Webhook URL
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. https://discord.com/api/webhooks/..."
-                value={discordWebhook}
-                onChange={e => setDiscordWebhook(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-gray-400 transition"
-              />
-            </div>
+                {/* Discord Webhook */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 mb-1">
+                    Discord Channel Webhook URL
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. https://discord.com/api/webhooks/..."
+                    value={discordWebhook}
+                    onChange={e => setDiscordWebhook(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs outline-none bg-white focus:border-gray-450 transition"
+                  />
+                </div>
+              </div>
+            </details>
 
             {/* Connection Threshold Slider */}
             <div>
