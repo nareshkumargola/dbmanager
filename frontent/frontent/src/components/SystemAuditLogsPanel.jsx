@@ -14,6 +14,15 @@ export default function SystemAuditLogsPanel() {
   const [endDate, setEndDate] = useState('');
   const [queryType, setQueryType] = useState('');
   const [expandedLogId, setExpandedLogId] = useState(null);
+  
+  // Search & Pagination States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedUser, selectedAction, startDate, endDate, queryType, searchQuery]);
 
   useEffect(() => {
     fetchUsers();
@@ -63,6 +72,7 @@ export default function SystemAuditLogsPanel() {
     setStartDate('');
     setEndDate('');
     setQueryType('');
+    setSearchQuery('');
     // Fetch all logs again
     setTimeout(() => {
       fetchSystemLogs();
@@ -183,6 +193,22 @@ export default function SystemAuditLogsPanel() {
     }
   };
 
+  const filteredLogs = logs.filter(log => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const detailsMatch = log.details && log.details.toLowerCase().includes(q);
+    const userNameMatch = log.user?.name && log.user.name.toLowerCase().includes(q);
+    const userEmailMatch = log.user?.email && log.user.email.toLowerCase().includes(q);
+    const connectionMatch = log.connection?.name && log.connection.name.toLowerCase().includes(q);
+    const actionMatch = log.action && log.action.toLowerCase().includes(q);
+    return detailsMatch || userNameMatch || userEmailMatch || connectionMatch || actionMatch;
+  });
+
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredLogs.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+
   return (
     <div className="space-y-6 bg-white p-6 rounded-xl border border-gray-150 text-left">
       
@@ -192,7 +218,19 @@ export default function SystemAuditLogsPanel() {
           <span>🔍</span> Filter Options
         </h4>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          {/* Search Details input */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Search Details</label>
+            <input
+              type="text"
+              placeholder="Search statement, email..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+            />
+          </div>
+
           {/* User selector */}
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Filter by User</label>
@@ -290,7 +328,7 @@ export default function SystemAuditLogsPanel() {
       {/* Export Toolbar */}
       <div className="flex items-center justify-between gap-4 border-b border-gray-150 pb-3 flex-wrap sm:flex-nowrap">
         <span className="text-xs font-bold text-teal-900 bg-teal-50 ring-1 ring-teal-200 px-3 py-1 rounded-full">
-          {logs.length} Total Audit Records Found
+          {filteredLogs.length} of {logs.length} Total Audit Records Found
         </span>
         
         <div className="flex gap-2">
@@ -322,7 +360,7 @@ export default function SystemAuditLogsPanel() {
           <div className="w-8 h-8 border-[3px] border-teal-100 border-t-[#0d9da4] rounded-full animate-spin mx-auto mb-3"></div>
           Applying filters and loading system audit trail logs...
         </div>
-      ) : logs.length === 0 ? (
+      ) : filteredLogs.length === 0 ? (
         <div className="py-16 text-center text-gray-400 italic text-xs">
           No system-wide activity logs found matching the filter criteria.
         </div>
@@ -341,7 +379,7 @@ export default function SystemAuditLogsPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-150 bg-white">
-                {logs.map(log => {
+                {currentItems.map(log => {
                   const isExpanded = expandedLogId === log._id;
                   const isQuery = log.action === 'RUN_QUERY';
 
@@ -409,6 +447,56 @@ export default function SystemAuditLogsPanel() {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-gray-150 px-5 py-4 bg-gray-50/50">
+              <span className="text-xs text-gray-500 font-medium">
+                Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredLogs.length)} of {filteredLogs.length} audit records
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-gray-300 text-xs font-bold rounded-lg bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
+                >
+                  Previous
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }).map((_, idx) => {
+                    const pageNum = idx + 1;
+                    if (totalPages > 5 && Math.abs(currentPage - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
+                      if (pageNum === 2 || pageNum === totalPages - 1) {
+                        return <span key={pageNum} className="text-xs text-gray-400 px-1 select-none">...</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition focus:outline-none ${
+                          currentPage === pageNum
+                            ? 'bg-teal-600 text-white shadow-xs'
+                            : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-750'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-gray-300 text-xs font-bold rounded-lg bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
