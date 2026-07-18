@@ -9,7 +9,7 @@ exports.getSystemAuditLogs = async (req, res) => {
       return res.status(403).json({ message: 'Admin access only!' });
     }
 
-    const { userId, action, startDate, endDate, queryType } = req.query;
+    const { userId, action, startDate, endDate, queryType, connectionId, role } = req.query;
     const filter = {};
 
     // 1. Filter by specific user
@@ -20,6 +20,15 @@ exports.getSystemAuditLogs = async (req, res) => {
     // 2. Filter by specific action type
     if (action) {
       filter.action = action;
+    }
+
+    // 2.5 Filter by specific database connection target
+    if (connectionId) {
+      if (connectionId === 'global') {
+        filter.connection = null;
+      } else {
+        filter.connection = connectionId;
+      }
     }
 
     // 3. Filter by date range (from ... to)
@@ -69,6 +78,11 @@ exports.getSystemAuditLogs = async (req, res) => {
         
         return detailsLower.includes(typeLower);
       });
+    }
+
+    // 5. Filter by team member role
+    if (role) {
+      logs = logs.filter(log => log.user && log.user.role === role);
     }
 
     res.status(200).json({ success: true, logs });

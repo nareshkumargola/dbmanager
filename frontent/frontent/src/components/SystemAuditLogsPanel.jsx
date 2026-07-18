@@ -14,6 +14,11 @@ export default function SystemAuditLogsPanel() {
   const [endDate, setEndDate] = useState('');
   const [queryType, setQueryType] = useState('');
   const [expandedLogId, setExpandedLogId] = useState(null);
+
+  // New granular filter states
+  const [connections, setConnections] = useState([]);
+  const [selectedConnection, setSelectedConnection] = useState('');
+  const [selectedRole, setSelectedRole] = useState('');
   
   // Search & Pagination States
   const [tableSearch, setTableSearch] = useState('');
@@ -22,10 +27,11 @@ export default function SystemAuditLogsPanel() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedUser, selectedAction, startDate, endDate, queryType, tableSearch]);
+  }, [selectedUser, selectedAction, startDate, endDate, queryType, tableSearch, selectedConnection, selectedRole]);
 
   useEffect(() => {
     fetchUsers();
+    fetchConnections();
     fetchSystemLogs();
   }, []);
 
@@ -35,6 +41,15 @@ export default function SystemAuditLogsPanel() {
       setUsers(res.data.users || []);
     } catch (e) {
       console.error('Failed to load users list:', e);
+    }
+  };
+
+  const fetchConnections = async () => {
+    try {
+      const res = await API.get('/connections');
+      setConnections(res.data.connections || []);
+    } catch (err) {
+      console.error('Failed to load connections list:', err);
     }
   };
 
@@ -49,6 +64,8 @@ export default function SystemAuditLogsPanel() {
       if (startDate) params.startDate = startDate;
       if (endDate) params.endDate = endDate;
       if (queryType) params.queryType = queryType;
+      if (selectedConnection) params.connectionId = selectedConnection;
+      if (selectedRole) params.role = selectedRole;
 
       const res = await API.get('/audit-logs', { params });
       setLogs(res.data.logs || []);
@@ -73,6 +90,8 @@ export default function SystemAuditLogsPanel() {
     setEndDate('');
     setQueryType('');
     setTableSearch('');
+    setSelectedConnection('');
+    setSelectedRole('');
     // Fetch all logs again
     setTimeout(() => {
       fetchSystemLogs();
@@ -219,7 +238,7 @@ export default function SystemAuditLogsPanel() {
           <span>🔍</span> Filter Options
         </h4>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
           {/* User selector */}
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Filter by User</label>
@@ -231,6 +250,37 @@ export default function SystemAuditLogsPanel() {
               <option value="">All Users</option>
               {users.map(u => (
                 <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+              ))}
+            </select>
+          </div>
+
+          {/* User Role selector */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">User Role</label>
+            <select
+              value={selectedRole}
+              onChange={e => setSelectedRole(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+            >
+              <option value="">All Roles</option>
+              <option value="admin">Admin</option>
+              <option value="developer">Developer</option>
+              <option value="user">User</option>
+            </select>
+          </div>
+
+          {/* Connection selector */}
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Connection Target</label>
+            <select
+              value={selectedConnection}
+              onChange={e => setSelectedConnection(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+            >
+              <option value="">All Connections</option>
+              <option value="global">Global System Logs</option>
+              {connections.map(c => (
+                <option key={c._id} value={c._id}>{c.name} ({c.type.toUpperCase()})</option>
               ))}
             </select>
           </div>
@@ -250,6 +300,12 @@ export default function SystemAuditLogsPanel() {
               <option value="CREATE_DB_USER">CREATE_DB_USER</option>
               <option value="DELETE_DB_USER">DELETE_DB_USER</option>
               <option value="UPDATE_DB_USER">UPDATE_DB_USER</option>
+              <option value="CREATE_CONNECTION">CREATE_CONNECTION</option>
+              <option value="UPDATE_CONNECTION">UPDATE_CONNECTION</option>
+              <option value="DELETE_CONNECTION">DELETE_CONNECTION</option>
+              <option value="UPDATE_USER_PERMISSIONS">UPDATE_USER_PERMISSIONS</option>
+              <option value="CREATE_USER">CREATE_USER (App User)</option>
+              <option value="DELETE_USER">DELETE_USER (App User)</option>
               <option value="LOGIN">LOGIN ACTIVITY</option>
               <option value="LOGOUT">LOGOUT ACTIVITY</option>
             </select>
