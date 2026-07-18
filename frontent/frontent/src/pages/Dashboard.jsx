@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState('');
   const [shareSuccess, setShareSuccess] = useState('');
+  const [shareSearch, setShareSearch] = useState('');
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -230,6 +231,7 @@ export default function Dashboard() {
     setShareError('');
     setShareSuccess('');
     setSelectedUserIds([]);
+    setShareSearch('');
     try {
       const res = await API.get(`/connections/${conn._id}/share`);
       setUsersList(res.data.users);
@@ -719,47 +721,70 @@ export default function Dashboard() {
                 Select developers / viewers
               </p>
 
+              {/* Search Box */}
+              {usersList.length > 0 && (
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    placeholder="🔍 Search users by name, email or role..."
+                    value={shareSearch}
+                    onChange={e => setShareSearch(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-teal-100 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+                  />
+                </div>
+              )}
+
               {usersList.length === 0 ? (
                 <p className="text-[13px] text-teal-700/50 text-center py-6">
                   No developers or viewers found.
                 </p>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-1.5 ring-1 ring-teal-50 rounded-xl p-2.5 bg-teal-50/30">
-                  {usersList.map(u => {
-                    const isChecked = selectedUserIds.includes(u._id);
-                    return (
-                      <label
-                        key={u._id}
-                        className={`flex items-center justify-between p-2.5 rounded-lg ring-1 cursor-pointer transition-all ${
-                          isChecked
-                            ? 'bg-teal-50/70 ring-teal-200'
-                            : 'bg-white ring-teal-50 hover:ring-teal-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleUser(u._id)}
-                            className="rounded border-teal-300 text-teal-600 focus:ring-teal-400 w-4 h-4"
-                          />
-                          <div>
-                            <p className="text-[13px] font-semibold text-teal-900">
-                              {u.name}
-                            </p>
-                            <p className="text-[11px] text-teal-700/50">
-                              {u.email}
-                            </p>
+                  {usersList.filter(u => {
+                    const q = shareSearch.toLowerCase();
+                    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+                  }).length === 0 ? (
+                    <p className="text-[12px] text-teal-650 text-center py-4">No matching users found.</p>
+                  ) : (
+                    usersList.filter(u => {
+                      const q = shareSearch.toLowerCase();
+                      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+                    }).map(u => {
+                      const isChecked = selectedUserIds.includes(u._id);
+                      return (
+                        <label
+                          key={u._id}
+                          className={`flex items-center justify-between p-2.5 rounded-lg ring-1 cursor-pointer transition-all ${
+                            isChecked
+                              ? 'bg-teal-50/70 ring-teal-200'
+                              : 'bg-white ring-teal-50 hover:ring-teal-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleUser(u._id)}
+                              className="rounded border-teal-300 text-teal-600 focus:ring-teal-400 w-4 h-4"
+                            />
+                            <div>
+                              <p className="text-[13px] font-semibold text-teal-900">
+                                {u.name}
+                              </p>
+                              <p className="text-[11px] text-teal-700/50">
+                                {u.email}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                          u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'
-                        }`}>
-                          {u.role}
-                        </span>
-                      </label>
-                    );
-                  })}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                            u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'
+                          }`}>
+                            {u.role}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>
