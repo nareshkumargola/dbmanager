@@ -16,13 +16,13 @@ export default function SystemAuditLogsPanel() {
   const [expandedLogId, setExpandedLogId] = useState(null);
   
   // Search & Pagination States
-  const [searchQuery, setSearchQuery] = useState('');
+  const [tableSearch, setTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedUser, selectedAction, startDate, endDate, queryType, searchQuery]);
+  }, [selectedUser, selectedAction, startDate, endDate, queryType, tableSearch]);
 
   useEffect(() => {
     fetchUsers();
@@ -72,7 +72,7 @@ export default function SystemAuditLogsPanel() {
     setStartDate('');
     setEndDate('');
     setQueryType('');
-    setSearchQuery('');
+    setTableSearch('');
     // Fetch all logs again
     setTimeout(() => {
       fetchSystemLogs();
@@ -194,14 +194,15 @@ export default function SystemAuditLogsPanel() {
   };
 
   const filteredLogs = logs.filter(log => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    if (!tableSearch.trim()) return true;
+    const q = tableSearch.toLowerCase();
     const detailsMatch = log.details && log.details.toLowerCase().includes(q);
     const userNameMatch = log.user?.name && log.user.name.toLowerCase().includes(q);
     const userEmailMatch = log.user?.email && log.user.email.toLowerCase().includes(q);
     const connectionMatch = log.connection?.name && log.connection.name.toLowerCase().includes(q);
     const actionMatch = log.action && log.action.toLowerCase().includes(q);
-    return detailsMatch || userNameMatch || userEmailMatch || connectionMatch || actionMatch;
+    const timestampMatch = new Date(log.createdAt).toLocaleString().toLowerCase().includes(q);
+    return detailsMatch || userNameMatch || userEmailMatch || connectionMatch || actionMatch || timestampMatch;
   });
 
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -218,19 +219,7 @@ export default function SystemAuditLogsPanel() {
           <span>🔍</span> Filter Options
         </h4>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
-          {/* Search Details input */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Search Details</label>
-            <input
-              type="text"
-              placeholder="Search statement, email..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
-            />
-          </div>
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* User selector */}
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Filter by User</label>
@@ -326,10 +315,34 @@ export default function SystemAuditLogsPanel() {
       </form>
 
       {/* Export Toolbar */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-150 pb-3 flex-wrap sm:flex-nowrap">
-        <span className="text-xs font-bold text-teal-900 bg-teal-50 ring-1 ring-teal-200 px-3 py-1 rounded-full">
-          {filteredLogs.length} of {logs.length} Total Audit Records Found
-        </span>
+      <div className="flex items-center justify-between gap-4 border-b border-gray-150 pb-3 flex-wrap md:flex-nowrap">
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <span className="text-xs font-bold text-teal-900 bg-teal-50 ring-1 ring-teal-200 px-3 py-1 rounded-full whitespace-nowrap">
+            {filteredLogs.length} of {logs.length} Found
+          </span>
+          {/* Instant Table Search Bar */}
+          <div className="relative w-full md:w-64">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 text-xs">
+              🔍
+            </span>
+            <input
+              type="text"
+              placeholder="Instant search table..."
+              value={tableSearch}
+              onChange={e => setTableSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400 placeholder-gray-450 font-medium"
+            />
+            {tableSearch && (
+              <button
+                type="button"
+                onClick={() => setTableSearch('')}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-450 hover:text-gray-600 text-xs focus:outline-none"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
         
         <div className="flex gap-2">
           <button
