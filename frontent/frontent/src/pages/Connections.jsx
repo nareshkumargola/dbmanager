@@ -564,7 +564,11 @@ export default function Connections() {
               )}
               {shareSuccess && (
                 <div className="mb-4 bg-green-50 text-green-600 text-xs px-4 py-2.5 rounded-lg border border-green-200">
-                               <div className="flex justify-between items-center mb-3">
+                  ✅ {shareSuccess}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center mb-3">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Select Developers / Viewers:
                 </p>
