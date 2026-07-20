@@ -305,20 +305,21 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8">
 
-        {/* Header */}
-        <div className="mb-7">
-          <h2 className="text-[26px] font-bold text-teal-900 tracking-tight">Dashboard</h2>
-          <p className="text-[13px] text-teal-800/70 mt-1">
-            Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span> — here's what's happening across your databases.
-          </p>
-        </div>
-
-        {/* Quick Actions */}
+        {/* Quick Actions Card with Dashboard Header */}
         <div className="mb-7 bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-1 h-4 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
-            <h3 className="text-[12px] font-bold text-teal-700 uppercase tracking-wider">Quick Actions</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200/80">
+            <div>
+              <h2 className="text-[20px] font-bold text-teal-900 tracking-tight">Dashboard</h2>
+              <p className="text-[12px] text-teal-800/70 mt-0.5">
+                Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span> — here's what's happening across your databases.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-1 h-3.5 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
+              <h3 className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Quick Actions</h3>
+            </div>
           </div>
+
           <div className="flex flex-wrap gap-2.5">
             <button
               onClick={() => setActiveTab('connections')}
@@ -330,18 +331,6 @@ export default function Dashboard() {
               style={activeTab === 'connections' ? { backgroundColor: '#0d9da4' } : {}}
             >
               <span className="text-base leading-none">🗄️</span> Connections
-            </button>
-
-            <button
-              onClick={() => setActiveTab('all-connections')}
-              className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
-                activeTab === 'all-connections'
-                  ? 'text-white shadow-sm'
-                  : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
-              }`}
-              style={activeTab === 'all-connections' ? { backgroundColor: '#0d9da4' } : {}}
-            >
-              <span className="text-base leading-none">🔌</span> App Overview
             </button>
 
             {user?.role === 'admin' && (
@@ -416,9 +405,7 @@ export default function Dashboard() {
         <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-lg">
           <div className="px-6 border-b border-teal-100 bg-teal-50/40 flex flex-wrap items-center justify-between gap-4">
             <h3 className="text-[14px] font-bold text-teal-900 py-4 tracking-tight">
-              {activeTab === 'all-connections'
-                ? 'App Connections — Admin View'
-                : activeTab === 'audit-logs'
+              {activeTab === 'audit-logs'
                 ? 'System Activity Audit Trail — Admin View'
                 : 'Your Connections'}
             </h3>
@@ -426,12 +413,6 @@ export default function Dashboard() {
             {activeTab === 'connections' && connections.length > 0 && (
               <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full my-3">
                 {connections.length} connections
-              </span>
-            )}
-
-            {activeTab === 'all-connections' && allConnections.length > 0 && (
-              <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full my-3">
-                {allConnections.length} total
               </span>
             )}
           </div>
@@ -513,70 +494,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   ))}
-                </div>
-              )
-            )}
-
-            {activeTab === 'all-connections' && (
-              loadingAllConnections ? (
-                <div className="p-16 text-center">
-                  <div className="w-8 h-8 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-teal-700/60 text-[13px]">Fetching app connections…</p>
-                </div>
-              ) : allConnections.length === 0 ? (
-                <div className="p-16 text-center">
-                  <p className="text-4xl mb-4">🔌</p>
-                  <p className="text-teal-900 font-semibold mb-1.5">No connections found</p>
-                  <p className="text-teal-700/60 text-[13px]">No application connections are linked yet</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto text-left">
-                  <table className="w-full text-sm">
-                    <thead className="bg-teal-50/60 border-b border-teal-100 text-left text-[10px] font-bold text-teal-700 uppercase tracking-wider">
-                      <tr>
-                        <th className="px-6 py-3.5">Connection</th>
-                        <th className="px-6 py-3.5">Type</th>
-                        <th className="px-6 py-3.5">Database</th>
-                        <th className="px-6 py-3.5">Host / String</th>
-                        <th className="px-6 py-3.5">Created By</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-teal-50 bg-white">
-                      {allConnections.map(conn => (
-                        <tr key={conn._id} className="hover:bg-teal-50/40 transition-colors">
-                          <td className="px-6 py-4">
-                            <p className="text-[13px] font-bold text-teal-900">{conn.name}</p>
-                            <p className="text-[11px] text-teal-700/50 font-mono">{conn._id}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
-                              {getTypeIcon(conn.type)} {conn.type}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-[13px] text-teal-800 font-semibold">
-                            {conn.database || <span className="text-teal-700/40 italic font-normal">None</span>}
-                          </td>
-                          <td className="px-6 py-4 text-[11px] font-mono text-teal-700/60 max-w-xs truncate">
-                            {conn.type === 'mongodb'
-                              ? conn.connectionString
-                              : `${conn.host}:${conn.port}`
-                            }
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shadow-sm" style={{ backgroundColor: '#0d9da4' }}>
-                                {conn.user?.name?.charAt(0).toUpperCase() || 'U'}
-                              </div>
-                              <div>
-                                <p className="text-[12px] font-bold text-teal-900">{conn.user?.name || 'Unknown'}</p>
-                                <p className="text-[10px] text-teal-700/50">{conn.user?.email || 'N/A'}</p>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               )
             )}
