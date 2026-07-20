@@ -71,7 +71,7 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
           <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
             variant === 'teal' ? 'bg-teal-700/45 text-teal-50' : 'bg-teal-50 text-[#0d9da4]'
           }`}>
-            Database Monitoring System
+            DMS
           </span>
         </Link>
 

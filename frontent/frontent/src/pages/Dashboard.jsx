@@ -303,7 +303,7 @@ export default function Dashboard() {
       {/* Navbar */}
       <Navbar variant="teal" />
 
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 py-8">
+      <div className="w-full px-5 sm:px-8 py-8">
 
         {/* Quick Actions Card with Dashboard Header */}
         <div className="mb-7 bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md">
@@ -343,7 +343,7 @@ export default function Dashboard() {
                 }`}
                 style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
               >
-                <span className="text-base leading-none">📜</span> System Audit Logs
+                <span className="text-base leading-none">📜</span> Application Audit Logs
               </button>
             )}
 
@@ -363,7 +363,7 @@ export default function Dashboard() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
-                Permissions
+               Application Permissions
               </button>
             )}
           </div>
@@ -410,10 +410,22 @@ export default function Dashboard() {
                 : 'Your Connections'}
             </h3>
 
-            {activeTab === 'connections' && connections.length > 0 && (
-              <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full my-3">
-                {connections.length} connections
-              </span>
+            {activeTab === 'connections' && (
+              <div className="flex items-center gap-3 my-3">
+                {connections.length > 0 && (
+                  <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full">
+                    {connections.length} connections
+                  </span>
+                )}
+                <button
+                  onClick={() => navigate('/connections')}
+                  title="Add / Manage Connections"
+                  className="w-8 h-8 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-sm hover:opacity-90 transition-all active:scale-95 cursor-pointer"
+                  style={{ backgroundColor: '#0d9da4' }}
+                >
+                  +
+                </button>
+              </div>
             )}
           </div>
 
