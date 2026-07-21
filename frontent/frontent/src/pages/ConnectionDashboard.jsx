@@ -466,6 +466,38 @@ export default function ConnectionDashboard() {
     }
   };
 
+  const exportHistoryToCSV = () => {
+    if (!history || history.length === 0) {
+      alert('No query history available to export!');
+      return;
+    }
+    const headers = ['ID', 'User', 'Status', 'Execution Time (ms)', 'Rows Affected', 'SQL Query', 'Error', 'Timestamp'];
+    const rows = history.map(item => [
+      item._id,
+      `"${(user?.name || 'User').replace(/"/g, '""')}"`,
+      item.status || 'success',
+      item.executionTime || 0,
+      item.rowsAffected || 0,
+      `"${(item.query || '').replace(/"/g, '""')}"`,
+      `"${(item.error || '').replace(/"/g, '""')}"`,
+      `"${new Date(item.createdAt).toLocaleString('en-IN')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `query_history_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   const getTablesArray = () => {
     if (!objects) return [];
     const { type, result } = objects;
@@ -981,7 +1013,17 @@ export default function ConnectionDashboard() {
             {/* HISTORY */}
             {activeTab === 'history' && (
               <div>
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">Query History</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-gray-900">Query History</h2>
+                  {history.length > 0 && (
+                    <button
+                      onClick={exportHistoryToCSV}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <span>📊</span> Export Excel (CSV)
+                    </button>
+                  )}
+                </div>
                 {historyLoading ? (
                   <div className="text-center py-8">
                     <div className="w-8 h-8 border-4 border-gray-300 border-t-gray-800 rounded-full animate-spin mx-auto"></div>
