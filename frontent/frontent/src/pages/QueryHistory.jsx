@@ -177,9 +177,9 @@ export default function QueryHistory() {
             </p>
             <button
               onClick={() => navigate('/query')}
-              className="text-sm text-gray-900 underline"
+              className="text-sm text-gray-900 underline font-semibold"
             >
-              Query Editor pe jao
+              Go to Query Editor
             </button>
           </div>
         ) : (

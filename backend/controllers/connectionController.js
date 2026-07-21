@@ -107,19 +107,19 @@ exports.deleteConnection = async (req, res) => {
     const connection = await Connection.findById(req.params.id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     // Sirf owner ya admin delete kar sakta hai
     if (connection.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Permission nahi hai!' });
+      return res.status(403).json({ message: 'Permission denied!' });
     }
 
-    // Active connection close karo
+    // Active connection close
     await closeConnection(req.params.id);
     await Connection.findByIdAndDelete(req.params.id);
 
-    res.status(200).json({ success: true, message: 'Connection delete ho gaya!' });
+    res.status(200).json({ success: true, message: 'Connection deleted successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
   }
@@ -130,11 +130,11 @@ exports.getDatabaseObjects = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const database = req.query.database || connection.database;
@@ -187,11 +187,11 @@ exports.getTableData = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const database = req.query.database || connection.database;
@@ -200,7 +200,7 @@ exports.getTableData = async (req, res) => {
 
     if (type === 'mysql') {
       if (!database) {
-        return res.status(400).json({ message: 'Database select karo pehle!' });
+        return res.status(400).json({ message: 'Please select a database first!' });
       }
 
       const [tableRows] = await conn.execute(
@@ -261,11 +261,11 @@ exports.runQuery = async (req, res) => {
     const connection = await Connection.findById(id);
 
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const database = req.query.database || connection.database;
@@ -542,11 +542,11 @@ exports.getDatabases = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const { conn, type } = await getConnection(connection);
@@ -603,11 +603,11 @@ exports.getShareInfo = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (connection.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Permission nahi hai!' });
+      return res.status(403).json({ message: 'Permission denied!' });
     }
 
     const User = require('../models/userModel');
@@ -630,11 +630,11 @@ exports.updateShareInfo = async (req, res) => {
     const { developerIds } = req.body;
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (connection.user.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Permission nahi hai!' });
+      return res.status(403).json({ message: 'Permission denied!' });
     }
 
     connection.allowedUsers = developerIds || [];
@@ -652,11 +652,11 @@ exports.startBinlogMonitoring = async (req, res) => {
     const { id } = req.params;
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     if (connection.type !== 'mysql' && connection.type !== 'postgresql' && connection.type !== 'mongodb') {
@@ -1287,11 +1287,11 @@ exports.getBinlogEvents = async (req, res) => {
     const { logFile, position, mode } = req.query;
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const result = await exports.pollBinlogEventsInternal(id, logFile, position, mode, req.user.id);
@@ -1308,11 +1308,11 @@ exports.getBinlogHistory = async (req, res) => {
     
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const query = { connectionId: id };
@@ -1419,11 +1419,11 @@ exports.clearBinlogHistory = async (req, res) => {
     const { id } = req.params;
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const targetDbName = connection.database || 'test';
@@ -1520,11 +1520,11 @@ exports.getConnectionById = async (req, res) => {
     const { id } = req.params;
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     res.status(200).json({ success: true, connection });
@@ -1541,11 +1541,11 @@ exports.updateConnectionSettings = async (req, res) => {
     
     const connection = await Connection.findById(id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     if (slowQueryThreshold !== undefined) {

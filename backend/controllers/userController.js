@@ -99,7 +99,7 @@ exports.deleteUser = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'User aur uske saare database connections delete ho gaye!' 
+      message: 'User account and all associated database profiles deleted successfully!' 
     });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });

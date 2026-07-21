@@ -53,7 +53,7 @@ exports.getMonitoringData = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     const database = req.query.database || connection.database;
@@ -214,7 +214,7 @@ exports.getTableDetails = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     const database = req.query.database || connection.database;
@@ -274,7 +274,7 @@ exports.getMonitoringHistory = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     const database = req.query.database || connection.database;

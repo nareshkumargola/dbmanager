@@ -29,7 +29,7 @@ exports.getMysqlTableData = async (req, res) => {
     const [tables] = await mysqlPool.execute('SHOW TABLES');
     const tableNames = tables.map(t => Object.values(t)[0]);
     if (!tableNames.includes(tableName)) {
-      return res.status(400).json({ message: 'Table nahi mili!' });
+      return res.status(400).json({ message: 'Table not found!' });
     }
     const [rows] = await mysqlPool.execute(
       `SELECT * FROM \`${tableName}\` LIMIT 100`
@@ -100,7 +100,7 @@ exports.runMysqlQuery = async (req, res) => {
         return res.status(404).json({ message: 'Connection not found!' });
       }
       if (connectionDoc.type !== 'mysql') {
-        return res.status(400).json({ message: 'Sirf MySQL connections supported hain.' });
+        return res.status(400).json({ message: 'Only MySQL connections are supported.' });
       }
       if (!checkAccess(connectionDoc, req.user)) {
         return res.status(403).json({ message: 'You do not have access to this connection!' });
@@ -490,7 +490,7 @@ exports.runPostgresQuery = async (req, res) => {
       return res.status(404).json({ message: 'Connection not found!' });
     }
     if (connectionDoc.type !== 'postgresql') {
-      return res.status(400).json({ message: 'Sirf PostgreSQL connections supported hain.' });
+      return res.status(400).json({ message: 'Only PostgreSQL connections are supported.' });
     }
     if (!checkAccess(connectionDoc, req.user)) {
       return res.status(403).json({ message: 'You do not have access to this connection!' });

@@ -4,26 +4,26 @@ const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } 
 // Slow query threshold — 100ms se zyada = slow
 const SLOW_THRESHOLD = 100;
 
-// Suggestion generate karo
+// Generate AI optimization suggestions
 const generateSuggestion = (query, executionTime) => {
   const upperQuery = query.toUpperCase();
 
   if (upperQuery.includes('SELECT *')) {
-    return 'SELECT * ki jagah specific columns use karo — e.g. SELECT id, name';
+    return 'Avoid SELECT * and specify required columns explicitly — e.g., SELECT id, name.';
   }
   if (!upperQuery.includes('WHERE') && upperQuery.includes('SELECT')) {
-    return 'WHERE clause add karo — full table scan ho raha hai!';
+    return 'Add a WHERE clause to filter records — current query performs a full table scan!';
   }
   if (upperQuery.includes('LIKE') && upperQuery.includes('%')) {
-    return 'LIKE "%value%" slow hota hai — Full text search use karo';
+    return 'Leading wildcards LIKE "%value%" are slow — consider using Full-Text Search indexing.';
   }
   if (upperQuery.includes('JOIN') && executionTime > 500) {
-    return 'JOIN pe index check karo — foreign key columns pe index hona chahiye';
+    return 'Check indexes on JOIN conditions — ensure foreign key columns are indexed.';
   }
   if (upperQuery.includes('ORDER BY') && !upperQuery.includes('LIMIT')) {
-    return 'ORDER BY ke saath LIMIT use karo — unnecessary rows mat lao';
+    return 'Use a LIMIT clause with ORDER BY to restrict returned rows.';
   }
-  return 'Query optimize karo — EXPLAIN keyword se analysis karo';
+  return 'Optimize query structure — use the EXPLAIN statement to analyze execution plan.';
 };
 
 // Slow query save karo — dbController se call hoga

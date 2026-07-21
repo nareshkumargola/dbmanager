@@ -152,7 +152,7 @@ exports.createMySQLUser = async (req, res) => {
     }
 
     if (!username || !host) {
-      return res.status(400).json({ message: 'Username aur Host fields required hain!' });
+      return res.status(400).json({ message: 'Username and Host fields are required!' });
     }
 
     const { conn } = await getConnection(connection);

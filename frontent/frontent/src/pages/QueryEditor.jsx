@@ -175,7 +175,7 @@ export default function QueryEditor() {
             SQL Query Editor
           </h2>
           <p className="text-sm text-gray-500 mt-1 text-left">
-            MySQL aur PostgreSQL queries run karo — Ctrl+Enter se bhi run kar sakte ho
+            Execute MySQL, PostgreSQL and MongoDB queries — or press Ctrl+Enter to run.
           </p>
         </div>
 
