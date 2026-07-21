@@ -79,6 +79,38 @@ export default function QueryHistory() {
     });
   };
 
+  const exportHistoryToCSV = () => {
+    if (history.length === 0) {
+      alert('No query history available to export!');
+      return;
+    }
+    const headers = ['ID', 'User', 'Status', 'Execution Time (ms)', 'Rows Affected', 'SQL Query', 'Error', 'Timestamp'];
+    const rows = history.map(item => [
+      item._id,
+      `"${(user?.name || 'User').replace(/"/g, '""')}"`,
+      item.status || 'success',
+      item.executionTime || 0,
+      item.rowsAffected || 0,
+      `"${(item.query || '').replace(/"/g, '""')}"`,
+      `"${(item.error || '').replace(/"/g, '""')}"`,
+      `"${new Date(item.createdAt).toLocaleString('en-IN')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `query_history_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -106,12 +138,20 @@ export default function QueryHistory() {
             </p>
           </div>
           {history.length > 0 && (
-            <button
-              onClick={clearAll}
-              className="px-4 py-2 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition"
-            >
-              Clear All
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={exportHistoryToCSV}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-bold transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <span>📊</span> Export Excel (CSV)
+              </button>
+              <button
+                onClick={clearAll}
+                className="px-4 py-2 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition"
+              >
+                Clear All
+              </button>
+            </div>
           )}
         </div>
 

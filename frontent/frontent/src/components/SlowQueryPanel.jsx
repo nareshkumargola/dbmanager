@@ -134,6 +134,40 @@ export default function SlowQueryPanel({ connectionId }) {
     }
   };
 
+  // Export to Excel (CSV)
+  const exportHistoryToCSV = () => {
+    if (filteredQueries.length === 0) {
+      alert('No history records available to export!');
+      return;
+    }
+    const headers = ['Log ID', 'User Name', 'User Email', 'Connection Target', 'Execution Time (ms)', 'Rows Examined', 'SQL Query', 'AI Suggestion', 'Timestamp'];
+    const rows = filteredQueries.map(item => [
+      item._id,
+      `"${(item.user?.name || 'Unknown').replace(/"/g, '""')}"`,
+      `"${(item.user?.email || 'N/A').replace(/"/g, '""')}"`,
+      `"${(item.connection?.name || 'Target Database').replace(/"/g, '""')}"`,
+      item.executionTime || 0,
+      item.rowsExamined || 0,
+      `"${(item.query || '').replace(/"/g, '""')}"`,
+      `"${(item.suggestion || '').replace(/"/g, '""')}"`,
+      `"${new Date(item.createdAt).toLocaleString('en-IN')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `slow_queries_history_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   const useQuery = (queryText) => {
     if (!queryText) return;
     if (location.pathname.startsWith('/connections/')) {
@@ -428,14 +462,24 @@ export default function SlowQueryPanel({ connectionId }) {
             <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
               📜 Logged Slow Query History (Execution &gt;= {threshold}ms)
             </h3>
-            {filteredQueries.length > 0 && (
-              <button
-                onClick={clearAll}
-                className="text-xs text-rose-600 hover:underline font-bold"
-              >
-                🗑️ Clear History
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {filteredQueries.length > 0 && (
+                <button
+                  onClick={exportHistoryToCSV}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                >
+                  <span>📊</span> Export Excel (CSV)
+                </button>
+              )}
+              {filteredQueries.length > 0 && (
+                <button
+                  onClick={clearAll}
+                  className="text-xs text-rose-600 hover:underline font-bold"
+                >
+                  🗑️ Clear History
+                </button>
+              )}
+            </div>
           </div>
 
           {filteredQueries.length === 0 ? (
