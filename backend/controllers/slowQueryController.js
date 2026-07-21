@@ -82,13 +82,21 @@ exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsE
 // Slow queries dekho
 exports.getSlowQueries = async (req, res) => {
   try {
-    const { connectionId } = req.query;
+    const { connectionId, minMs } = req.query;
     if (!connectionId) {
       return res.status(400).json({ message: 'connectionId parameter required!' });
     }
-    const queries = await SlowQuery.find({ user: req.user.id, connection: connectionId })
+
+    const filter = { connection: connectionId };
+    if (minMs !== undefined && minMs !== '' && !isNaN(minMs)) {
+      filter.executionTime = { $gte: parseInt(minMs) };
+    }
+
+    const queries = await SlowQuery.find(filter)
+      .populate('user', 'name email role')
+      .populate('connection', 'name type')
       .sort({ executionTime: -1 }) // Sabse slow pehle
-      .limit(50);
+      .limit(100);
 
     // Stats calculate karo
     const totalQueries = queries.length;
@@ -108,6 +116,115 @@ exports.getSlowQueries = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
+  }
+};
+
+// Live Running Server Processes (SHOW PROCESSLIST / pg_stat_activity)
+exports.getLiveProcesses = async (req, res) => {
+  try {
+    const { connectionId, minMs } = req.query;
+    if (!connectionId) {
+      return res.status(400).json({ message: 'connectionId parameter required!' });
+    }
+
+    const Connection = require('../models/connectionModel');
+    const { getConnection } = require('../connections/connectionManager');
+    
+    const connection = await Connection.findById(connectionId);
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection not found!' });
+    }
+
+    const { conn, type } = await getConnection(connection);
+    let processes = [];
+    const minThresholdMs = minMs !== undefined && minMs !== '' && !isNaN(minMs) ? parseInt(minMs) : 0;
+
+    if (type === 'mysql') {
+      const [rows] = await conn.execute('SHOW FULL PROCESSLIST');
+      processes = (rows || []).map(r => {
+        // MySQL Time is in seconds, convert to ms for comparison and display
+        const timeMs = (r.Time || 0) * 1000;
+        return {
+          Id: r.Id,
+          User: r.User || 'system',
+          Host: r.Host || 'localhost',
+          db: r.db || null,
+          Command: r.Command || 'Query',
+          Time: timeMs,
+          TimeSec: r.Time || 0,
+          State: r.State || null,
+          Info: r.Info || null
+        };
+      });
+    } else if (type === 'postgresql') {
+      const dbName = connection.database || 'postgres';
+      const result = await conn.query(`
+        SELECT 
+          pid AS "Id",
+          usename AS "User",
+          COALESCE(client_addr::text, 'localhost') || ':' || COALESCE(client_port::text, '0') AS "Host",
+          datname AS "db",
+          state AS "Command",
+          ROUND(EXTRACT(EPOCH FROM (clock_timestamp() - query_start)) * 1000) AS "Time",
+          state AS "State",
+          query AS "Info"
+        FROM pg_stat_activity
+        WHERE datname = $1
+      `, [dbName]);
+
+      processes = (result.rows || []).map(r => {
+        const tMs = Math.max(0, parseInt(r.Time) || 0);
+        return {
+          Id: r.Id,
+          User: r.User || 'postgres',
+          Host: r.Host || 'localhost',
+          db: r.db || dbName,
+          Command: r.Command || 'active',
+          Time: tMs,
+          TimeSec: Math.round(tMs / 1000),
+          State: r.State || 'running',
+          Info: r.Info || null
+        };
+      });
+    } else if (type === 'mongodb') {
+      const dbName = connection.database || 'test';
+      try {
+        const adminDb = conn.db('admin');
+        const opResult = await adminDb.command({ currentOp: 1 });
+        processes = (opResult.inprog || []).map(op => {
+          const tMs = Math.round((op.microsecs_running || 0) / 1000) || ((op.secs_running || 0) * 1000);
+          return {
+            Id: op.opid,
+            User: op.effectiveUsers?.[0]?.user || 'admin',
+            Host: op.client || 'localhost',
+            db: op.ns || dbName,
+            Command: op.op || 'command',
+            Time: tMs,
+            TimeSec: op.secs_running || 0,
+            State: op.desc || op.msg || 'active',
+            Info: op.command ? JSON.stringify(op.command) : null
+          };
+        });
+      } catch (mErr) {
+        processes = [];
+      }
+    }
+
+    if (minThresholdMs > 0) {
+      processes = processes.filter(p => p.Time >= minThresholdMs);
+    }
+
+    // Sort by Time descending (slowest first)
+    processes.sort((a, b) => b.Time - a.Time);
+
+    res.status(200).json({
+      success: true,
+      processes,
+      totalCount: processes.length
+    });
+  } catch (err) {
+    console.error('Error fetching live processes:', err.message);
+    res.status(500).json({ message: 'Error fetching live server processes', error: err.message });
   }
 };
 

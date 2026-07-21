@@ -3,6 +3,7 @@ const router = express.Router();
 const slowQueryController = require('../controllers/slowQueryController');
 const { protect, checkPermission } = require('../middlewares/authMiddleware');
 
+router.get('/live', protect, checkPermission('slowQuery'), slowQueryController.getLiveProcesses);
 router.get('/', protect, checkPermission('slowQuery'), slowQueryController.getSlowQueries);
 router.delete('/:id', protect, checkPermission('slowQuery'), slowQueryController.deleteSlowQuery);
 router.delete('/', protect, checkPermission('slowQuery'), slowQueryController.clearSlowQueries);
