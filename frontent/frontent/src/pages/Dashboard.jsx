@@ -128,19 +128,27 @@ export default function Dashboard() {
       alert('No records available to export!');
       return;
     }
-    const headers = ['User Name', 'Email', 'Role', 'Status', 'Execution Time (ms)', 'Query', 'Rows Affected', 'Timestamp'];
-    const rows = logsToExport.map(log => [
-      log.user?.name || 'Unknown',
-      log.user?.email || 'N/A',
-      log.user?.role || 'user',
-      log.status || 'success',
-      log.executionTime || 0,
-      `"${(log.query || '').replace(/"/g, '""')}"`,
-      log.rowsAffected !== undefined ? log.rowsAffected : 0,
-      new Date(log.createdAt).toLocaleString('en-IN')
-    ]);
+    const headers = ['User Name', 'Email', 'Role', 'Status', 'Execution Time (ms)', 'Full SQL Query', 'Rows Affected', 'Timestamp'];
+    const rows = logsToExport.map(log => {
+      const cleanQuery = (log.query || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
+      const userName = (log.user?.name || 'Unknown').replace(/"/g, '""');
+      const userEmail = (log.user?.email || 'N/A').replace(/"/g, '""');
+      const userRole = (log.user?.role || 'user').replace(/"/g, '""');
+      const timeFormatted = new Date(log.createdAt).toLocaleString('en-IN');
 
-    const csvContent = [
+      return [
+        `"${userName}"`,
+        `"${userEmail}"`,
+        `"${userRole}"`,
+        log.status || 'success',
+        log.executionTime || 0,
+        `"${cleanQuery}"`,
+        log.rowsAffected !== undefined ? log.rowsAffected : 0,
+        `"${timeFormatted}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [
       headers.join(','),
       ...rows.map(row => row.join(','))
     ].join('\n');

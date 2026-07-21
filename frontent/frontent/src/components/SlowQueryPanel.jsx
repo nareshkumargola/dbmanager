@@ -140,20 +140,29 @@ export default function SlowQueryPanel({ connectionId }) {
       alert('No history records available to export!');
       return;
     }
-    const headers = ['Log ID', 'User Name', 'User Email', 'Connection Target', 'Execution Time (ms)', 'Rows Examined', 'SQL Query', 'AI Suggestion', 'Timestamp'];
-    const rows = filteredQueries.map(item => [
-      item._id,
-      `"${(item.user?.name || 'Unknown').replace(/"/g, '""')}"`,
-      `"${(item.user?.email || 'N/A').replace(/"/g, '""')}"`,
-      `"${(item.connection?.name || 'Target Database').replace(/"/g, '""')}"`,
-      item.executionTime || 0,
-      item.rowsExamined || 0,
-      `"${(item.query || '').replace(/"/g, '""')}"`,
-      `"${(item.suggestion || '').replace(/"/g, '""')}"`,
-      `"${new Date(item.createdAt).toLocaleString('en-IN')}"`
-    ]);
+    const headers = ['Log ID', 'User Name', 'User Email', 'Connection Target', 'Execution Time (ms)', 'Rows Examined', 'Full SQL Query', 'AI Suggestion', 'Timestamp'];
+    const rows = filteredQueries.map(item => {
+      const cleanQuery = (item.query || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
+      const cleanSuggestion = (item.suggestion || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
+      const userName = (item.user?.name || 'Unknown').replace(/"/g, '""');
+      const userEmail = (item.user?.email || 'N/A').replace(/"/g, '""');
+      const connName = (item.connection?.name || 'Target Database').replace(/"/g, '""');
+      const timeFormatted = new Date(item.createdAt).toLocaleString('en-IN');
 
-    const csvContent = [
+      return [
+        item._id,
+        `"${userName}"`,
+        `"${userEmail}"`,
+        `"${connName}"`,
+        item.executionTime || 0,
+        item.rowsExamined || 0,
+        `"${cleanQuery}"`,
+        `"${cleanSuggestion}"`,
+        `"${timeFormatted}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [
       headers.join(','),
       ...rows.map(r => r.join(','))
     ].join('\n');

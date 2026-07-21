@@ -84,19 +84,26 @@ export default function QueryHistory() {
       alert('No query history available to export!');
       return;
     }
-    const headers = ['ID', 'User', 'Status', 'Execution Time (ms)', 'Rows Affected', 'SQL Query', 'Error', 'Timestamp'];
-    const rows = history.map(item => [
-      item._id,
-      `"${(user?.name || 'User').replace(/"/g, '""')}"`,
-      item.status || 'success',
-      item.executionTime || 0,
-      item.rowsAffected || 0,
-      `"${(item.query || '').replace(/"/g, '""')}"`,
-      `"${(item.error || '').replace(/"/g, '""')}"`,
-      `"${new Date(item.createdAt).toLocaleString('en-IN')}"`
-    ]);
+    const headers = ['ID', 'User', 'Status', 'Execution Time (ms)', 'Rows Affected', 'Full SQL Query', 'Error Details', 'Timestamp'];
+    const rows = history.map(item => {
+      const cleanQuery = (item.query || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
+      const cleanError = (item.error || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
+      const userName = (user?.name || 'User').replace(/"/g, '""');
+      const timeFormatted = new Date(item.createdAt).toLocaleString('en-IN');
 
-    const csvContent = [
+      return [
+        item._id,
+        `"${userName}"`,
+        item.status || 'success',
+        item.executionTime || 0,
+        item.rowsAffected || 0,
+        `"${cleanQuery}"`,
+        `"${cleanError}"`,
+        `"${timeFormatted}"`
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [
       headers.join(','),
       ...rows.map(r => r.join(','))
     ].join('\n');
