@@ -60,8 +60,34 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
         ? 'bg-[#0d9da4] shadow-md border-transparent text-white'
         : 'bg-white border-b border-gray-200 bg-white/80 backdrop-blur-md text-gray-700'
     }`}>
-      {/* Left Area: Logo and/or Back Button */}
+      {/* Left Area: Back Button / Navigation link FIRST, then Logo */}
       <div className="flex items-center gap-3.5">
+        {backTo && (
+          <>
+            <button
+              onClick={() => navigate(backTo)}
+              className={`text-xs sm:text-sm flex items-center gap-1.5 font-bold px-3.5 py-1.5 rounded-xl transition-all shadow-2xs cursor-pointer ${
+                variant === 'teal'
+                  ? 'bg-white/20 text-white hover:bg-white/30 ring-1 ring-white/30'
+                  : 'bg-teal-50 text-[#0d9da4] hover:bg-teal-100 ring-1 ring-teal-200'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>{backText || 'Back'}</span>
+            </button>
+            <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
+          </>
+        )}
+
+        {extraLeft && (
+          <>
+            {extraLeft}
+            <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
+          </>
+        )}
+
         <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0">
           <img 
             src="/allatone_logo.jpg" 
@@ -74,27 +100,6 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
             DMS
           </span>
         </Link>
-
-        {backTo && (
-          <>
-            <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
-            <button
-              onClick={() => navigate(backTo)}
-              className={`text-sm flex items-center gap-1 font-medium transition ${
-                variant === 'teal' ? 'text-white hover:text-teal-100' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              ← {backText || 'Back'}
-            </button>
-          </>
-        )}
-
-        {extraLeft && (
-          <>
-            <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
-            {extraLeft}
-          </>
-        )}
       </div>
 
       {/* Right Area: Profile & Theme Toggle */}
