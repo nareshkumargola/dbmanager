@@ -211,12 +211,12 @@ export default function Connections() {
       <Navbar backTo="/dashboard" backText="Dashboard" />
 
       {loading ? (
-        <div className="w-[90%] mx-auto py-8 flex flex-col items-center justify-center py-20">
+        <div className="w-full flex flex-col items-center justify-center py-20">
           <div className="w-8 h-8 border-[3px] border-teal-100 border-t-[#0d9da4] rounded-full animate-spin mb-4"></div>
           <p className="text-sm text-teal-light">Loading connections...</p>
         </div>
       ) : (
-        <div className="w-[90%] mx-auto py-8">
+        <div className="w-full">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>

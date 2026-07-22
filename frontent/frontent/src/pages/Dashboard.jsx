@@ -39,6 +39,9 @@ export default function Dashboard() {
   const [shareSuccess, setShareSuccess] = useState('');
   const [shareSearch, setShareSearch] = useState('');
 
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
     fetchConnections();
@@ -98,6 +101,37 @@ export default function Dashboard() {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true);
+      const res = await API.get('/users');
+      setUsers(res.data.users || []);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const updateUserRoleInDashboard = async (id, newRole) => {
+    try {
+      await API.put(`/users/${id}/role`, { role: newRole });
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update user role.');
+    }
+  };
+
+  const deleteUserInDashboard = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
+    try {
+      await API.delete(`/users/${id}`);
+      fetchUsers();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete user.');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'activity') {
       if (subTab === 'queries') {
@@ -107,6 +141,8 @@ export default function Dashboard() {
       }
     } else if (activeTab === 'all-connections') {
       fetchAllConnections();
+    } else if (activeTab === 'users') {
+      fetchUsers();
     }
   }, [activeTab, subTab, user]);
 
@@ -342,17 +378,30 @@ export default function Dashboard() {
             </button>
 
             {user?.role === 'admin' && (
-              <button
-                onClick={() => setActiveTab('audit-logs')}
-                className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
-                  activeTab === 'audit-logs'
-                    ? 'text-white shadow-sm'
-                    : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
-                }`}
-                style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
-              >
-                <span className="text-base leading-none">📜</span> Application Audit Logs
-              </button>
+              <>
+                <button
+                  onClick={() => setActiveTab('audit-logs')}
+                  className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
+                    activeTab === 'audit-logs'
+                      ? 'text-white shadow-sm'
+                      : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                  }`}
+                  style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
+                >
+                  <span className="text-base leading-none">📜</span> Application Audit Logs
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
+                    activeTab === 'users'
+                      ? 'text-white shadow-sm'
+                      : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                  }`}
+                  style={activeTab === 'users' ? { backgroundColor: '#0d9da4' } : {}}
+                >
+                  <span className="text-base leading-none">👥</span> Users &amp; Roles
+                </button>
+              </>
             )}
 
             <div className="w-px h-6 bg-teal-200 mx-1 self-center hidden sm:block"></div>
@@ -521,6 +570,93 @@ export default function Dashboard() {
             {activeTab === 'audit-logs' && user?.role === 'admin' && (
               <div className="p-6 bg-teal-50/20">
                 <SystemAuditLogsPanel />
+              </div>
+            )}
+
+            {activeTab === 'users' && user?.role === 'admin' && (
+              <div className="p-6 bg-teal-50/20 text-left">
+                <div className="bg-white rounded-xl border border-gray-250 p-5 shadow-xs">
+                  <div className="mb-5">
+                    <h3 className="text-md font-bold text-gray-900">Registered Users &amp; Roles</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
+                  </div>
+
+                  {usersLoading ? (
+                    <div className="text-center py-10">
+                      <div className="w-8 h-8 border-3 border-teal-100 border-t-[#0d9da4] rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className="text-xs text-gray-400 font-semibold">Loading users list...</p>
+                    </div>
+                  ) : users.length === 0 ? (
+                    <div className="text-center py-10">
+                      <p className="text-sm text-gray-400 italic">No registered users found.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          <tr>
+                            <th className="px-5 py-3">User Details</th>
+                            <th className="px-5 py-3">Current Role</th>
+                            <th className="px-5 py-3">Update Role</th>
+                            <th className="px-5 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-150">
+                          {users.map(u => (
+                            <tr key={u._id} className="hover:bg-gray-50/50 transition">
+                              <td className="px-5 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-[#e3f6f6] text-[#0d9da4] border border-teal-100/50">
+                                    {u.name?.charAt(0).toUpperCase() || 'U'}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-gray-900">{u.name}</p>
+                                    <p className="text-gray-400 text-[11px] font-mono mt-0.5">{u.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3.5">
+                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                  u.role === 'admin'
+                                    ? 'bg-gray-950 text-white border border-gray-900'
+                                    : 'bg-teal-50 text-teal-700 border border-teal-150'
+                                }`}>
+                                  {u.role}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3.5">
+                                {u._id !== user.id ? (
+                                  <select
+                                    value={u.role}
+                                    onChange={e => updateUserRoleInDashboard(u._id, e.target.value)}
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
+                                  >
+                                    <option value="developer">Developer</option>
+                                    <option value="admin">Admin</option>
+                                  </select>
+                                ) : (
+                                  <span className="text-[11px] text-gray-400 italic">Self Account</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3.5 text-right">
+                                {u._id !== user.id ? (
+                                  <button
+                                    onClick={() => deleteUserInDashboard(u._id, u.name)}
+                                    className="px-2.5 py-1 border border-red-200 hover:border-red-400 text-red-500 hover:bg-red-50 font-bold rounded-lg transition text-[11px] cursor-pointer"
+                                  >
+                                    Delete Account
+                                  </button>
+                                ) : (
+                                  <span className="text-[11px] text-gray-400 italic font-medium">Locked</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
