@@ -32,6 +32,8 @@ export default function Connections() {
     connectionString: '',
   });
 
+  const [mongoMode, setMongoMode] = useState('structured');
+
   useEffect(() => {
     fetchConnections();
   }, []);
@@ -54,9 +56,29 @@ export default function Connections() {
     setForm({
       ...form,
       type,
-      port: type === 'mysql' ? '3306' : type === 'postgresql' ? '5432' : '',
+      host: type === 'mongodb' ? '127.0.0.1' : 'localhost',
+      port: type === 'mysql' ? '3306' : type === 'postgresql' ? '5432' : '27017',
+      username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '',
       connectionString: '',
+      database: '',
     });
+  };
+
+  const getProcessedForm = () => {
+    if (form.type === 'mongodb' && mongoMode === 'structured') {
+      let uri = 'mongodb://';
+      if (form.username && form.password) {
+        uri += `${encodeURIComponent(form.username)}:${encodeURIComponent(form.password)}@`;
+      } else if (form.username) {
+        uri += `${encodeURIComponent(form.username)}@`;
+      }
+      uri += `${form.host || '127.0.0.1'}:${form.port || 27017}`;
+      if (form.database) {
+        uri += `/${form.database}`;
+      }
+      return { ...form, connectionString: uri };
+    }
+    return form;
   };
 
   // Connection test karo
@@ -64,7 +86,8 @@ export default function Connections() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await API.post('/connections/test', form);
+      const processedForm = getProcessedForm();
+      const res = await API.post('/connections/test', processedForm);
       setTestResult({ success: true, message: res.data.message });
     } catch (err) {
       setTestResult({
@@ -83,7 +106,8 @@ export default function Connections() {
     setError('');
     setSuccess('');
     try {
-      await API.post('/connections', form);
+      const processedForm = getProcessedForm();
+      await API.post('/connections', processedForm);
       setSuccess('Connection saved successfully!');
       setShowForm(false);
       setTestResult(null);
@@ -295,12 +319,21 @@ export default function Connections() {
                 </div>
               </div>
 
-              {/* MongoDB — Connection String */}
-              {form.type === 'mongodb' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Connection String
-                  </label>
+              {/* Connection Form Fields */}
+              {form.type === 'mongodb' && mongoMode === 'uri' ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Connection String
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setMongoMode('structured')}
+                      className="text-xs text-[#0d9da4] hover:underline font-bold"
+                    >
+                      Switch to Structured Fields
+                    </button>
+                  </div>
                   <input
                     type="text"
                     placeholder="mongodb://username:password@host:27017/dbname"
@@ -311,50 +344,72 @@ export default function Connections() {
                   />
                 </div>
               ) : (
-                /* MySQL / PostgreSQL Fields */
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Host</label>
-                    <input
-                      type="text"
-                      placeholder="localhost"
-                      value={form.host}
-                      onChange={e => setForm({ ...form, host: e.target.value })}
-                      required
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
-                    <input
-                      type="number"
-                      placeholder={form.type === 'mysql' ? '3306' : '5432'}
-                      value={form.port}
-                      onChange={e => setForm({ ...form, port: e.target.value })}
-                      required
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input
-                      type="text"
-                      placeholder="root"
-                      value={form.username}
-                      onChange={e => setForm({ ...form, username: e.target.value })}
-                      required
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input
-                      type="password"
-                      placeholder="Password"
-                      value={form.password}
-                      onChange={e => setForm({ ...form, password: e.target.value })}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
-                    />
+                <div className="space-y-4">
+                  {form.type === 'mongodb' && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setMongoMode('uri')}
+                        className="text-xs text-[#0d9da4] hover:underline font-bold"
+                      >
+                        Switch to Raw Connection URI
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Host</label>
+                      <input
+                        type="text"
+                        placeholder={form.type === 'mongodb' ? '127.0.0.1' : 'localhost'}
+                        value={form.host}
+                        onChange={e => setForm({ ...form, host: e.target.value })}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+                      <input
+                        type="number"
+                        placeholder={form.type === 'mysql' ? '3306' : form.type === 'postgresql' ? '5432' : '27017'}
+                        value={form.port}
+                        onChange={e => setForm({ ...form, port: e.target.value })}
+                        required
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <input
+                        type="text"
+                        placeholder={form.type === 'mysql' ? 'root' : form.type === 'postgresql' ? 'postgres' : 'admin'}
+                        value={form.username}
+                        onChange={e => setForm({ ...form, username: e.target.value })}
+                        required={form.type !== 'mongodb'}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <input
+                        type="password"
+                        placeholder="Password"
+                        value={form.password}
+                        onChange={e => setForm({ ...form, password: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Database Name</label>
+                      <input
+                        type="text"
+                        placeholder={form.type === 'mongodb' ? 'test' : 'my_database'}
+                        value={form.database}
+                        onChange={e => setForm({ ...form, database: e.target.value })}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
