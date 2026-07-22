@@ -319,7 +319,7 @@ export default function Dashboard() {
             <div>
               <h2 className="text-[20px] font-bold text-teal-900 tracking-tight">Dashboard</h2>
               <p className="text-[12px] text-teal-800/70 mt-0.5">
-                Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span> — here's what's happening across your databases.
+                Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span>
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -655,7 +655,7 @@ export default function Dashboard() {
               )}
 
               <p className="text-[11px] font-bold text-teal-600 mb-3 uppercase tracking-wider">
-                Select developers / viewers
+                Select developers
               </p>
 
               {/* Search Box */}
@@ -673,7 +673,7 @@ export default function Dashboard() {
 
               {usersList.length === 0 ? (
                 <p className="text-[13px] text-teal-700/50 text-center py-6">
-                  No developers or viewers found.
+                  No developers found.
                 </p>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-1.5 ring-1 ring-teal-50 rounded-xl p-2.5 bg-teal-50/30">

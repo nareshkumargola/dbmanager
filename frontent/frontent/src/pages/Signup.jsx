@@ -117,7 +117,7 @@ export default function Signup() {
             onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
           >
             <option value="developer">Developer</option>
-            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
           </select>
 
           <button

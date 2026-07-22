@@ -297,7 +297,6 @@ export default function UserManagement() {
                   >
                     <option value="developer">Developer</option>
                     <option value="admin">Admin</option>
-                    <option value="viewer">Viewer</option>
                   </select>
                 </div>
               </div>
@@ -516,7 +515,6 @@ export default function UserManagement() {
                           >
                             <option value="admin">Admin</option>
                             <option value="developer">Developer</option>
-                            <option value="viewer">Viewer</option>
                           </select>
                         ) : (
                           <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-900 text-white uppercase">

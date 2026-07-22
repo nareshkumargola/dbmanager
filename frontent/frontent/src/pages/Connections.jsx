@@ -570,7 +570,7 @@ export default function Connections() {
 
               <div className="flex justify-between items-center mb-3">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Select Developers / Viewers:
+                  Select Developers:
                 </p>
               </div>
 
@@ -589,7 +589,7 @@ export default function Connections() {
 
               {usersList.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-6">
-                  No developers or viewers found.
+                  No developers found.
                 </p>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-2 border border-gray-100 rounded-lg p-3 bg-gray-50/50">
