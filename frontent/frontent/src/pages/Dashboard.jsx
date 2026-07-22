@@ -41,6 +41,8 @@ export default function Dashboard() {
 
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [usersPage, setUsersPage] = useState(1);
+  const usersItemsPerPage = 5;
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -145,6 +147,10 @@ export default function Dashboard() {
       fetchUsers();
     }
   }, [activeTab, subTab, user]);
+
+  const totalUsersPages = Math.ceil(users.length / usersItemsPerPage);
+  const usersStartIndex = (usersPage - 1) * usersItemsPerPage;
+  const paginatedUsers = users.slice(usersStartIndex, usersStartIndex + usersItemsPerPage);
 
   const isToday = (dateString) => {
     const today = new Date();
@@ -602,7 +608,7 @@ export default function Dashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-150">
-                          {users.map(u => (
+                          {paginatedUsers.map(u => (
                             <tr key={u._id} className="hover:bg-gray-50/50 transition">
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-3">
@@ -654,6 +660,48 @@ export default function Dashboard() {
                           ))}
                         </tbody>
                       </table>
+
+                      {/* Premium Pagination Footer */}
+                      {totalUsersPages > 1 && (
+                        <div className="px-5 py-3.5 bg-gray-50 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
+                          <div className="text-xs text-gray-500">
+                            Showing <span className="font-semibold">{usersStartIndex + 1}</span> to{' '}
+                            <span className="font-semibold">
+                              {Math.min(usersStartIndex + usersItemsPerPage, users.length)}
+                            </span>{' '}
+                            of <span className="font-semibold">{users.length}</span> users
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setUsersPage(prev => Math.max(prev - 1, 1))}
+                              disabled={usersPage === 1}
+                              className="px-2.5 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                            >
+                              Previous
+                            </button>
+                            {Array.from({ length: totalUsersPages }).map((_, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setUsersPage(i + 1)}
+                                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition ${
+                                  usersPage === i + 1
+                                    ? 'bg-gray-900 text-white border-gray-900'
+                                    : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50 cursor-pointer'
+                                }`}
+                              >
+                                {i + 1}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => setUsersPage(prev => Math.min(prev + 1, totalUsersPages))}
+                              disabled={usersPage === totalUsersPages}
+                              className="px-2.5 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

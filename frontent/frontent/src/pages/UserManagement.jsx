@@ -38,6 +38,9 @@ export default function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyItemsPerPage = 5;
+
   useEffect(() => {
     setCurrentPage(1);
   }, [userSearchQuery]);
@@ -200,6 +203,10 @@ export default function UserManagement() {
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
+
+  const totalHistoryPages = Math.ceil(historyLogs.length / historyItemsPerPage);
+  const historyStartIndex = (historyPage - 1) * historyItemsPerPage;
+  const paginatedHistoryLogs = historyLogs.slice(historyStartIndex, historyStartIndex + historyItemsPerPage);
 
   if (loading) {
     return (
@@ -493,44 +500,24 @@ export default function UserManagement() {
               </div>
 
               {/* Single Column: Permission details for the selected user */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-left max-w-4xl mx-auto">
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-left w-[90%] max-w-[90%] mx-auto">
                 {selectedUserObj ? (
                   <div>
                     
-                    {/* User Title & Role Config */}
+                    {/* User Title */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4 mb-5">
                       <div>
                         <h3 className="text-lg font-bold text-gray-900">{selectedUserObj.name}</h3>
-                        <p className="text-xs text-gray-500 mt-0.5">{selectedUserObj.email}</p>
-                      </div>
-
-                      {/* Role update panel */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Role:</span>
-                        {selectedUserObj._id !== currentUser?.id ? (
-                          <select
-                            value={selectedUserObj.role}
-                            onChange={e => updateRole(selectedUserObj._id, e.target.value)}
-                            className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50 font-semibold outline-none focus:border-gray-500"
-                          >
-                            <option value="admin">Admin</option>
-                            <option value="developer">Developer</option>
-                          </select>
-                        ) : (
-                          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-900 text-white uppercase">
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-500">{selectedUserObj.email}</span>
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                            selectedUserObj.role === 'admin'
+                              ? 'bg-gray-950 text-white'
+                              : 'bg-teal-50 text-teal-700 border border-teal-150'
+                          }`}>
                             {selectedUserObj.role}
                           </span>
-                        )}
-
-                        {/* Delete account */}
-                        {selectedUserObj._id !== currentUser?.id && (
-                          <button
-                            onClick={() => deleteUser(selectedUserObj._id, selectedUserObj.name)}
-                            className="text-xs px-2.5 py-1.5 border border-red-200 text-red-500 font-semibold rounded-lg hover:bg-red-50 transition"
-                          >
-                            Delete Account
-                          </button>
-                        )}
+                        </div>
                       </div>
                     </div>
 
@@ -645,7 +632,7 @@ export default function UserManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 bg-white">
-                    {historyLogs.map(log => (
+                    {paginatedHistoryLogs.map(log => (
                       <tr key={log._id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
@@ -676,6 +663,48 @@ export default function UserManagement() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Premium Pagination Footer */}
+                {totalHistoryPages > 1 && (
+                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-xs text-gray-500">
+                      Showing <span className="font-semibold">{historyStartIndex + 1}</span> to{' '}
+                      <span className="font-semibold">
+                        {Math.min(historyStartIndex + historyItemsPerPage, historyLogs.length)}
+                      </span>{' '}
+                      of <span className="font-semibold">{historyLogs.length}</span> entries
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
+                        disabled={historyPage === 1}
+                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                      >
+                        Previous
+                      </button>
+                      {Array.from({ length: totalHistoryPages }).map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setHistoryPage(i + 1)}
+                          className={`px-3 py-1.5 border rounded-lg text-xs font-semibold transition ${
+                            historyPage === i + 1
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50 cursor-pointer'
+                          }`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setHistoryPage(prev => Math.min(prev + 1, totalHistoryPages))}
+                        disabled={historyPage === totalHistoryPages}
+                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
