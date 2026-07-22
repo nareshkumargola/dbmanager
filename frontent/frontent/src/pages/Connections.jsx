@@ -400,16 +400,6 @@ export default function Connections() {
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
                       />
                     </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Database Name</label>
-                      <input
-                        type="text"
-                        placeholder={form.type === 'mongodb' ? 'test' : 'my_database'}
-                        value={form.database}
-                        onChange={e => setForm({ ...form, database: e.target.value })}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
-                      />
-                    </div>
                   </div>
                 </div>
               )}
