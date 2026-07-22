@@ -11,7 +11,7 @@ export default function SlowQuery() {
       {/* Navbar */}
       <Navbar backTo="/dashboard" backText="Dashboard" />
 
-      <div className="w-full">
+      <div className="max-w-4xl mx-auto px-6 py-8">
         <SlowQueryPanel />
       </div>
     </div>

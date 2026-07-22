@@ -14,7 +14,7 @@ export default function Layout() {
         variant={navbarConfig.variant}
         isGlobal={true}
       />
-      <div className="flex-1 flex flex-col w-[90%] max-w-[90%] mx-auto py-8">
+      <div className="flex-1 flex flex-col">
         <Outlet />
       </div>
     </div>

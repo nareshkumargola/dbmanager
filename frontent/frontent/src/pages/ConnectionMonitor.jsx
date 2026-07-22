@@ -449,7 +449,7 @@ export default function ConnectionMonitor() {
         }
       />
 
-      <div className="w-full">
+      <div className="w-[90%] mx-auto py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">Database Connection Monitoring</h2>

@@ -215,7 +215,7 @@ export default function UserManagement() {
       <Navbar backTo="/dashboard" backText="Dashboard" />
 
       {/* Main Container - Width 90% */}
-      <div className="w-full">
+      <div className="w-[90%] max-w-[90%] mx-auto px-6 py-8">
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
