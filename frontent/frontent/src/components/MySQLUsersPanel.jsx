@@ -173,7 +173,7 @@ export default function MySQLUsersPanel({ connectionId }) {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">👤 MySQL Users & Permissions</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Database users ko list karein, unke permissions manage karein aur grants/revoke operations chalayein
+            List database users, manage their permissions, and execute grant/revoke operations.
           </p>
         </div>
         <button
