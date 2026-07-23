@@ -22,6 +22,8 @@ export default function ConnectionDashboard() {
   const fullscreenTextareaRef = useRef(null);
   const highlightRef = useRef(null);
   const fullscreenHighlightRef = useRef(null);
+  const lineCounterRef = useRef(null);
+  const fullscreenLineCounterRef = useRef(null);
   
   const [objects, setObjects] = useState(null);
   const [stats, setStats] = useState(null);
@@ -462,12 +464,18 @@ export default function ConnectionDashboard() {
       highlightRef.current.scrollTop = e.target.scrollTop;
       highlightRef.current.scrollLeft = e.target.scrollLeft;
     }
+    if (lineCounterRef.current) {
+      lineCounterRef.current.scrollTop = e.target.scrollTop;
+    }
   };
 
   const handleFullscreenScroll = (e) => {
     if (fullscreenHighlightRef.current) {
       fullscreenHighlightRef.current.scrollTop = e.target.scrollTop;
       fullscreenHighlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+    if (fullscreenLineCounterRef.current) {
+      fullscreenLineCounterRef.current.scrollTop = e.target.scrollTop;
     }
   };
 
@@ -941,25 +949,48 @@ export default function ConnectionDashboard() {
                       overflow: hidden;
                       box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
                     }
+                    .sql-editor-gutter {
+                      position: absolute;
+                      top: 0;
+                      left: 0;
+                      width: 44px;
+                      height: 100%;
+                      padding: 16px 0;
+                      background-color: #f3f4f6;
+                      border-right: 1px solid #e5e7eb;
+                      color: #9ca3af;
+                      text-align: right;
+                      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                      font-size: 14px;
+                      line-height: 1.5;
+                      overflow: hidden;
+                      user-select: none;
+                      box-sizing: border-box;
+                      z-index: 3;
+                    }
+                    .sql-editor-line-number {
+                      padding-right: 10px;
+                      height: 21px; /* 14px * 1.5 = 21px */
+                    }
                     .sql-editor-textarea,
                     .sql-editor-highlight {
                       position: absolute !important;
                       top: 0;
-                      left: 0;
-                      width: 100%;
+                      left: 44px !important;
+                      width: calc(100% - 44px) !important;
                       height: 100%;
                       margin: 0;
                       padding: 16px;
                       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
                       font-size: 14px;
                       line-height: 1.5;
-                      white-space: pre-wrap;
-                      word-wrap: break-word;
+                      white-space: pre !important;
+                      word-wrap: normal !important;
                       box-sizing: border-box;
                       border: none;
                       outline: none;
                       text-align: left;
-                      overflow-y: auto;
+                      overflow: auto !important;
                     }
                     .sql-editor-textarea {
                       color: transparent !important;
@@ -998,6 +1029,13 @@ export default function ConnectionDashboard() {
 
                   {/* Textarea Overlay Container */}
                   <div className="sql-editor-container h-[160px]">
+                    {/* Gutter Line Numbers */}
+                    <div ref={lineCounterRef} className="sql-editor-gutter">
+                      {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
+                        <div key={i} className="sql-editor-line-number">{i + 1}</div>
+                      ))}
+                    </div>
+
                     <textarea
                       ref={textareaRef}
                       value={query}
@@ -1072,6 +1110,13 @@ export default function ConnectionDashboard() {
                       <div className="flex-1 p-5 bg-gray-50/50">
                         {/* Textarea Overlay Container (Fullscreen) */}
                         <div className="sql-editor-container h-full">
+                          {/* Gutter Line Numbers */}
+                          <div ref={fullscreenLineCounterRef} className="sql-editor-gutter">
+                            {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
+                              <div key={i} className="sql-editor-line-number">{i + 1}</div>
+                            ))}
+                          </div>
+
                           <textarea
                             ref={fullscreenTextareaRef}
                             value={query}

@@ -34,6 +34,7 @@ export default function QueryEditor() {
   const [message, setMessage] = useState('');
   const textareaRef = useRef(null);
   const highlightRef = useRef(null);
+  const lineCounterRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Connection selection state
@@ -159,6 +160,9 @@ export default function QueryEditor() {
     if (highlightRef.current) {
       highlightRef.current.scrollTop = e.target.scrollTop;
       highlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+    if (lineCounterRef.current) {
+      lineCounterRef.current.scrollTop = e.target.scrollTop;
     }
   };
 
@@ -351,25 +355,48 @@ export default function QueryEditor() {
               overflow: hidden;
               box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
             }
+            .sql-editor-gutter {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 44px;
+              height: 100%;
+              padding: 16px 0;
+              background-color: #f3f4f6;
+              border-right: 1px solid #e5e7eb;
+              color: #9ca3af;
+              text-align: right;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-size: 14px;
+              line-height: 1.5;
+              overflow: hidden;
+              user-select: none;
+              box-sizing: border-box;
+              z-index: 3;
+            }
+            .sql-editor-line-number {
+              padding-right: 10px;
+              height: 21px; /* 14px * 1.5 = 21px */
+            }
             .sql-editor-textarea,
             .sql-editor-highlight {
               position: absolute !important;
               top: 0;
-              left: 0;
-              width: 100%;
+              left: 44px !important;
+              width: calc(100% - 44px) !important;
               height: 100%;
               margin: 0;
               padding: 16px;
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
               font-size: 14px;
               line-height: 1.5;
-              white-space: pre-wrap;
-              word-wrap: break-word;
+              white-space: pre !important;
+              word-wrap: normal !important;
               box-sizing: border-box;
               border: none;
               outline: none;
               text-align: left;
-              overflow-y: auto;
+              overflow: auto !important;
             }
             .sql-editor-textarea {
               color: transparent !important;
@@ -408,6 +435,13 @@ export default function QueryEditor() {
 
           {/* Textarea Overlay Container */}
           <div className={`sql-editor-container ${isExpanded ? 'h-[360px]' : 'h-[160px]'}`}>
+            {/* Gutter Line Numbers */}
+            <div ref={lineCounterRef} className="sql-editor-gutter">
+              {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
+                <div key={i} className="sql-editor-line-number">{i + 1}</div>
+              ))}
+            </div>
+            
             <textarea
               ref={textareaRef}
               value={query}
