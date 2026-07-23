@@ -896,45 +896,34 @@ export default function ConnectionDashboard() {
             {activeTab === 'query' && (
               <div>
                 <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex gap-2 flex-wrap">
-                      {['SHOW TABLES', 'SELECT * FROM users', 'SHOW DATABASES'].map((hint, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setQuery(hint)}
-                          className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200"
-                        >
-                          {hint}
-                        </button>
-                      ))}
+                  {/* Query Toolbar */}
+                  <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => runQuery(false)}
+                        disabled={queryLoading || !query.trim()}
+                        title="Execute Selection or Current Statement (Ctrl+Enter)"
+                        className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                      >
+                        <span>⚡</span> Run Selection
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runQuery(true)}
+                        disabled={queryLoading || !query.trim()}
+                        title="Execute Entire Script"
+                        className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                      >
+                        <span>📜</span> Run All
+                      </button>
                     </div>
+
                     <button
                       onClick={() => setIsQueryMaximized(true)}
-                      className="text-xs font-semibold text-[#0d9da4] hover:underline flex items-center gap-1.5"
+                      className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1.5 border border-gray-250 bg-white px-2.5 py-1.5 rounded-lg shadow-xs transition hover:bg-gray-50"
                     >
-                      🗖 Expand Fullscreen
-                    </button>
-                  </div>
-
-                  {/* Query Toolbar */}
-                  <div className="flex items-center gap-2 mb-3 border-t border-gray-100 pt-3">
-                    <button
-                      type="button"
-                      onClick={() => runQuery(false)}
-                      disabled={queryLoading || !query.trim()}
-                      title="Execute Selection or Current Statement (Ctrl+Enter)"
-                      className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                    >
-                      <span>⚡</span> Run Selection
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => runQuery(true)}
-                      disabled={queryLoading || !query.trim()}
-                      title="Execute Entire Script"
-                      className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                    >
-                      <span>📜</span> Run All
+                      <span>🗖</span> Expand Fullscreen
                     </button>
                   </div>
 
@@ -1028,7 +1017,7 @@ export default function ConnectionDashboard() {
                   `}</style>
 
                   {/* Textarea Overlay Container */}
-                  <div className="sql-editor-container h-[160px]">
+                  <div className="sql-editor-container h-[280px]">
                     {/* Gutter Line Numbers */}
                     <div ref={lineCounterRef} className="sql-editor-gutter">
                       {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
