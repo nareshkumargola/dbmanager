@@ -17,6 +17,7 @@ const connectMySQL = async (config) => {
     authPlugins: undefined,
     ssl: false,
     multipleStatements: true,
+    connectTimeout: 2000, // Fail fast on offline hosts
   };
 
   // Database optional hai — sirf tab add karo jab ho
@@ -51,7 +52,9 @@ const connectPostgreSQL = async (config) => {
 
 // ─── MONGODB CONNECT ──────────────────────────────
 const connectMongoDB = async (config) => {
-  const client = new MongoClient(config.connectionString);
+  const client = new MongoClient(config.connectionString, {
+    serverSelectionTimeoutMS: 2000, // Fail fast on offline hosts
+  });
   await client.connect();
   return client;
 };

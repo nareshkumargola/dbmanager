@@ -353,9 +353,13 @@ export default function QueryEditor() {
             }
             .sql-editor-textarea,
             .sql-editor-highlight {
+              position: absolute !important;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
               margin: 0;
               padding: 16px;
-              width: 100%;
               font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
               font-size: 14px;
               line-height: 1.5;
@@ -365,29 +369,26 @@ export default function QueryEditor() {
               border: none;
               outline: none;
               text-align: left;
+              overflow-y: auto;
             }
             .sql-editor-textarea {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 100%;
-              height: 100%;
-              color: transparent;
-              background: transparent;
-              caret-color: #0d9da4;
-              resize: none;
+              color: transparent !important;
+              -webkit-text-fill-color: transparent !important;
+              background: transparent !important;
+              caret-color: #0d9da4 !important;
               z-index: 2;
-              overflow-y: auto;
+              resize: none;
             }
             .sql-editor-highlight {
-              position: relative;
-              width: 100%;
-              height: 100%;
               z-index: 1;
-              pointer-events: none;
-              overflow-y: auto;
               color: #1f2937;
-              background: transparent;
+              background: transparent !important;
+              pointer-events: none;
+              -ms-overflow-style: none;
+              scrollbar-width: none;
+            }
+            .sql-editor-highlight::-webkit-scrollbar {
+              display: none;
             }
             .sql-keyword {
               color: #0d9da4 !important;
