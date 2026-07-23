@@ -184,18 +184,18 @@ export default function QueryEditor() {
 
     return escaped.replace(combinedRegex, (match, comment, string, number, word) => {
       if (comment) {
-        return `<span class="text-green-600 italic">${comment}</span>`;
+        return `<span class="sql-comment">${comment}</span>`;
       }
       if (string) {
-        return `<span class="text-amber-600 font-medium">${string}</span>`;
+        return `<span class="sql-string">${string}</span>`;
       }
       if (number) {
-        return `<span class="text-indigo-600">${number}</span>`;
+        return `<span class="sql-number">${number}</span>`;
       }
       if (word) {
         const upperWord = word.toUpperCase();
         if (keywords.includes(upperWord)) {
-          return `<span class="text-[#0d9da4] font-bold">${word}</span>`;
+          return `<span class="sql-keyword">${word}</span>`;
         }
       }
       return match;
@@ -388,6 +388,20 @@ export default function QueryEditor() {
               overflow-y: auto;
               color: #1f2937;
               background: transparent;
+            }
+            .sql-keyword {
+              color: #0d9da4 !important;
+              font-weight: bold !important;
+            }
+            .sql-string {
+              color: #d97706 !important;
+            }
+            .sql-number {
+              color: #4f46e5 !important;
+            }
+            .sql-comment {
+              color: #16a34a !important;
+              font-style: italic !important;
             }
           `}</style>
 
