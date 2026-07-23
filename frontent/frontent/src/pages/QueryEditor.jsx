@@ -33,6 +33,7 @@ export default function QueryEditor() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const textareaRef = useRef(null);
+  const highlightRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Connection selection state
@@ -152,6 +153,53 @@ export default function QueryEditor() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleScroll = (e) => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = e.target.scrollTop;
+      highlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
+
+  const highlightSQL = (text) => {
+    if (!text) return '';
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const keywords = [
+      'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT',
+      'INNER', 'OUTER', 'ON', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'HAVING',
+      'AND', 'OR', 'NOT', 'IN', 'IS', 'NULL', 'LIKE', 'AS', 'CREATE', 'TABLE', 'DATABASE',
+      'DROP', 'ALTER', 'ADD', 'SET', 'VALUES', 'INTO', 'SHOW', 'DATABASES', 'TABLES',
+      'USE', 'GRANT', 'REVOKE', 'INDEX', 'TRIGGER', 'PROCEDURE', 'FUNCTION', 'BEGIN',
+      'COMMIT', 'ROLLBACK', 'TRANSACTION'
+    ];
+
+    keywords.sort((a, b) => b.length - a.length);
+    const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
+    const combinedRegex = /(?:(\/\*[\s\S]*?\*\/|--.*|#.*))|('(?:\\'|[^'])*'|"(?:\\"|[^"])*")|(\b\d+\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+
+    return escaped.replace(combinedRegex, (match, comment, string, number, word) => {
+      if (comment) {
+        return `<span class="text-green-600 italic">${comment}</span>`;
+      }
+      if (string) {
+        return `<span class="text-amber-600 font-medium">${string}</span>`;
+      }
+      if (number) {
+        return `<span class="text-indigo-600">${number}</span>`;
+      }
+      if (word) {
+        const upperWord = word.toUpperCase();
+        if (keywords.includes(upperWord)) {
+          return `<span class="text-[#0d9da4] font-bold">${word}</span>`;
+        }
+      }
+      return match;
+    });
   };
 
   // Keyboard shortcut — Ctrl+Enter se query run
@@ -292,16 +340,76 @@ export default function QueryEditor() {
             </button>
           </div>
 
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={isExpanded ? 16 : 6}
-            placeholder="SQL query yahan likho..."
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-gray-500 resize-none bg-gray-50 focus:bg-white transition-colors duration-150 shadow-inner"
-          />
+          {/* Scoped styles for overlay syntax highlighter */}
+          <style>{`
+            .sql-editor-container {
+              position: relative;
+              width: 100%;
+              border: 1px solid #d1d5db;
+              border-radius: 12px;
+              background-color: #f9fafb;
+              overflow: hidden;
+              box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+            }
+            .sql-editor-textarea,
+            .sql-editor-highlight {
+              margin: 0;
+              padding: 16px;
+              width: 100%;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+              font-size: 14px;
+              line-height: 1.5;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+              box-sizing: border-box;
+              border: none;
+              outline: none;
+              text-align: left;
+            }
+            .sql-editor-textarea {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              color: transparent;
+              background: transparent;
+              caret-color: #0d9da4;
+              resize: none;
+              z-index: 2;
+              overflow-y: auto;
+            }
+            .sql-editor-highlight {
+              position: relative;
+              width: 100%;
+              height: 100%;
+              z-index: 1;
+              pointer-events: none;
+              overflow-y: auto;
+              color: #1f2937;
+              background: transparent;
+            }
+          `}</style>
+
+          {/* Textarea Overlay Container */}
+          <div className={`sql-editor-container ${isExpanded ? 'h-[360px]' : 'h-[160px]'}`}>
+            <textarea
+              ref={textareaRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onScroll={handleScroll}
+              placeholder="SQL query yahan likho..."
+              className="sql-editor-textarea"
+            />
+            <pre
+              ref={highlightRef}
+              className="sql-editor-highlight"
+              dangerouslySetInnerHTML={{
+                __html: highlightSQL(query) + '\n'
+              }}
+            />
+          </div>
 
           {/* Run Button */}
           <div className="flex items-center justify-between mt-3">
