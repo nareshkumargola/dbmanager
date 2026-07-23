@@ -449,6 +449,7 @@ exports.getMonitoringHistory = async (req, res) => {
       success: true,
       current: currentData,
       hourly: hourlyData,
+      snapshots: snapshots,
       timestamp: new Date(),
     });
   } catch (err) {

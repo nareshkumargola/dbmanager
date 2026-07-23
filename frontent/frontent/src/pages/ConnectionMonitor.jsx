@@ -40,6 +40,7 @@ export default function ConnectionMonitor() {
   const [monitorData, setMonitorData] = useState(null);
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorHistory, setMonitorHistory] = useState([]);
+  const [rawSnapshots, setRawSnapshots] = useState([]);
   const [tableDetails, setTableDetails] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [range, setRange] = useState('current');
@@ -133,6 +134,9 @@ export default function ConnectionMonitor() {
       if (histRes.data.hourly && histRes.data.hourly.length > 0) {
         setMonitorHistory(histRes.data.hourly);
       }
+      if (histRes.data.snapshots && histRes.data.snapshots.length > 0) {
+        setRawSnapshots(histRes.data.snapshots);
+      }
 
       // Record live real-time ticks
       setLiveHistory(prev => {
@@ -210,8 +214,24 @@ export default function ConnectionMonitor() {
 
   const displayedHistory = range === 'current'
     ? (currentHourFilter === 'live'
-      ? (liveHistory.length > 0 ? liveHistory : monitorHistory.slice(-5))
-      : monitorHistory.slice(-currentHourFilter))
+      ? (liveHistory.length > 0
+        ? liveHistory
+        : (rawSnapshots.length > 0
+          ? rawSnapshots.filter(s => new Date(s.createdAt) >= new Date(Date.now() - 30 * 60 * 1000)).map(s => ({
+              ...s,
+              hour: new Date(s.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            }))
+          : monitorHistory.slice(-5)
+        )
+      )
+      : (rawSnapshots.length > 0
+        ? rawSnapshots.filter(s => new Date(s.createdAt) >= new Date(Date.now() - currentHourFilter * 60 * 60 * 1000)).map(s => ({
+            ...s,
+            hour: new Date(s.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
+          }))
+        : monitorHistory.slice(-currentHourFilter)
+      )
+    )
     : monitorHistory;
 
   const downloadMonitoringPDF = async () => {
@@ -757,7 +777,7 @@ export default function ConnectionMonitor() {
                 {/* 1. Active Connections */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    📈 Active Connections Trend ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                    📈 Active Connections Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -792,7 +812,7 @@ export default function ConnectionMonitor() {
                 {dbType === 'mysql' && (
                   <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                     <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                      ⚡ Queries Per Second Trend ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                      ⚡ Queries Per Second Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                     </h3>
                     <ResponsiveContainer width="100%" height={220}>
                       <AreaChart data={displayedHistory}>
@@ -827,7 +847,7 @@ export default function ConnectionMonitor() {
                 {/* 3. Slow Queries */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    ⚠️ Slow Queries Trend ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                    ⚠️ Slow Queries Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -861,7 +881,7 @@ export default function ConnectionMonitor() {
                 {/* 4. Database Size */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    💾 Server Size (MB) ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                    💾 Server Size (MB) ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -895,7 +915,7 @@ export default function ConnectionMonitor() {
                 {/* 5. Total Tables */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    📋 Total Tables Trend ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                    📋 Total Tables Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -929,7 +949,7 @@ export default function ConnectionMonitor() {
                 {/* 6. Network Traffic */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    🌐 Network Traffic (MB) ({range === 'current' ? 'Live (5 Hours)' : (range === 'custom' ? 'Custom Range' : range)})
+                    🌐 Network Traffic (MB) ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>

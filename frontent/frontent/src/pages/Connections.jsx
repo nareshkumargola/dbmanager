@@ -336,7 +336,7 @@ export default function Connections() {
                   </div>
                   <input
                     type="text"
-                    placeholder="mongodb://username:password@host:27017/dbname"
+                    placeholder="mongodb://username:password@host:27017/"
                     value={form.connectionString}
                     onChange={e => setForm({ ...form, connectionString: e.target.value })}
                     required
