@@ -20,6 +20,8 @@ export default function ConnectionDashboard() {
   
   const textareaRef = useRef(null);
   const fullscreenTextareaRef = useRef(null);
+  const highlightRef = useRef(null);
+  const fullscreenHighlightRef = useRef(null);
   
   const [objects, setObjects] = useState(null);
   const [stats, setStats] = useState(null);
@@ -455,6 +457,60 @@ export default function ConnectionDashboard() {
     }
   };
 
+  const handleScroll = (e) => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = e.target.scrollTop;
+      highlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
+
+  const handleFullscreenScroll = (e) => {
+    if (fullscreenHighlightRef.current) {
+      fullscreenHighlightRef.current.scrollTop = e.target.scrollTop;
+      fullscreenHighlightRef.current.scrollLeft = e.target.scrollLeft;
+    }
+  };
+
+  const highlightSQL = (text) => {
+    if (!text) return '';
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    const keywords = [
+      'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT',
+      'INNER', 'OUTER', 'ON', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'HAVING',
+      'AND', 'OR', 'NOT', 'IN', 'IS', 'NULL', 'LIKE', 'AS', 'CREATE', 'TABLE', 'DATABASE',
+      'DROP', 'ALTER', 'ADD', 'SET', 'VALUES', 'INTO', 'SHOW', 'DATABASES', 'TABLES',
+      'USE', 'GRANT', 'REVOKE', 'INDEX', 'TRIGGER', 'PROCEDURE', 'FUNCTION', 'BEGIN',
+      'COMMIT', 'ROLLBACK', 'TRANSACTION'
+    ];
+
+    keywords.sort((a, b) => b.length - a.length);
+    const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
+    const combinedRegex = /(?:(\/\*[\s\S]*?\*\/|--.*|#.*))|('(?:\\'|[^'])*'|"(?:\\"|[^"])*")|(\b\d+\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+
+    return escaped.replace(combinedRegex, (match, comment, string, number, word) => {
+      if (comment) {
+        return `<span class="sql-comment">${comment}</span>`;
+      }
+      if (string) {
+        return `<span class="sql-string">${string}</span>`;
+      }
+      if (number) {
+        return `<span class="sql-number">${number}</span>`;
+      }
+      if (word) {
+        const upperWord = word.toUpperCase();
+        if (keywords.includes(upperWord)) {
+          return `<span class="sql-keyword">${word}</span>`;
+        }
+      }
+      return match;
+    });
+  };
+
 
 
   const deleteHistory = async (histId) => {
@@ -874,15 +930,91 @@ export default function ConnectionDashboard() {
                     </button>
                   </div>
 
-                  <textarea
-                    ref={textareaRef}
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') runQuery(false); }}
-                    rows={6}
-                    placeholder="Write SQL query here — Press Ctrl+Enter to run"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono outline-none focus:border-gray-500 resize-none bg-gray-50"
-                  />
+                  {/* Scoped styles for overlay syntax highlighter */}
+                  <style>{`
+                    .sql-editor-container {
+                      position: relative;
+                      width: 100%;
+                      border: 1px solid #d1d5db;
+                      border-radius: 12px;
+                      background-color: #f9fafb;
+                      overflow: hidden;
+                      box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+                    }
+                    .sql-editor-textarea,
+                    .sql-editor-highlight {
+                      position: absolute !important;
+                      top: 0;
+                      left: 0;
+                      width: 100%;
+                      height: 100%;
+                      margin: 0;
+                      padding: 16px;
+                      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+                      font-size: 14px;
+                      line-height: 1.5;
+                      white-space: pre-wrap;
+                      word-wrap: break-word;
+                      box-sizing: border-box;
+                      border: none;
+                      outline: none;
+                      text-align: left;
+                      overflow-y: auto;
+                    }
+                    .sql-editor-textarea {
+                      color: transparent !important;
+                      -webkit-text-fill-color: transparent !important;
+                      background: transparent !important;
+                      caret-color: #0d9da4 !important;
+                      z-index: 2;
+                      resize: none;
+                    }
+                    .sql-editor-highlight {
+                      z-index: 1;
+                      color: #1f2937;
+                      background: transparent !important;
+                      pointer-events: none;
+                      -ms-overflow-style: none;
+                      scrollbar-width: none;
+                    }
+                    .sql-editor-highlight::-webkit-scrollbar {
+                      display: none;
+                    }
+                    .sql-keyword {
+                      color: #0d9da4 !important;
+                      font-weight: bold !important;
+                    }
+                    .sql-string {
+                      color: #d97706 !important;
+                    }
+                    .sql-number {
+                      color: #4f46e5 !important;
+                    }
+                    .sql-comment {
+                      color: #16a34a !important;
+                      font-style: italic !important;
+                    }
+                  `}</style>
+
+                  {/* Textarea Overlay Container */}
+                  <div className="sql-editor-container h-[160px]">
+                    <textarea
+                      ref={textareaRef}
+                      value={query}
+                      onChange={e => setQuery(e.target.value)}
+                      onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') runQuery(false); }}
+                      onScroll={handleScroll}
+                      placeholder="Write SQL query here — Press Ctrl+Enter to run"
+                      className="sql-editor-textarea"
+                    />
+                    <pre
+                      ref={highlightRef}
+                      className="sql-editor-highlight"
+                      dangerouslySetInnerHTML={{
+                        __html: highlightSQL(query) + '\n'
+                      }}
+                    />
+                  </div>
                   <div className="flex justify-between items-center mt-3">
                     <button
                       onClick={() => runQuery(false)}
@@ -938,21 +1070,32 @@ export default function ConnectionDashboard() {
 
                       {/* Editor Body */}
                       <div className="flex-1 p-5 bg-gray-50/50">
-                        <textarea
-                          ref={fullscreenTextareaRef}
-                          value={query}
-                          onChange={e => setQuery(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.ctrlKey && e.key === 'Enter') {
-                              runQuery(false);
-                            } else if (e.key === 'Escape') {
-                              setIsQueryMaximized(false);
-                            }
-                          }}
-                          placeholder="Write SQL query here — Ctrl+Enter to run, Escape to minimize"
-                          className="w-full h-full p-4 border border-gray-350 rounded-xl text-sm font-mono outline-none focus:border-gray-500 bg-white shadow-inner resize-none"
-                          autoFocus
-                        />
+                        {/* Textarea Overlay Container (Fullscreen) */}
+                        <div className="sql-editor-container h-full">
+                          <textarea
+                            ref={fullscreenTextareaRef}
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.ctrlKey && e.key === 'Enter') {
+                                runQuery(false);
+                              } else if (e.key === 'Escape') {
+                                setIsQueryMaximized(false);
+                              }
+                            }}
+                            onScroll={handleFullscreenScroll}
+                            placeholder="Write SQL query here — Ctrl+Enter to run, Escape to minimize"
+                            className="sql-editor-textarea"
+                            autoFocus
+                          />
+                          <pre
+                            ref={fullscreenHighlightRef}
+                            className="sql-editor-highlight"
+                            dangerouslySetInnerHTML={{
+                              __html: highlightSQL(query) + '\n'
+                            }}
+                          />
+                        </div>
                       </div>
 
                       {/* Footer */}
