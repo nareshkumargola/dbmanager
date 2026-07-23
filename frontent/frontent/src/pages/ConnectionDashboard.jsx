@@ -400,6 +400,20 @@ export default function ConnectionDashboard() {
     }
   };
 
+  const refreshDatabaseObjects = async () => {
+    if (!activeDb) return;
+    try {
+      const [objRes, statsRes] = await Promise.all([
+        API.get(`/connections/${id}/objects?database=${encodeURIComponent(activeDb)}`),
+        API.get(`/connections/${id}/stats?database=${encodeURIComponent(activeDb)}`),
+      ]);
+      setObjects(objRes.data);
+      setStats(statsRes.data.stats);
+    } catch (err) {
+      console.error('Failed to refresh database objects:', err);
+    }
+  };
+
   const runQuery = async (forceRunAll = false) => {
     let queryToRun = query;
     let isSelection = false;
@@ -452,6 +466,9 @@ export default function ConnectionDashboard() {
       } else {
         setQueryMsg(`Query executed successfully!${selectionSuffix}`);
       }
+
+      // Automatically refresh tables list in sidebar without requiring manual reload!
+      refreshDatabaseObjects();
     } catch (err) {
       setQueryError(err.response?.data?.error || 'Query failed!');
     } finally {
