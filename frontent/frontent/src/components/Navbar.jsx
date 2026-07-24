@@ -55,13 +55,13 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
   };
 
   return (
-    <nav className={`sticky top-0 z-40 px-6 py-3.5 flex justify-between items-center shadow-sm ${
+    <nav className={`sticky relative top-0 z-40 px-6 py-3.5 flex justify-between items-center shadow-sm ${
       variant === 'teal'
         ? 'bg-[#0d9da4] shadow-md border-transparent text-white'
         : 'bg-white border-b border-gray-200 bg-white/80 backdrop-blur-md text-gray-700'
     }`}>
-      {/* Left Area: Back Button / Navigation link FIRST, then Logo */}
-      <div className="flex items-center gap-3.5">
+      {/* Left Area: Back Button / Navigation link */}
+      <div className="flex items-center gap-3.5 min-w-[120px] sm:min-w-[200px] justify-start">
         {backTo && (
           <>
             <button
@@ -87,7 +87,10 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
             <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
           </>
         )}
+      </div>
 
+      {/* Center Area: Logo */}
+      <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center pointer-events-auto">
         <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0">
           <img 
             src="/allatone_logo.jpg" 
@@ -103,7 +106,7 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
       </div>
 
       {/* Right Area: Profile & Theme Toggle */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-[120px] sm:min-w-[200px] justify-end">
         {user && (
           <button
             onClick={toggleTheme}
