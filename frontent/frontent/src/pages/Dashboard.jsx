@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersPage, setUsersPage] = useState(1);
+  const [usersSearch, setUsersSearch] = useState('');
   const usersItemsPerPage = 5;
 
   useEffect(() => {
@@ -148,9 +149,19 @@ export default function Dashboard() {
     }
   }, [activeTab, subTab, user]);
 
-  const totalUsersPages = Math.ceil(users.length / usersItemsPerPage);
+  const filteredUsers = users.filter(u => {
+    const q = usersSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q)) ||
+      (u.role && u.role.toLowerCase().includes(q))
+    );
+  });
+
+  const totalUsersPages = Math.max(1, Math.ceil(filteredUsers.length / usersItemsPerPage));
   const usersStartIndex = (usersPage - 1) * usersItemsPerPage;
-  const paginatedUsers = users.slice(usersStartIndex, usersStartIndex + usersItemsPerPage);
+  const paginatedUsers = filteredUsers.slice(usersStartIndex, usersStartIndex + usersItemsPerPage);
 
   const isToday = (dateString) => {
     const today = new Date();
@@ -582,9 +593,25 @@ export default function Dashboard() {
             {activeTab === 'users' && user?.role === 'admin' && (
               <div className="p-6 bg-teal-50/20 text-left">
                 <div className="bg-white rounded-xl border border-gray-250 p-5 shadow-xs">
-                  <div className="mb-5">
-                    <h3 className="text-md font-bold text-gray-900">Registered Users &amp; Roles</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
+                    <div>
+                      <h3 className="text-md font-bold text-gray-900">Registered Users &amp; Roles</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
+                    </div>
+                    {/* Search users */}
+                    <div className="w-full md:w-72 relative">
+                      <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-xs">🔍</span>
+                      <input
+                        type="text"
+                        placeholder="Search users by name, email or role..."
+                        value={usersSearch}
+                        onChange={e => {
+                          setUsersSearch(e.target.value);
+                          setUsersPage(1);
+                        }}
+                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-xl text-xs bg-gray-50 focus:bg-white outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
+                      />
+                    </div>
                   </div>
 
                   {usersLoading ? (
@@ -595,6 +622,10 @@ export default function Dashboard() {
                   ) : users.length === 0 ? (
                     <div className="text-center py-10">
                       <p className="text-sm text-gray-400 italic">No registered users found.</p>
+                    </div>
+                  ) : filteredUsers.length === 0 ? (
+                    <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                      <p className="text-xs text-gray-450 italic">No matching users found for "{usersSearch}"</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
@@ -667,9 +698,9 @@ export default function Dashboard() {
                           <div className="text-xs text-gray-500">
                             Showing <span className="font-semibold">{usersStartIndex + 1}</span> to{' '}
                             <span className="font-semibold">
-                              {Math.min(usersStartIndex + usersItemsPerPage, users.length)}
+                              {Math.min(usersStartIndex + usersItemsPerPage, filteredUsers.length)}
                             </span>{' '}
-                            of <span className="font-semibold">{users.length}</span> users
+                            of <span className="font-semibold">{filteredUsers.length}</span> users
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
