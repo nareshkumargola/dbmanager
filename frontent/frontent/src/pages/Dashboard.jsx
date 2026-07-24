@@ -360,24 +360,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-150">
       {/* Navbar */}
       <Navbar variant="teal" />
 
       <div className="w-full px-5 sm:px-8 py-8">
 
         {/* Quick Actions Card with Dashboard Header */}
-        <div className="mb-7 bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200/80">
+        <div className="mb-7 bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200/80 dark:border-gray-700/80">
             <div>
-              <h2 className="text-[20px] font-bold text-teal-900 tracking-tight">Dashboard</h2>
-              <p className="text-[12px] text-teal-800/70 mt-0.5">
-                Welcome back, <span className="font-semibold text-teal-900">{user?.name}</span>
+              <h2 className="text-[20px] font-bold text-teal-900 dark:text-teal-50 tracking-tight">Dashboard</h2>
+              <p className="text-[12px] text-teal-800/70 dark:text-teal-200/80 mt-0.5">
+                Welcome back, <span className="font-semibold text-teal-900 dark:text-teal-100">{user?.name}</span>
               </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-1 h-3.5 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
-              <h3 className="text-[11px] font-bold text-teal-700 uppercase tracking-wider">Quick Actions</h3>
+              <h3 className="text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">Quick Actions</h3>
             </div>
           </div>
 
@@ -387,7 +387,7 @@ export default function Dashboard() {
               className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
                 activeTab === 'connections'
                   ? 'text-white shadow-sm'
-                  : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                  : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
               }`}
               style={activeTab === 'connections' ? { backgroundColor: '#0d9da4' } : {}}
             >
@@ -401,7 +401,7 @@ export default function Dashboard() {
                   className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
                     activeTab === 'audit-logs'
                       ? 'text-white shadow-sm'
-                      : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                      : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
                   }`}
                   style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
                 >
@@ -412,7 +412,7 @@ export default function Dashboard() {
                   className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
                     activeTab === 'users'
                       ? 'text-white shadow-sm'
-                      : 'ring-1 ring-teal-200 text-teal-700 bg-white hover:bg-teal-50'
+                      : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
                   }`}
                   style={activeTab === 'users' ? { backgroundColor: '#0d9da4' } : {}}
                 >
@@ -421,18 +421,18 @@ export default function Dashboard() {
               </>
             )}
 
-            <div className="w-px h-6 bg-teal-200 mx-1 self-center hidden sm:block"></div>
+            <div className="w-px h-6 bg-teal-200 dark:bg-teal-800 mx-1 self-center hidden sm:block"></div>
 
             <button
               onClick={() => navigate('/connections')}
-              className="px-4 py-2 ring-1 ring-teal-200 text-teal-700 bg-white text-[13px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-2 font-semibold"
+              className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
             >
               <span className="text-base leading-none">⚙️</span> Manage Connections
             </button>
             {user?.role === 'admin' && (
               <button
                 onClick={() => navigate('/permissions')}
-                className="px-4 py-2 ring-1 ring-teal-200 text-teal-700 bg-white text-[13px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-2 font-semibold"
+                className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -446,39 +446,39 @@ export default function Dashboard() {
         {/* Stats Cards */}
         {activeTab === 'connections' && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7">
-            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
+            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-teal-100" style={{ backgroundColor: '#e3f6f6' }}>🐬</div>
-                <span className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">MySQL</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-teal-100 dark:ring-teal-900 bg-[#e3f6f6] dark:bg-teal-950/50">🐬</div>
+                <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">MySQL</span>
               </div>
               <p className="text-[28px] font-bold tracking-tight leading-none" style={{ color: '#0d9da4' }}>{mysqlCount}</p>
-              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
+              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
             </div>
 
-            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
+            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-cyan-100 bg-cyan-50">🐘</div>
-                <span className="text-[10px] font-bold text-cyan-600 uppercase tracking-wider">Postgres</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-cyan-100 dark:ring-cyan-900 bg-cyan-50 dark:bg-cyan-950/50">🐘</div>
+                <span className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider">Postgres</span>
               </div>
-              <p className="text-[28px] font-bold text-cyan-700 tracking-tight leading-none">{pgCount}</p>
-              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
+              <p className="text-[28px] font-bold text-cyan-700 dark:text-cyan-400 tracking-tight leading-none">{pgCount}</p>
+              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
             </div>
 
-            <div className="bg-gray-50/90 border border-gray-200 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200">
+            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-amber-100" style={{ backgroundColor: '#fdf6d8' }}>🍃</div>
-                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">MongoDB</span>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-amber-100 dark:ring-amber-900 bg-[#fdf6d8] dark:bg-amber-950/30">🍃</div>
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">MongoDB</span>
               </div>
-              <p className="text-[28px] font-bold text-amber-700 tracking-tight leading-none">{mongoCount}</p>
-              <p className="text-[12px] text-teal-700/60 mt-1.5">Active connections</p>
+              <p className="text-[28px] font-bold text-amber-700 dark:text-amber-400 tracking-tight leading-none">{mongoCount}</p>
+              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
             </div>
           </div>
         )}
 
         {/* Main Content Box */}
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl overflow-hidden shadow-lg">
-          <div className="px-6 border-b border-teal-100 bg-teal-50/40 flex flex-wrap items-center justify-between gap-4">
-            <h3 className="text-[14px] font-bold text-teal-900 py-4 tracking-tight">
+        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-lg">
+          <div className="px-6 border-b border-teal-100 dark:border-gray-800 bg-teal-50/40 dark:bg-gray-800/40 flex flex-wrap items-center justify-between gap-4">
+            <h3 className="text-[14px] font-bold text-teal-900 dark:text-teal-50 py-4 tracking-tight">
               {activeTab === 'audit-logs'
                 ? 'System Activity Audit Trail — Admin View'
                 : 'Your Connections'}
@@ -487,7 +487,7 @@ export default function Dashboard() {
             {activeTab === 'connections' && (
               <div className="flex items-center gap-3 my-3">
                 {connections.length > 0 && (
-                  <span className="text-[11px] font-bold text-teal-700 bg-white ring-1 ring-teal-200 px-2.5 py-1 rounded-full">
+                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-850 ring-1 ring-teal-200 dark:ring-teal-800 px-2.5 py-1 rounded-full">
                     {connections.length} connections
                   </span>
                 )}
@@ -504,13 +504,13 @@ export default function Dashboard() {
           </div>
 
           {/* Tab Contents */}
-          <div className="divide-y divide-teal-50">
+          <div className="divide-y divide-teal-50 dark:divide-gray-800">
             {activeTab === 'connections' && (
               connections.length === 0 ? (
                 <div className="p-16 text-center">
                   <p className="text-4xl mb-4">🗄️</p>
-                  <p className="text-teal-900 font-semibold mb-1.5">No connections yet</p>
-                  <p className="text-teal-700/60 text-[13px] mb-6">Connect your first database to get started</p>
+                  <p className="text-teal-900 dark:text-teal-50 font-semibold mb-1.5">No connections yet</p>
+                  <p className="text-teal-700/60 dark:text-teal-400/60 text-[13px] mb-6">Connect your first database to get started</p>
                   <button
                     onClick={() => navigate('/connections')}
                     className="px-5 py-2.5 text-white text-[13px] font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-sm"
@@ -520,27 +520,27 @@ export default function Dashboard() {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 p-6 bg-teal-50/20">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 p-6 bg-teal-50/20 dark:bg-gray-900/40">
                   {connections.map(conn => (
                     <div
                       key={conn._id}
-                      className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200"
+                      className="bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg ring-1 ring-teal-100 flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: '#f0f9f7' }}>
+                          <div className="w-10 h-10 rounded-lg ring-1 ring-teal-100 dark:ring-teal-900 flex items-center justify-center text-xl shrink-0 bg-[#f0f9f7] dark:bg-teal-950/40">
                             {getTypeIcon(conn.type)}
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap text-left">
-                              <p className="text-[14px] font-bold text-teal-900">{conn.name}</p>
+                              <p className="text-[14px] font-bold text-teal-900 dark:text-teal-50">{conn.name}</p>
                               {conn.user && conn.user._id !== user?.id && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 text-amber-700 ring-1 ring-amber-100">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-100 dark:ring-amber-900/30">
                                   Shared by {conn.user.name}
                                 </span>
                               )}
                             </div>
-                            <p className="text-[12px] text-teal-700/60 text-left mt-0.5 font-mono">
+                            <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 text-left mt-0.5 font-mono">
                               {conn.type === 'mongodb'
                                 ? 'MongoDB'
                                 : `${conn.host}:${conn.port}${conn.database ? ' / ' + conn.database : ''}`
@@ -556,7 +556,7 @@ export default function Dashboard() {
                           {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
                             <button
                               onClick={() => handleOpenShareModal(conn)}
-                              className="px-2.5 py-1.5 ring-1 ring-teal-200 text-teal-700 text-[12px] rounded-lg hover:bg-teal-50 transition-all flex items-center gap-1 font-semibold"
+                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -591,12 +591,12 @@ export default function Dashboard() {
             )}
 
             {activeTab === 'users' && user?.role === 'admin' && (
-              <div className="p-6 bg-teal-50/20 text-left">
-                <div className="bg-white rounded-xl border border-gray-250 p-5 shadow-xs">
-                  <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
+              <div className="p-6 bg-teal-50/20 dark:bg-gray-900/40 text-left">
+                <div className="bg-white dark:bg-gray-850 rounded-xl border border-gray-250 dark:border-gray-800 p-5 shadow-xs">
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
                     <div>
-                      <h3 className="text-md font-bold text-gray-900">Registered Users &amp; Roles</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
+                      <h3 className="text-md font-bold text-gray-900 dark:text-gray-50">Registered Users &amp; Roles</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
                     </div>
                     {/* Search users */}
                     <div className="w-full md:w-72 relative">
@@ -609,7 +609,7 @@ export default function Dashboard() {
                           setUsersSearch(e.target.value);
                           setUsersPage(1);
                         }}
-                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-xl text-xs bg-gray-50 focus:bg-white outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
+                        className="w-full pl-8 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl text-xs bg-gray-50 dark:bg-gray-800 focus:bg-white dark:focus:bg-gray-750 text-gray-900 dark:text-gray-100 outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
                       />
                     </div>
                   </div>
@@ -624,13 +624,13 @@ export default function Dashboard() {
                       <p className="text-sm text-gray-400 italic">No registered users found.</p>
                     </div>
                   ) : filteredUsers.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                    <div className="text-center py-12 border border-dashed border-gray-200 dark:border-gray-850 rounded-xl bg-gray-50/50 dark:bg-gray-850/50">
                       <p className="text-xs text-gray-450 italic">No matching users found for "{usersSearch}"</p>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-850">
                       <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <thead className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                           <tr>
                             <th className="px-5 py-3">User Details</th>
                             <th className="px-5 py-3">Current Role</th>
@@ -638,25 +638,25 @@ export default function Dashboard() {
                             <th className="px-5 py-3 text-right">Actions</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-150">
+                        <tbody className="divide-y divide-gray-150 dark:divide-gray-800">
                           {paginatedUsers.map(u => (
-                            <tr key={u._id} className="hover:bg-gray-50/50 transition">
+                            <tr key={u._id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-[#e3f6f6] text-[#0d9da4] border border-teal-100/50">
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-[#e3f6f6] dark:bg-teal-950/40 text-[#0d9da4] border border-teal-100/50 dark:border-teal-900/40">
                                     {u.name?.charAt(0).toUpperCase() || 'U'}
                                   </div>
                                   <div>
-                                    <p className="font-bold text-gray-900">{u.name}</p>
-                                    <p className="text-gray-400 text-[11px] font-mono mt-0.5">{u.email}</p>
+                                    <p className="font-bold text-gray-900 dark:text-gray-100">{u.name}</p>
+                                    <p className="text-gray-400 dark:text-gray-500 text-[11px] font-mono mt-0.5">{u.email}</p>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-5 py-3.5">
                                 <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                                   u.role === 'admin'
-                                    ? 'bg-gray-950 text-white border border-gray-900'
-                                    : 'bg-teal-50 text-teal-700 border border-teal-150'
+                                    ? 'bg-gray-950 dark:bg-gray-900 text-white border border-gray-900 dark:border-gray-800'
+                                    : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
                                 }`}>
                                   {u.role}
                                 </span>
@@ -666,25 +666,25 @@ export default function Dashboard() {
                                   <select
                                     value={u.role}
                                     onChange={e => updateUserRoleInDashboard(u._id, e.target.value)}
-                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
+                                    className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
                                   >
                                     <option value="developer">Developer</option>
                                     <option value="admin">Admin</option>
                                   </select>
                                 ) : (
-                                  <span className="text-[11px] text-gray-400 italic">Self Account</span>
+                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 itaiic">Self Account</span>
                                 )}
                               </td>
                               <td className="px-5 py-3.5 text-right">
                                 {u._id !== user.id ? (
                                   <button
                                     onClick={() => deleteUserInDashboard(u._id, u.name)}
-                                    className="px-2.5 py-1 border border-red-200 hover:border-red-400 text-red-500 hover:bg-red-50 font-bold rounded-lg transition text-[11px] cursor-pointer"
+                                    className="px-2.5 py-1 border border-red-200 dark:border-red-900/50 hover:border-red-400 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 font-bold rounded-lg transition text-[11px] cursor-pointer"
                                   >
                                     Delete Account
                                   </button>
                                 ) : (
-                                  <span className="text-[11px] text-gray-400 italic font-medium">Locked</span>
+                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 italic font-medium">Locked</span>
                                 )}
                               </td>
                             </tr>
@@ -694,19 +694,19 @@ export default function Dashboard() {
 
                       {/* Premium Pagination Footer */}
                       {totalUsersPages > 1 && (
-                        <div className="px-5 py-3.5 bg-gray-50 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
-                          <div className="text-xs text-gray-500">
-                            Showing <span className="font-semibold">{usersStartIndex + 1}</span> to{' '}
-                            <span className="font-semibold">
+                        <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-150 dark:border-gray-750 flex flex-col sm:flex-row items-center justify-between gap-4">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Showing <span className="font-semibold text-gray-800 dark:text-gray-200">{usersStartIndex + 1}</span> to{' '}
+                            <span className="font-semibold text-gray-800 dark:text-gray-200">
                               {Math.min(usersStartIndex + usersItemsPerPage, filteredUsers.length)}
                             </span>{' '}
-                            of <span className="font-semibold">{filteredUsers.length}</span> users
+                            of <span className="font-semibold text-gray-800 dark:text-gray-200">{filteredUsers.length}</span> users
                           </div>
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => setUsersPage(prev => Math.max(prev - 1, 1))}
                               disabled={usersPage === 1}
-                              className="px-2.5 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                              className="px-2.5 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50 transition shadow-sm cursor-pointer"
                             >
                               Previous
                             </button>
@@ -716,8 +716,8 @@ export default function Dashboard() {
                                 onClick={() => setUsersPage(i + 1)}
                                 className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition ${
                                   usersPage === i + 1
-                                    ? 'bg-gray-900 text-white border-gray-900'
-                                    : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50 cursor-pointer'
+                                    ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100'
+                                    : 'border-gray-200 dark:border-gray-750 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer'
                                 }`}
                               >
                                 {i + 1}
@@ -726,7 +726,7 @@ export default function Dashboard() {
                             <button
                               onClick={() => setUsersPage(prev => Math.min(prev + 1, totalUsersPages))}
                               disabled={usersPage === totalUsersPages}
-                              className="px-2.5 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
+                              className="px-2.5 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50 transition shadow-sm cursor-pointer"
                             >
                               Next
                             </button>

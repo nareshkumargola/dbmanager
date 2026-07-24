@@ -230,22 +230,22 @@ export default function SystemAuditLogsPanel() {
   const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
 
   return (
-    <div className="space-y-6 bg-white p-6 rounded-xl border border-gray-150 text-left">
+    <div className="space-y-6 bg-white dark:bg-gray-850 p-6 rounded-xl border border-gray-150 dark:border-gray-800 text-left text-gray-900 dark:text-gray-100">
       
       {/* Search & Filter Form */}
-      <form onSubmit={handleApplyFilters} className="bg-gray-50/80 p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-        <h4 className="text-xs font-bold text-teal-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+      <form onSubmit={handleApplyFilters} className="bg-gray-50/80 dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+        <h4 className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
           <span>🔍</span> Filter Options
         </h4>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
           {/* User selector */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Filter by User</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Filter by User</label>
             <select
               value={selectedUser}
               onChange={e => setSelectedUser(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
             >
               <option value="">All Users</option>
               {users.map(u => (
@@ -256,11 +256,11 @@ export default function SystemAuditLogsPanel() {
 
           {/* User Role selector */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">User Role</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">User Role</label>
             <select
               value={selectedRole}
               onChange={e => setSelectedRole(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
             >
               <option value="">All Roles</option>
               <option value="admin">Admin</option>
@@ -271,11 +271,11 @@ export default function SystemAuditLogsPanel() {
 
           {/* Connection selector */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Connection Target</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Connection Target</label>
             <select
               value={selectedConnection}
               onChange={e => setSelectedConnection(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
             >
               <option value="">All Connections</option>
               <option value="global">Global System Logs</option>
@@ -287,11 +287,11 @@ export default function SystemAuditLogsPanel() {
 
           {/* Action category selector */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Action Category</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Action Category</label>
             <select
               value={selectedAction}
               onChange={e => setSelectedAction(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
             >
               <option value="">All Actions</option>
               <option value="RUN_QUERY">RUN_QUERY (SQL Run)</option>
@@ -313,11 +313,11 @@ export default function SystemAuditLogsPanel() {
 
           {/* Query type query filter (Select, Insert, etc) */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Query Operation</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Query Operation</label>
             <select
               value={queryType}
               onChange={e => setQueryType(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
               disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY'}
             >
               <option value="">All Operations</option>
@@ -330,23 +330,23 @@ export default function SystemAuditLogsPanel() {
 
           {/* Start Date */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">From Date</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">From Date</label>
             <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400 font-mono"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-mono"
             />
           </div>
 
           {/* End Date */}
           <div>
-            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">To Date</label>
+            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">To Date</label>
             <input
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400 font-mono"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-mono"
             />
           </div>
         </div>
@@ -356,7 +356,7 @@ export default function SystemAuditLogsPanel() {
           <button
             type="button"
             onClick={handleClearFilters}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 transition"
+            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-750 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
           >
             🧹 Clear Filters
           </button>
@@ -371,9 +371,9 @@ export default function SystemAuditLogsPanel() {
       </form>
 
       {/* Export Toolbar */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-150 pb-3 flex-wrap md:flex-nowrap">
+      <div className="flex items-center justify-between gap-4 border-b border-gray-150 dark:border-gray-800 pb-3 flex-wrap md:flex-nowrap">
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <span className="text-xs font-bold text-teal-900 bg-teal-50 ring-1 ring-teal-200 px-3 py-1 rounded-full whitespace-nowrap">
+          <span className="text-xs font-bold text-teal-900 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/20 ring-1 ring-teal-200 dark:ring-teal-900/45 px-3 py-1 rounded-full whitespace-nowrap">
             {filteredLogs.length} of {logs.length} Found
           </span>
           {/* Instant Table Search Bar */}
@@ -386,7 +386,7 @@ export default function SystemAuditLogsPanel() {
               placeholder="Instant search table..."
               value={tableSearch}
               onChange={e => setTableSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400 placeholder-gray-450 font-medium"
+              className="w-full pl-8 pr-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 placeholder-gray-450 font-medium"
             />
             {tableSearch && (
               <button
@@ -403,13 +403,13 @@ export default function SystemAuditLogsPanel() {
         <div className="flex gap-2">
           <button
             onClick={exportToExcel}
-            className="px-3.5 py-1.5 border border-green-200 bg-green-50 text-green-700 text-xs font-bold rounded-lg hover:bg-green-100 transition shadow-2xs flex items-center gap-1.5"
+            className="px-3.5 py-1.5 border border-green-200 dark:border-green-900/50 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 text-xs font-bold rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition shadow-2xs flex items-center gap-1.5"
           >
             <span>📥</span> Export Excel (CSV)
           </button>
           <button
             onClick={exportToPDF}
-            className="px-3.5 py-1.5 border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-100 transition shadow-2xs flex items-center gap-1.5"
+            className="px-3.5 py-1.5 border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition shadow-2xs flex items-center gap-1.5"
           >
             <span>📄</span> Export PDF Report
           </button>
@@ -434,10 +434,10 @@ export default function SystemAuditLogsPanel() {
           No system-wide activity logs found matching the filter criteria.
         </div>
       ) : (
-        <div className="border border-gray-250 rounded-xl overflow-hidden shadow-2xs bg-white">
+        <div className="border border-gray-250 dark:border-gray-800 rounded-xl overflow-hidden shadow-2xs bg-white dark:bg-gray-850">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-bold">
+              <thead className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 font-bold">
                 <tr>
                   <th className="px-5 py-3">Timestamp</th>
                   <th className="px-5 py-3">Team Member</th>
@@ -447,35 +447,35 @@ export default function SystemAuditLogsPanel() {
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-150 bg-white">
+              <tbody className="divide-y divide-gray-150 dark:divide-gray-800 bg-white dark:bg-gray-850">
                 {currentItems.map(log => {
                   const isExpanded = expandedLogId === log._id;
                   const isQuery = log.action === 'RUN_QUERY';
 
                   return (
-                    <tr key={log._id} className="hover:bg-gray-50/50 align-top transition-colors">
+                    <tr key={log._id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 align-top transition-colors">
                       {/* Timestamp */}
-                      <td className="px-5 py-3.5 text-gray-500 font-mono whitespace-nowrap">
+                      <td className="px-5 py-3.5 text-gray-500 dark:text-gray-450 font-mono whitespace-nowrap">
                         {new Date(log.createdAt).toLocaleString()}
                       </td>
 
                       {/* User Info */}
                       <td className="px-5 py-3.5">
-                        <p className="font-bold text-gray-800">{log.user?.name || 'Unknown'}</p>
-                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">{log.user?.email || 'N/A'}</p>
+                        <p className="font-bold text-gray-800 dark:text-gray-200">{log.user?.name || 'Unknown'}</p>
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">{log.user?.email || 'N/A'}</p>
                       </td>
 
                       {/* Connection info */}
                       <td className="px-5 py-3.5">
                         {log.connection ? (
                           <>
-                            <p className="font-semibold text-gray-700">{log.connection.name}</p>
-                            <span className="text-[9px] font-bold text-teal-600 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">
+                            <p className="font-semibold text-gray-700 dark:text-gray-300">{log.connection.name}</p>
+                            <span className="text-[9px] font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/30 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">
                               {log.connection.type}
                             </span>
                           </>
                         ) : (
-                          <span className="text-[10px] text-gray-400 italic">Global App System</span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">Global App System</span>
                         )}
                       </td>
 
@@ -486,7 +486,7 @@ export default function SystemAuditLogsPanel() {
 
                       {/* Details summary */}
                       <td className="px-5 py-3.5 max-w-sm">
-                        <p className={`text-xs text-gray-650 leading-relaxed ${isExpanded ? '' : 'truncate'}`}>
+                        <p className={`text-xs text-gray-650 dark:text-gray-350 leading-relaxed ${isExpanded ? '' : 'truncate'}`}>
                           {log.details}
                         </p>
                         {isExpanded && isQuery && (
@@ -517,8 +517,8 @@ export default function SystemAuditLogsPanel() {
             </table>
           </div>
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-gray-150 px-5 py-4 bg-gray-50/50">
-              <span className="text-xs text-gray-500 font-medium">
+            <div className="flex items-center justify-between border-t border-gray-150 dark:border-gray-800 px-5 py-4 bg-gray-50/50 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400">
+              <span className="text-xs font-medium">
                 Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredLogs.length)} of {filteredLogs.length} audit records
               </span>
               <div className="flex items-center gap-2">
@@ -526,7 +526,7 @@ export default function SystemAuditLogsPanel() {
                   type="button"
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 border border-gray-300 text-xs font-bold rounded-lg bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 text-xs font-bold rounded-lg bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
                 >
                   Previous
                 </button>
@@ -547,7 +547,7 @@ export default function SystemAuditLogsPanel() {
                         className={`px-3 py-1.5 text-xs font-bold rounded-lg transition focus:outline-none ${
                           currentPage === pageNum
                             ? 'bg-teal-600 text-white shadow-xs'
-                            : 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-750'
+                            : 'border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-750 dark:text-gray-400'
                         }`}
                       >
                         {pageNum}
@@ -559,7 +559,7 @@ export default function SystemAuditLogsPanel() {
                   type="button"
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 border border-gray-300 text-xs font-bold rounded-lg bg-white hover:bg-gray-50 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 text-xs font-bold rounded-lg bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-770 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
                 >
                   Next
                 </button>
