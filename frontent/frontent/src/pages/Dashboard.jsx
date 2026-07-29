@@ -371,9 +371,6 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200/80 dark:border-gray-700/80">
             <div>
               <h2 className="text-[20px] font-bold text-teal-900 dark:text-teal-50 tracking-tight">Dashboard</h2>
-              <p className="text-[12px] text-teal-800/70 dark:text-teal-200/80 mt-0.5">
-                Welcome back, <span className="font-semibold text-teal-900 dark:text-teal-100">{user?.name}</span>
-              </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-1 h-3.5 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
@@ -394,8 +391,17 @@ export default function Dashboard() {
               <span className="text-base leading-none">🗄️</span> Connections
             </button>
 
+            <button
+              onClick={() => navigate('/connections')}
+              className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
+            >
+              <span className="text-base leading-none">⚙️</span> Manage Connections
+            </button>
+
             {user?.role === 'admin' && (
               <>
+                <div className="w-px h-6 bg-teal-200 dark:bg-teal-800 mx-1 self-center hidden sm:block"></div>
+
                 <button
                   onClick={() => setActiveTab('audit-logs')}
                   className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
@@ -418,27 +424,16 @@ export default function Dashboard() {
                 >
                   <span className="text-base leading-none">👥</span> Users &amp; Roles
                 </button>
+                <button
+                  onClick={() => navigate('/permissions')}
+                  className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  Application Permissions
+                </button>
               </>
-            )}
-
-            <div className="w-px h-6 bg-teal-200 dark:bg-teal-800 mx-1 self-center hidden sm:block"></div>
-
-            <button
-              onClick={() => navigate('/connections')}
-              className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
-            >
-              <span className="text-base leading-none">⚙️</span> Manage Connections
-            </button>
-            {user?.role === 'admin' && (
-              <button
-                onClick={() => navigate('/permissions')}
-                className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-               Application Permissions
-              </button>
             )}
           </div>
         </div>

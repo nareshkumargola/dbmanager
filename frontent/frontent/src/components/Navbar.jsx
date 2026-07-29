@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNavbar } from '../context/NavbarContext';
 
@@ -22,8 +22,11 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  const isCenterPage = location.pathname.startsWith('/connections') || location.pathname === '/permissions';
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
 
   useEffect(() => {
@@ -87,23 +90,41 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
             <span className={variant === 'teal' ? 'text-white/30' : 'text-gray-300'}>|</span>
           </>
         )}
+
+        {/* If NOT center page (Manage Connections/Permissions), show Logo here on the left corner */}
+        {!isCenterPage && (
+          <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0">
+            <img 
+              src="/allatone_logo.jpg" 
+              className={`h-9 w-auto object-contain rounded-lg p-0.5 ${variant === 'teal' ? 'bg-white' : ''}`} 
+              alt="Allatone Logo" 
+            />
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+              variant === 'teal' ? 'bg-teal-700/45 text-teal-50' : 'bg-teal-50 text-[#0d9da4]'
+            }`}>
+              DMS
+            </span>
+          </Link>
+        )}
       </div>
 
-      {/* Center Area: Logo */}
-      <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center pointer-events-auto">
-        <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0">
-          <img 
-            src="/allatone_logo.jpg" 
-            className={`h-9 w-auto object-contain rounded-lg p-0.5 ${variant === 'teal' ? 'bg-white' : ''}`} 
-            alt="Allatone Logo" 
-          />
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-            variant === 'teal' ? 'bg-teal-700/45 text-teal-50' : 'bg-teal-50 text-[#0d9da4]'
-          }`}>
-            DMS
-          </span>
-        </Link>
-      </div>
+      {/* Center Area: Logo (only if on Manage Connections/Permissions pages) */}
+      {isCenterPage && (
+        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center justify-center pointer-events-auto">
+          <Link to="/dashboard" className="flex items-center gap-2.5 shrink-0">
+            <img 
+              src="/allatone_logo.jpg" 
+              className={`h-9 w-auto object-contain rounded-lg p-0.5 ${variant === 'teal' ? 'bg-white' : ''}`} 
+              alt="Allatone Logo" 
+            />
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+              variant === 'teal' ? 'bg-teal-700/45 text-teal-50' : 'bg-teal-50 text-[#0d9da4]'
+            }`}>
+              DMS
+            </span>
+          </Link>
+        </div>
+      )}
 
       {/* Right Area: Profile & Theme Toggle */}
       <div className="flex items-center gap-3 min-w-[120px] sm:min-w-[200px] justify-end">
@@ -166,6 +187,32 @@ export default function Navbar({ backTo, backText, extraLeft, variant = 'teal', 
                       Light Mode
                     </>
                   )}
+                </button>
+
+                <div className="my-1 border-t border-stone-100"></div>
+
+                <button
+                  onClick={() => { setDropdownOpen(false); navigate('/help-docs'); }}
+                  className="w-full px-4 py-2.5 text-left text-[13px] text-stone-700 hover:bg-teal-50 hover:text-teal-700 flex items-center gap-2.5 font-medium transition-colors"
+                >
+                  <span className="text-base leading-none">📖</span>
+                  Help &amp; Docs
+                </button>
+
+                <button
+                  onClick={() => { setDropdownOpen(false); navigate('/status'); }}
+                  className="w-full px-4 py-2.5 text-left text-[13px] text-stone-700 hover:bg-teal-50 hover:text-teal-700 flex items-center gap-2.5 font-medium transition-colors"
+                >
+                  <span className="text-base leading-none">📊</span>
+                  System Status
+                </button>
+
+                <button
+                  onClick={() => { setDropdownOpen(false); navigate('/legal-policies'); }}
+                  className="w-full px-4 py-2.5 text-left text-[13px] text-stone-700 hover:bg-teal-50 hover:text-teal-700 flex items-center gap-2.5 font-medium transition-colors"
+                >
+                  <span className="text-base leading-none">⚖️</span>
+                  Legal Policies
                 </button>
 
                 <div className="my-1 border-t border-stone-100"></div>

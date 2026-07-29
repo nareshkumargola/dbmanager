@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
 require('dotenv').config();
+const { sendGenericEmail } = require('../services/notificationService');
 
 // Generate token
 const generateToken = (id, role) => {
@@ -146,17 +147,58 @@ exports.forgotPassword = async (req, res) => {
     user.passwordResetExpires = Date.now() + 3600000; // 1 Hour
     await user.save();
 
+    // Generate reset HTML layout
+    const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
+    const subject = '🔒 Reset Your Allatone DMS Password';
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 650px; border: 1px solid #eee; border-radius: 12px; text-align: left;">
+        <h2 style="color: #0d9da4; margin-top: 0; font-size: 20px;">
+          Password Reset Request
+        </h2>
+        <p style="font-size: 14px; color: #555; line-height: 1.6;">
+          Hello,
+        </p>
+        <p style="font-size: 14px; color: #555; line-height: 1.6;">
+          You are receiving this email because you (or someone else) requested a password reset for your Allatone Database Management account.
+        </p>
+        <div style="margin: 25px 0; text-align: center;">
+          <a href="${resetUrl}" style="background-color: #0d9da4; color: #ffffff; padding: 12px 24px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; font-size: 14px;">
+            Reset Password Link
+          </a>
+        </div>
+        <p style="font-size: 12px; color: #888; line-height: 1.6;">
+          If the button above does not work, copy and paste this URL into your web browser:
+        </p>
+        <p style="font-size: 12px; font-family: monospace; color: #0d9da4; word-break: break-all;">
+          ${resetUrl}
+        </p>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 25px 0;" />
+        <p style="font-size: 12px; color: #a0aec0; text-align: center;">
+          This link will expire in 1 hour. If you did not request this, please ignore this email and your password will remain unchanged.
+        </p>
+      </div>
+    `;
+
     // Print simulated email link to console logs
     console.log('\n================================================================');
     console.log(`✉️ [EMAIL SIMULATION] Password Reset Request for: ${user.email}`);
     console.log(`Click this link to reset password:`);
-    console.log(`👉 http://localhost:5173/reset-password/${resetToken}`);
+    console.log(`👉 ${resetUrl}`);
     console.log('================================================================\n');
 
-    res.status(200).json({
-      success: true,
-      message: 'Password reset link generated! Check server console logs to click the simulated reset link.'
-    });
+    try {
+      await sendGenericEmail(user.email, subject, htmlContent);
+      res.status(200).json({
+        success: true,
+        message: 'Password reset link sent to your registered email address!'
+      });
+    } catch (mailErr) {
+      console.error('Failed to send reset email:', mailErr.message);
+      res.status(200).json({
+        success: true,
+        message: 'Password reset link generated on console logs (email delivery failed).'
+      });
+    }
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }

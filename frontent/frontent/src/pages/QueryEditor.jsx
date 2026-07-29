@@ -37,6 +37,27 @@ export default function QueryEditor() {
   const lineCounterRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Autocomplete suggestions state
+  const [suggestions, setSuggestions] = useState([]);
+  const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(0);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [wordToReplace, setWordToReplace] = useState('');
+  const [dbTables, setDbTables] = useState([]);
+
+  // Smart Index Advisor & Latency Tracking state
+  const [executionTime, setExecutionTime] = useState(null);
+  const [indexRecommendation, setIndexRecommendation] = useState(null);
+
+  // CSV Import Wizard state
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importTableName, setImportTableName] = useState('');
+  const [importHeaders, setImportHeaders] = useState([]);
+  const [importPreviewRows, setImportPreviewRows] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+
   // Connection selection state
   const [connections, setConnections] = useState([]);
   const [selectedConnection, setSelectedConnection] = useState(location.state?.connectionId || '');
@@ -64,6 +85,41 @@ export default function QueryEditor() {
       setDatabases([]);
     }
   }, [selectedConnection, connections]);
+
+  useEffect(() => {
+    if (selectedConnection) {
+      fetchDbTables(selectedConnection, selectedDatabase);
+    } else {
+      setDbTables([]);
+    }
+  }, [selectedConnection, selectedDatabase]);
+
+  const fetchDbTables = async (connId, dbName) => {
+    if (!connId) {
+      setDbTables([]);
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (dbName) params.append('database', dbName);
+      const res = await API.get(`/connections/${connId}/objects?${params.toString()}`);
+      if (res.data.success && res.data.result) {
+        let names = [];
+        const type = res.data.type;
+        const result = res.data.result;
+        if (type === 'mysql') {
+          names = result.tables?.map(t => Object.values(t)[0]) || [];
+        } else if (type === 'postgresql') {
+          names = result.tables?.map(t => t.table_name) || [];
+        } else if (type === 'mongodb') {
+          names = result.collections?.map(c => c.name) || [];
+        }
+        setDbTables(names);
+      }
+    } catch (err) {
+      console.error('Failed to fetch DB tables for autocomplete:', err);
+    }
+  };
 
   const fetchConnections = async () => {
     try {
@@ -98,6 +154,8 @@ export default function QueryEditor() {
     setError('');
     setMessage('');
     setResults([]);
+    setExecutionTime(null);
+    setIndexRecommendation(null);
     setLoading(true);
 
     let queryToRun = query;
@@ -119,6 +177,8 @@ export default function QueryEditor() {
       return;
     }
 
+    const startTime = performance.now();
+
     try {
       const params = new URLSearchParams();
       if (selectedConnection) params.append('connectionId', selectedConnection);
@@ -133,6 +193,9 @@ export default function QueryEditor() {
       const res = await API.post(queryPath, { query: queryToRun });
 
       const data = res.data.results;
+      const endTime = performance.now();
+      const latency = endTime - startTime;
+      setExecutionTime(latency.toFixed(1));
 
       // SELECT query — rows aayengi
       if (Array.isArray(data) && data.length > 0) {
@@ -149,11 +212,227 @@ export default function QueryEditor() {
         setMessage(`Query executed successfully! No rows returned${isSelection ? ' (Executed selection)' : ''}`);
       }
 
+      // Smart Index Advisor Analysis
+      if (connectionType !== 'mongodb') {
+        const sqlTrim = queryToRun.trim().toUpperCase();
+        const isSelect = sqlTrim.startsWith('SELECT');
+        if (isSelect) {
+          const fromMatch = queryToRun.match(/FROM\s+([A-Za-z0-9_`"]+)/i);
+          const whereMatch = queryToRun.match(/WHERE\s+([A-Za-z0-9_`"]+)\s*(=|!=|>|<|LIKE|IN)/i);
+          if (fromMatch && whereMatch) {
+            const table = fromMatch[1].replace(/[`"]/g, '');
+            const column = whereMatch[1].replace(/[`"]/g, '');
+            setIndexRecommendation({
+              table,
+              column,
+              sql: `CREATE INDEX idx_${table}_${column} ON ${table}(${column});`,
+              latency
+            });
+          }
+        }
+      }
+
     } catch (err) {
       setError(err.response?.data?.error || 'Query failed!');
     } finally {
       setLoading(false);
     }
+  };
+
+  const SQL_KEYWORDS = [
+    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'WHERE', 'JOIN', 'LEFT', 'RIGHT',
+    'INNER', 'ON', 'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'HAVING',
+    'AND', 'OR', 'NOT', 'IN', 'IS', 'NULL', 'LIKE', 'AS', 'CREATE', 'TABLE', 'DATABASE',
+    'DROP', 'ALTER', 'ADD', 'SET', 'VALUES', 'INTO', 'SHOW', 'DATABASES', 'TABLES',
+    'USE', 'INDEX'
+  ];
+
+  const handleTextareaChange = (val) => {
+    setQuery(val);
+    
+    if (textareaRef.current) {
+      const cursorIdx = textareaRef.current.selectionStart;
+      const textBeforeCursor = val.substring(0, cursorIdx);
+      const words = textBeforeCursor.split(/[\s\n,;()]/);
+      const lastWord = words[words.length - 1];
+
+      if (lastWord && lastWord.length >= 1) {
+        const allSuggestions = [...SQL_KEYWORDS, ...dbTables];
+        const uniqueSuggestions = Array.from(new Set(allSuggestions));
+        const matches = uniqueSuggestions.filter(k => 
+          k.toLowerCase().startsWith(lastWord.toLowerCase()) && 
+          k.toLowerCase() !== lastWord.toLowerCase()
+        );
+        
+        if (matches.length > 0) {
+          setSuggestions(matches.slice(0, 10)); // Limit to top 10 suggestions
+          setShowSuggestions(true);
+          setSelectedSuggestionIdx(0);
+          setWordToReplace(lastWord);
+        } else {
+          setShowSuggestions(false);
+        }
+      } else {
+        setShowSuggestions(false);
+      }
+    }
+  };
+
+  const selectSuggestion = (selectedToken) => {
+    if (textareaRef.current) {
+      const cursorIdx = textareaRef.current.selectionStart;
+      const textBeforeCursor = query.substring(0, cursorIdx);
+      const textAfterCursor = query.substring(cursorIdx);
+      
+      const words = textBeforeCursor.split(/([\s\n,;()])/);
+      let replaced = false;
+      for (let i = words.length - 1; i >= 0; i--) {
+        if (words[i] && !/[\s\n,;()]/.test(words[i])) {
+          words[i] = selectedToken;
+          replaced = true;
+          break;
+        }
+      }
+      
+      const newTextBefore = words.join('');
+      const newQuery = newTextBefore + textAfterCursor;
+      setQuery(newQuery);
+      setShowSuggestions(false);
+      
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const newCursorPos = newTextBefore.length;
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 50);
+    }
+  };
+
+  const handleCSVFileChange = (e) => {
+    setImportError('');
+    setImportSuccess('');
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setImportFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length === 0) {
+          setImportError('CSV file is empty!');
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.replace(/^["']|["']$/g, '').trim());
+        setImportHeaders(headers);
+
+        const preview = [];
+        const limit = Math.min(lines.length, 6);
+        for (let i = 1; i < limit; i++) {
+          const rowValues = lines[i].split(',').map(v => v.replace(/^["']|["']$/g, '').trim());
+          const rowObj = {};
+          headers.forEach((h, idx) => {
+            rowObj[h] = rowValues[idx] || '';
+          });
+          preview.push(rowObj);
+        }
+        setImportPreviewRows(preview);
+      } catch (err) {
+        setImportError('Failed to parse CSV file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportCSV = async (e) => {
+    e.preventDefault();
+    setImportError('');
+    setImportSuccess('');
+    if (!importFile) {
+      setImportError('Please select a CSV file!');
+      return;
+    }
+    if (!importTableName.trim()) {
+      setImportError('Please specify the target table name!');
+      return;
+    }
+
+    setImportLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target.result;
+        const lines = text.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length <= 1) {
+          setImportError('CSV contains no data rows to import!');
+          setImportLoading(false);
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.replace(/^["']|["']$/g, '').trim());
+        const valuesList = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+          const rowValues = lines[i].split(',').map(v => {
+            const cleanVal = v.replace(/^["']|["']$/g, '').trim();
+            if (cleanVal === '' || cleanVal.toLowerCase() === 'null') return 'NULL';
+            if (!isNaN(cleanVal) && cleanVal !== '') return cleanVal;
+            return `'${cleanVal.replace(/'/g, "''")}'`;
+          });
+          
+          while (rowValues.length < headers.length) {
+            rowValues.push('NULL');
+          }
+          valuesList.push(`(${rowValues.slice(0, headers.length).join(', ')})`);
+        }
+
+        const chunkSize = 500;
+        let importedCount = 0;
+        
+        for (let i = 0; i < valuesList.length; i += chunkSize) {
+          const chunkValues = valuesList.slice(i, i + chunkSize);
+          const sqlQuery = `INSERT INTO \`${importTableName.trim()}\` (\`${headers.join('\`, \`\`')}\`) VALUES ${chunkValues.join(', ')};`;
+          
+          const params = new URLSearchParams();
+          if (selectedConnection) params.append('connectionId', selectedConnection);
+          if (selectedDatabase) params.append('database', selectedDatabase);
+          
+          let path = '/db/mysql/query';
+          if (connectionType === 'postgresql') {
+            path = '/db/pg/query';
+          }
+          
+          const queryPath = `${path}${params.toString() ? `?${params.toString()}` : ''}`;
+          await API.post(queryPath, { query: sqlQuery });
+          importedCount += chunkValues.length;
+        }
+
+        setImportSuccess(`Successfully imported ${importedCount} records into table '${importTableName}'!`);
+        setImportFile(null);
+        setImportTableName('');
+        setImportHeaders([]);
+        setImportPreviewRows([]);
+        const fileInput = document.getElementById('csv-file-input');
+        if (fileInput) fileInput.value = '';
+      } catch (err) {
+        setImportError(err.response?.data?.error || 'Import failed: ' + err.message);
+      } finally {
+        setImportLoading(false);
+      }
+    };
+    reader.readAsText(importFile);
+  };
+
+  const applyIndexRecommendation = async () => {
+    if (!indexRecommendation) return;
+    setQuery(indexRecommendation.sql);
+    setIndexRecommendation(null);
+    setTimeout(() => {
+      runQuery(true);
+    }, 100);
   };
 
   const handleScroll = (e) => {
@@ -206,8 +485,31 @@ export default function QueryEditor() {
     });
   };
 
-  // Keyboard shortcut — Ctrl+Enter se query run
+  // Keyboard shortcut — Ctrl+Enter se query run / Auto-complete handles
   const handleKeyDown = (e) => {
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedSuggestionIdx(prev => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedSuggestionIdx(prev => (prev - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectSuggestion(suggestions[selectedSuggestionIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSuggestions(false);
+        return;
+      }
+    }
+
     if (e.ctrlKey && e.key === 'Enter') {
       runQuery(false);
     }
@@ -280,14 +582,132 @@ export default function QueryEditor() {
                 fetchDatabases(selectedConnection);
               }
             }}
-            title="Refresh Connections & Databases"
-            className="p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition shadow-sm h-[38px] w-[38px] flex items-center justify-center"
+             title="Refresh Connections & Databases"
+            className="p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition shadow-sm h-[38px] w-[38px] flex items-center justify-center cursor-pointer mr-1"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
             </svg>
           </button>
+
+          <button
+            onClick={() => setShowImportWizard(!showImportWizard)}
+            title="Import CSV/Excel Data"
+            className={`px-3 py-2 border rounded-lg transition-all text-xs font-bold flex items-center gap-1.5 h-[38px] cursor-pointer shadow-xs ${
+              showImportWizard 
+                ? 'bg-teal-600 text-white border-teal-650' 
+                : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+            }`}
+          >
+            <span>📂</span> Import Wizard
+          </button>
         </div>
+
+        {/* CSV Import Wizard Panel */}
+        {showImportWizard && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 shadow-sm animate-fadeIn text-left">
+            <div className="flex items-center justify-between border-b border-gray-150 pb-3 mb-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span>📂</span> CSV / Excel Data Import Wizard
+              </h3>
+              <button 
+                onClick={() => setShowImportWizard(false)}
+                className="text-gray-400 hover:text-gray-600 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleImportCSV} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 font-medium">
+                    Select CSV File
+                  </label>
+                  <input
+                    type="file"
+                    id="csv-file-input"
+                    accept=".csv"
+                    onChange={handleCSVFileChange}
+                    className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 font-medium">
+                    Target Table Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. users"
+                    value={importTableName}
+                    onChange={e => setImportTableName(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs outline-none bg-gray-50 focus:bg-white focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Import status alerts */}
+              {importError && (
+                <div className="bg-red-50 border border-red-200 text-red-650 text-xs px-4 py-3 rounded-lg">
+                  ❌ {importError}
+                </div>
+              )}
+              {importSuccess && (
+                <div className="bg-green-50 border border-green-200 text-green-600 text-xs px-4 py-3 rounded-lg">
+                  ✅ {importSuccess}
+                </div>
+              )}
+
+              {/* Grid Preview of loaded CSV */}
+              {importHeaders.length > 0 && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden mt-4">
+                  <div className="bg-gray-50 px-4 py-2 border-b border-gray-150 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    CSV Data Preview (First 5 Rows)
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="bg-gray-100 border-b border-gray-200 text-[10px] font-bold text-gray-650 uppercase">
+                        <tr>
+                          {importHeaders.map(h => (
+                            <th key={h} className="px-4 py-2">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-150">
+                        {importPreviewRows.map((row, rIdx) => (
+                          <tr key={rIdx} className="hover:bg-gray-50/50">
+                            {importHeaders.map(h => (
+                              <td key={h} className="px-4 py-2 text-gray-600">{row[h] || 'NULL'}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={importLoading || !importFile || !importTableName.trim()}
+                  className="px-5 py-2 bg-[#0d9da4] hover:opacity-90 text-white text-xs font-bold rounded-lg transition shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {importLoading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <span>▶</span> Start Import Wizard
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* Query Box */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
@@ -427,7 +847,7 @@ export default function QueryEditor() {
             <textarea
               ref={textareaRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleTextareaChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onScroll={handleScroll}
               placeholder="SQL query yahan likho..."
@@ -440,6 +860,39 @@ export default function QueryEditor() {
                 __html: highlightSQL(query) + '\n'
               }}
             />
+
+            {/* Floating Suggestions List */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div 
+                className="absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden w-64 max-h-48 overflow-y-auto"
+                style={{
+                  bottom: '10px',
+                  left: '60px',
+                }}
+              >
+                <div className="bg-gray-50 dark:bg-gray-900 px-2 py-1 border-b border-gray-150 dark:border-gray-750 flex justify-between items-center text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                  <span>Suggestions</span>
+                  <span>Tab/Enter</span>
+                </div>
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => selectSuggestion(s)}
+                    className={`w-full px-3 py-1.5 text-left text-xs font-semibold font-mono flex items-center justify-between transition-colors border-none ${
+                      selectedSuggestionIdx === idx
+                        ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <span>{s}</span>
+                    <span className="text-[9px] text-gray-400 font-normal">
+                      {SQL_KEYWORDS.includes(s) ? 'keyword' : 'table'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Run Button */}
@@ -467,8 +920,36 @@ export default function QueryEditor() {
 
         {/* Success Message */}
         {message && !error && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-600 text-sm px-4 py-3 rounded-lg">
-            ✅ {message}
+          <div className="mb-4 bg-green-50 border border-green-200 text-green-600 text-sm px-4 py-3 rounded-lg flex items-center justify-between">
+            <span>✅ {message}</span>
+            {executionTime && (
+              <span className="text-xs font-mono bg-green-100 text-green-800 px-2 py-0.5 rounded font-semibold">
+                Took {executionTime}ms
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Smart Index Advisor Recommendation Alert */}
+        {indexRecommendation && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs px-4 py-3.5 rounded-lg shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-left animate-fadeIn">
+            <div>
+              <p className="font-bold flex items-center gap-1.5 text-amber-800 text-xs uppercase tracking-wider mb-1 font-medium">
+                <span>💡</span> Smart Index Advisor recommendation
+              </p>
+              <p className="text-amber-700 font-medium">
+                Your query filtered table <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">`{indexRecommendation.table}`</code> using a <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">`WHERE`</code> condition on column <code className="bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-mono">`{indexRecommendation.column}`</code>. To optimize this read path, consider indexing it.
+              </p>
+              <div className="mt-2 font-mono bg-amber-100/50 p-2 rounded text-[11px] text-amber-950 select-all border border-amber-200/40">
+                {indexRecommendation.sql}
+              </div>
+            </div>
+            <button
+              onClick={applyIndexRecommendation}
+              className="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-755 text-white rounded-lg text-xs font-bold transition shadow-xs flex items-center gap-1.5 self-start md:self-center cursor-pointer border-none"
+            >
+              <span>⚡</span> Auto-Apply Index
+            </button>
           </div>
         )}
 

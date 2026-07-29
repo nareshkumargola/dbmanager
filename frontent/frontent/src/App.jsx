@@ -23,6 +23,9 @@ import ConnectionUsers from './pages/ConnectionUsers';
 import ConnectionMonitor from './pages/ConnectionMonitor';
 import ConnectionBinlog from './pages/ConnectionBinlog';
 import ConnectionBackup from './pages/ConnectionBackup';
+import HelpDocs from './pages/HelpDocs';
+import SystemStatus from './pages/SystemStatus';
+import LegalPolicies from './pages/LegalPolicies';
 // Protected Route
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -92,6 +95,9 @@ function AppRoutes() {
           <Route path="/connections/:id/monitor" element={<ConnectionMonitor />} />
           <Route path="/connections/:id/binlog" element={<ConnectionBinlog />} />
           <Route path="/connections/:id/backup" element={<ConnectionBackup />} />
+          <Route path="/help-docs" element={<HelpDocs />} />
+          <Route path="/status" element={<SystemStatus />} />
+          <Route path="/legal-policies" element={<LegalPolicies />} />
         </Route>
         {/* 404 */}
         <Route path="*" element={

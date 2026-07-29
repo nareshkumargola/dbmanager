@@ -600,32 +600,6 @@ export default function ConnectionMonitor() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Hour Filter buttons for Current Live mode */}
-            {range === 'current' && monitorHistory && monitorHistory.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-250 dark:border-gray-700 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h4 className="text-xs font-bold text-gray-900 dark:text-white">
-                    📊 Monitoring Timeline: {currentHourFilter === 'live' ? '⚡ Live Real-Time Feed' : `Last ${currentHourFilter} Hours`}
-                  </h4>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Filter the breakdown timeline display range below.</p>
-                </div>
-                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
-                  {['live', 1, 2, 3, 4, 5].map(h => (
-                    <button
-                      key={h}
-                      onClick={() => setCurrentHourFilter(h)}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
-                        currentHourFilter === h
-                          ? 'bg-[#0d9da4] text-white shadow-xs'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {h === 'live' ? '⚡ Live' : `${h}hour`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             
             {/* MySQL Grid */}
             {dbType === 'mysql' && (
@@ -997,6 +971,32 @@ export default function ConnectionMonitor() {
             )}
 
 
+            {/* Hour Filter buttons for Current Live mode */}
+            {range === 'current' && monitorHistory && monitorHistory.length > 0 && (
+              <div className="bg-white dark:bg-gray-850 rounded-2xl border border-gray-250 dark:border-gray-700 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3 mb-4 text-left">
+                <div>
+                  <h4 className="text-xs font-bold text-gray-900 dark:text-white">
+                    📊 Monitoring Timeline: {currentHourFilter === 'live' ? '⚡ Live Real-Time Feed' : `Last ${currentHourFilter} Hours`}
+                  </h4>
+                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Filter the breakdown timeline display range below.</p>
+                </div>
+                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl border border-gray-200 dark:border-gray-700">
+                  {['live', 1, 2, 3, 4, 5].map(h => (
+                    <button
+                      key={h}
+                      onClick={() => setCurrentHourFilter(h)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                        currentHourFilter === h
+                          ? 'bg-[#0d9da4] text-white shadow-xs'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-950'
+                      }`}
+                    >
+                      {h === 'live' ? '⚡ Live' : `${h}hour`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Hourly History Table */}
             {monitorHistory && monitorHistory.length > 0 && (
