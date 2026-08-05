@@ -40,13 +40,13 @@ exports.createConnection = async (req, res) => {
     const {
       name, type, host, port,
       username, password, database,
-      connectionString
+      connectionString, ssl
     } = req.body;
 
     // Pehle test karo
     const testResult = await testConnection({
       type, host, port, username,
-      password, database, connectionString
+      password, database, connectionString, ssl
     });
 
     if (!testResult.success) {
@@ -62,7 +62,7 @@ exports.createConnection = async (req, res) => {
       name, type, host,
       port: port || (type === 'mysql' ? 3306 : type === 'postgresql' ? 5432 : null),
       username, password, database,
-      connectionString,
+      connectionString, ssl
     });
 
     res.status(201).json({
@@ -83,12 +83,12 @@ exports.testConnectionRoute = async (req, res) => {
   try {
     const {
       type, host, port, username,
-      password, database, connectionString
+      password, database, connectionString, ssl
     } = req.body;
 
     const result = await testConnection({
       type, host, port, username,
-      password, database, connectionString
+      password, database, connectionString, ssl
     });
 
     if (result.success) {
@@ -174,6 +174,14 @@ exports.getDatabaseObjects = async (req, res) => {
       result = { collections };
     }
 
+    else if (type === 'oracle') {
+      const r = await conn.execute(
+        `SELECT table_name FROM user_tables ORDER BY table_name`
+      );
+      const tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0] }));
+      result = { tables };
+    }
+
     res.status(200).json({ success: true, type, result, database });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
@@ -224,6 +232,14 @@ exports.getTableData = async (req, res) => {
     else if (type === 'mongodb') {
       const db = conn.db(database || connection.database || 'test');
       rows = await db.collection(tableName).find({}).limit(100).toArray();
+    }
+
+    else if (type === 'oracle') {
+      const r = await conn.execute(
+        `SELECT * FROM "${tableName}" FETCH FIRST 100 ROWS ONLY`
+      );
+      rows = r.rows;
+      columns = r.metaData ? r.metaData.map(col => ({ Field: col.name, Type: 'OracleType' })) : [];
     }
 
     res.status(200).json({ success: true, type, rows, columns });
@@ -302,6 +318,11 @@ exports.runQuery = async (req, res) => {
 
     else if (type === 'mongodb') {
       results = { message: 'MongoDB queries use collection methods' };
+    }
+
+    else if (type === 'oracle') {
+      const result = await conn.execute(query, [], { autoCommit: true });
+      results = result.rows || { success: true, rowsAffected: result.rowsAffected };
     }
 
     const executionTime = Date.now() - startTime;
@@ -528,6 +549,33 @@ exports.getDatabaseStats = async (req, res) => {
         collections: collections.length,
         documents: dbStats.objects,
         sizeMB: (dbStats.dataSize / 1024 / 1024).toFixed(2),
+      };
+    }
+
+    else if (type === 'oracle') {
+      const sizeResult = await conn.execute(`
+        SELECT ROUND(SUM(bytes) / 1024 / 1024, 2) AS SIZEMB FROM user_segments
+      `);
+      const tablesResult = await conn.execute(`
+        SELECT COUNT(*) AS COUNT FROM user_tables
+      `);
+      
+      let activeConnections = 1;
+      try {
+        const connResult = await conn.execute(`
+          SELECT COUNT(*) AS COUNT FROM v$session WHERE status = 'ACTIVE'
+        `);
+        activeConnections = connResult.rows[0]?.COUNT || connResult.rows[0]?.count || 1;
+      } catch (err) {
+        // Fallback
+      }
+
+      stats = {
+        type: 'oracle',
+        database: database,
+        sizeMB: sizeResult.rows[0]?.SIZEMB || sizeResult.rows[0]?.sizemb || 0,
+        totalTables: tablesResult.rows[0]?.COUNT || tablesResult.rows[0]?.count || 0,
+        activeConnections,
       };
     }
 

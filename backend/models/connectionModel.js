@@ -18,7 +18,7 @@ const connectionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['mysql', 'postgresql', 'mongodb'],
+    enum: ['mysql', 'postgresql', 'mongodb', 'oracle'],
     required: true,
   },
   // MySQL + PostgreSQL ke liye
@@ -27,6 +27,7 @@ const connectionSchema = new mongoose.Schema({
   username: { type: String, default: null },
   password: { type: String, default: null },
   database: { type: String, default: null },
+  ssl: { type: Boolean, default: false },
 
   // MongoDB ke liye
   connectionString: { type: String, default: null },

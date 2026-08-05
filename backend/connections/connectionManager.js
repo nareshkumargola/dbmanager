@@ -15,7 +15,7 @@ const connectMySQL = async (config) => {
     waitForConnections: true,
     connectionLimit: 5,
     authPlugins: undefined,
-    ssl: false,
+    ssl: config.ssl ? { rejectUnauthorized: false } : false,
     multipleStatements: true,
     connectTimeout: 2000, // Fail fast on offline hosts
   };
@@ -33,7 +33,7 @@ const connectMySQL = async (config) => {
 
 // ─── POSTGRESQL CONNECT ───────────────────────────
 const connectPostgreSQL = async (config) => {
-  const pool = new Pool({
+  const poolConfig = {
     host: config.host,
     port: config.port || 5432,
     user: config.username,
@@ -42,7 +42,13 @@ const connectPostgreSQL = async (config) => {
     max: 5,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
-  });
+  };
+
+  if (config.ssl) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+  }
+
+  const pool = new Pool(poolConfig);
 
   // Verify connection by connecting a client and releasing it immediately
   const client = await pool.connect();
@@ -57,6 +63,20 @@ const connectMongoDB = async (config) => {
   });
   await client.connect();
   return client;
+};
+
+// ─── ORACLE CONNECT ───────────────────────────────
+const connectOracle = async (config) => {
+  const oracledb = require('oracledb');
+  oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
+  
+  // Thin mode has connectString = host:port/serviceName
+  const conn = await oracledb.getConnection({
+    user: config.username,
+    password: config.password,
+    connectString: `${config.host}:${config.port || 1521}/${config.database}`
+  });
+  return conn;
 };
 
 // ─── CONNECTION GET OR CREATE ─────────────────────
@@ -79,6 +99,9 @@ const getConnection = async (connectionDoc) => {
       break;
     case 'mongodb':
       conn = await connectMongoDB(connectionDoc);
+      break;
+    case 'oracle':
+      conn = await connectOracle(connectionDoc);
       break;
     default:
       throw new Error('Unsupported database type!');
@@ -108,6 +131,11 @@ const testConnection = async (config) => {
         await client.close();
         break;
       }
+      case 'oracle': {
+        const conn = await connectOracle(config);
+        await conn.close();
+        break;
+      }
       default:
         throw new Error('Unsupported database type!');
     }
@@ -126,6 +154,7 @@ const closeConnection = async (connectionId) => {
       if (type === 'mysql') await conn.end();
       if (type === 'postgresql') await conn.end();
       if (type === 'mongodb') await conn.close();
+      if (type === 'oracle') await conn.close();
     } catch (err) {
       console.error('Close error:', err.message);
     }

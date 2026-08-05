@@ -30,6 +30,7 @@ export default function Connections() {
     password: '',
     database: '',
     connectionString: '',
+    ssl: false,
   });
 
   const [mongoMode, setMongoMode] = useState('structured');
@@ -57,10 +58,11 @@ export default function Connections() {
       ...form,
       type,
       host: type === 'mongodb' ? '127.0.0.1' : 'localhost',
-      port: type === 'mysql' ? '3306' : type === 'postgresql' ? '5432' : '27017',
-      username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '',
+      port: type === 'mysql' ? '3306' : type === 'postgresql' ? '5432' : type === 'oracle' ? '1521' : '27017',
+      username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : type === 'oracle' ? 'system' : '',
       connectionString: '',
       database: '',
+      ssl: false,
     });
   };
 
@@ -193,6 +195,7 @@ export default function Connections() {
       case 'mysql': return 'bg-blue-100 text-blue-700';
       case 'postgresql': return 'bg-indigo-100 text-indigo-700';
       case 'mongodb': return 'bg-green-100 text-green-700';
+      case 'oracle': return 'bg-red-100 text-red-700';
       default: return 'bg-gray-100 text-gray-600';
     }
   };
@@ -202,6 +205,7 @@ export default function Connections() {
       case 'mysql': return '🐬';
       case 'postgresql': return '🐘';
       case 'mongodb': return '🍃';
+      case 'oracle': return '🔴';
       default: return '🗄️';
     }
   };
@@ -297,13 +301,12 @@ export default function Connections() {
                 />
               </div>
 
-              {/* Database Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Database Type
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                  {['mysql', 'postgresql', 'mongodb'].map(type => (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                  {['mysql', 'postgresql', 'mongodb', 'oracle'].map(type => (
                     <button
                       key={type}
                       type="button"
@@ -400,11 +403,40 @@ export default function Connections() {
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
                       />
                     </div>
+                    {form.type !== 'mongodb' && (
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {form.type === 'oracle' ? 'Service Name / SID (Required)' : 'Default Database (Optional)'}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={form.type === 'oracle' ? 'ORCL or XE' : 'e.g. my_database'}
+                          value={form.database}
+                          onChange={e => setForm({ ...form, database: e.target.value })}
+                          required={form.type === 'oracle'}
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm outline-none bg-gray-50/50 focus:bg-white transition custom-focus"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Test Result */}
+              {/* SSL Configuration Checkbox */}
+              {form.type !== 'mongodb' && (
+                <div className="flex items-center gap-2 mt-3 mb-1 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100">
+                  <input
+                    type="checkbox"
+                    id="ssl"
+                    checked={form.ssl || false}
+                    onChange={e => setForm({ ...form, ssl: e.target.checked })}
+                    className="w-4 h-4 rounded text-teal-600 border-gray-300 focus:ring-teal-500 cursor-pointer"
+                  />
+                  <label htmlFor="ssl" className="text-xs font-bold text-gray-750 cursor-pointer select-none">
+                    🔒 Enable SSL/TLS Connection (Required for cloud DBaaS like AWS RDS, Aiven, Clever Cloud)
+                  </label>
+                </div>
+              )}
               {testResult && (
                 <div className={`px-4 py-3 rounded-lg text-sm ${testResult.success
                     ? 'bg-green-50 text-green-600'
@@ -475,7 +507,7 @@ export default function Connections() {
                             {conn.type}
                           </span>
                           {/* Shared Badge */}
-                          {conn.user && conn.user._id !== user?.id && (
+                          {conn.user && conn.user._id !== (user?._id || user?.id) && (
                             <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
                               Shared by {conn.user.name}
                             </span>
@@ -493,7 +525,7 @@ export default function Connections() {
                     {/* Right — Actions */}
                     <div className="flex items-center gap-2">
                       {/* Share Button (Only if admin or owner) */}
-                      {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
+                      {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                         <button
                           onClick={() => handleOpenShareModal(conn)}
                           className="px-3 py-2 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium"
@@ -509,7 +541,7 @@ export default function Connections() {
                       </button>
 
                       {/* Delete Button (Only if admin or owner) */}
-                      {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
+                      {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                         <button
                           onClick={() => handleDelete(conn._id, conn.name)}
                           className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition font-medium"
