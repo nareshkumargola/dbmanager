@@ -31,10 +31,35 @@ exports.signup = async (req, res) => {
       name,
       email,
       password: hashed,
-      role,
+      role: role || "developer",
     });
 
-    // ...
+    const token = generateToken(user._id, user.role);
+
+    try {
+      const { logAuditTrail } = require("../utils/auditLogger");
+      await logAuditTrail(
+        null,
+        user._id,
+        "SIGNUP",
+        `User signed up successfully: ${user.email}`,
+      );
+    } catch (auditErr) {
+      console.error("Signup audit log failed:", auditErr.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "User registered successfully!",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        permissions: user.permissions,
+      },
+    });
   } catch (err) {
     console.error(err);
     console.error(err.stack);

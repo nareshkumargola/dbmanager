@@ -1750,9 +1750,41 @@ export default function ConnectionDashboard() {
                         </div>
                         
                         {/* Modal Toolbar */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 select-none">
                           <button
-                            type="button; hover:bg-gray-800"
+                            type="button"
+                            onClick={formatSQLQuery}
+                            title="Beautify / Format SQL (Clean layout)"
+                            className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-3xs"
+                          >
+                            <span>🧹</span> Beautify
+                          </button>
+                          {dbType !== 'mongodb' && (
+                            <button
+                              type="button"
+                              onClick={runExplain}
+                              disabled={queryLoading || !query.trim()}
+                              title="Explain Query Execution Plan"
+                              className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-[#0d9da4] text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-3xs disabled:opacity-50"
+                            >
+                              <span>🔍</span> Explain Plan
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setShowHistoryDrawer(prev => !prev)}
+                            title="Toggle Collapsible Query History Panel"
+                            className={`px-2.5 py-1.5 border text-xs font-bold rounded-lg transition flex items-center gap-1 shadow-3xs ${
+                              showHistoryDrawer
+                                ? 'bg-[#0d9da4] border-[#0d9da4] text-white hover:bg-[#0b8a90]'
+                                : 'bg-white border-gray-250 hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            <span>📜</span> History
+                          </button>
+                          <span className="text-gray-350 select-none">|</span>
+                          <button
+                            type="button"
                             onClick={() => runQuery(false)}
                             disabled={queryLoading || !query.trim()}
                             title="Execute Highlighted Selection (Ctrl+Enter)"
@@ -1769,7 +1801,7 @@ export default function ConnectionDashboard() {
                           >
                             <span>▶</span> Run Query
                           </button>
-                          <span className="text-gray-300">|</span>
+                          <span className="text-gray-300 select-none">|</span>
                           <button
                             onClick={() => setIsQueryMaximized(false)}
                             className="text-xs px-3 py-1.5 border border-gray-350 bg-white rounded-lg hover:bg-gray-100 font-bold transition shadow-xs"
@@ -1780,7 +1812,10 @@ export default function ConnectionDashboard() {
                       </div>
 
                       {/* Editor Body */}
-                      <div className="flex-1 p-5 bg-gray-50/50 flex flex-col">
+                      <div className="flex-1 p-5 bg-gray-50/50 flex flex-col min-h-0">
+                        <div className="flex-1 flex gap-4 items-stretch min-h-0">
+                          {/* Left Side: Fullscreen Editor Panel */}
+                          <div className="flex-1 flex flex-col min-w-0">
                         {/* Query Tabs Bar (Fullscreen) */}
                         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
                           {queryTabs.map((tab) => {
@@ -1880,8 +1915,55 @@ export default function ConnectionDashboard() {
                               ))}
                             </div>
                           )}
+                          </div>
                         </div>
+
+                        {/* Right Side: Fullscreen History Drawer */}
+                        {showHistoryDrawer && (
+                          <div className="w-80 bg-white border border-gray-250 rounded-xl p-4 shadow-sm flex flex-col h-full">
+                            <div className="flex items-center justify-between pb-3 border-b border-gray-150 mb-3 select-none">
+                              <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 font-mono">
+                                <span>📜</span> Query History ({queryHistory.length})
+                              </h4>
+                              <button 
+                                onClick={() => setShowHistoryDrawer(false)}
+                                className="text-gray-400 hover:text-gray-900 text-xs font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            
+                            {queryHistory.length === 0 ? (
+                              <div className="flex-1 flex flex-col items-center justify-center text-center select-none p-4">
+                                <span className="text-2xl mb-1">📭</span>
+                                <p className="text-[10px] text-gray-450">No queries run in this session yet.</p>
+                              </div>
+                            ) : (
+                              <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                                {queryHistory.map((item, idx) => (
+                                  <div 
+                                    key={idx}
+                                    onClick={() => {
+                                      setQuery(item.query);
+                                      setQueryMsg(`Restored from history: "${item.query.substring(0, 30)}..."`);
+                                    }}
+                                    title="Click to restore query"
+                                    className="p-2.5 rounded-lg bg-gray-50/50 border border-gray-150 hover:bg-teal-50/20 hover:border-[#0d9da4] cursor-pointer group transition duration-150 flex flex-col gap-1.5"
+                                  >
+                                    <code className="text-[10px] text-gray-750 font-mono line-clamp-2 block break-all whitespace-pre-wrap">
+                                      {item.query}
+                                    </code>
+                                    <span className="text-[9px] text-gray-400 select-none block">
+                                      {new Date(item.timestamp).toLocaleTimeString('en-IN')}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
+                    </div>
 
                       {/* Footer */}
                       <div className="px-5 py-4 border-t border-gray-250 flex items-center justify-between bg-white">
