@@ -1200,77 +1200,80 @@ export default function ConnectionDashboard() {
             {/* QUERY EDITOR */}
             {activeTab === 'query' && (
               <div>
-                {/* Query Tabs Bar */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
-                  {queryTabs.map((tab) => {
-                    const isActive = tab.id === activeQueryTabId;
-                    return (
-                      <div
-                        key={tab.id}
-                        onClick={() => setActiveQueryTabId(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
-                          isActive
-                            ? 'bg-white text-gray-900 border-gray-200 border-b-white z-10'
-                            : 'bg-gray-100/70 text-gray-500 border-transparent hover:bg-gray-100 hover:text-gray-700'
-                        }`}
-                      >
-                        <span>📝</span>
-                        <span className="truncate max-w-[120px]">{tab.name}</span>
-                        {queryTabs.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={(e) => removeQueryTab(tab.id, e)}
-                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-250 hover:text-gray-950 text-gray-400 transition-colors text-[9px]"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Add New Tab Button */}
-                  <button
-                    type="button"
-                    onClick={addQueryTab}
-                    title="Open New Query Tab"
-                    className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1.5"
-                  >
-                    ＋
+                {/* Query Tabs Header Bar */}
+                <div className="flex items-center justify-between gap-4 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
+                  {/* Left Side: Tabs List & Add Button */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {queryTabs.map((tab) => {
+                      const isActive = tab.id === activeQueryTabId;
+                      return (
+                        <div
+                          key={tab.id}
+                          onClick={() => setActiveQueryTabId(tab.id)}
+                          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
+                            isActive
+                              ? 'bg-white text-gray-900 border-gray-200 border-b-white z-10'
+                              : 'bg-gray-100/70 text-gray-500 border-transparent hover:bg-gray-100 hover:text-gray-700'
+                          }`}
+                        >
+                          <span>📝</span>
+                          <span className="truncate max-w-[120px]">{tab.name}</span>
+                          {queryTabs.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => removeQueryTab(tab.id, e)}
+                              className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-250 hover:text-gray-950 text-gray-400 transition-colors text-[9px]"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Add New Tab Button */}
+                    <button
+                      type="button"
+                      onClick={addQueryTab}
+                      title="Open New Query Tab"
+                      className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1.5"
+                    >
+                      ＋
                   </button>
-                </div>
+                  </div>
 
-                <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-250 p-5 mb-4 z-0 relative">
-                  {/* Query Toolbar */}
-                  <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => runQuery(false)}
-                        disabled={queryLoading || !query.trim()}
-                        title="Execute Selection or Current Statement (Ctrl+Enter)"
-                        className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                      >
-                        <span>⚡</span> Run Selection
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => runQuery(false)}
-                        disabled={queryLoading || !query.trim()}
-                        title="Execute Query"
-                        className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                      >
-                        <span>▶</span> Run Query
-                      </button>
-                    </div>
-
+                  {/* Right Side: Execution Controls */}
+                  <div className="flex items-center gap-1.5 pb-1 select-none">
+                    <button
+                      type="button"
+                      onClick={() => runQuery(false)}
+                      disabled={queryLoading || !query.trim()}
+                      title="Execute Selection or Current Statement (Ctrl+Enter)"
+                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1.5 shadow-3xs disabled:opacity-50"
+                    >
+                      <span>⚡</span> Run Selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runQuery(false)}
+                      disabled={queryLoading || !query.trim()}
+                      title="Execute Query"
+                      className="px-2.5 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1.5 shadow-3xs disabled:opacity-50"
+                    >
+                      <span>▶</span> Run Query
+                    </button>
+                    <span className="text-gray-300 select-none">|</span>
                     <button
                       onClick={() => setIsQueryMaximized(true)}
-                      className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1.5 border border-gray-250 bg-white px-2.5 py-1.5 rounded-lg shadow-xs transition hover:bg-gray-50"
+                      className="text-[11px] font-bold text-[#0d9da4] hover:underline flex items-center gap-1.5 border border-gray-200 bg-white px-2.5 py-1.5 rounded-lg shadow-3xs transition hover:bg-gray-50"
                     >
                       <span>🗖</span> Expand Fullscreen
                     </button>
                   </div>
+                </div>
+
+                <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-250 p-5 mb-4 z-0 relative">
+                  
 
                   {/* Scoped styles for overlay syntax highlighter */}
                   <style>{`
