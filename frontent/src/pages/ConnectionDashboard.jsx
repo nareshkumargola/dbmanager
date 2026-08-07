@@ -117,6 +117,238 @@ export default function ConnectionDashboard() {
     }
   };
 
+  // Query History & Productivity States
+  const [queryHistory, setQueryHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`dms_query_history_${id}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+
+  // Autocomplete Suggestions State
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsActiveIndex, setSuggestionsActiveIndex] = useState(0);
+  const [suggestionsPosition, setSuggestionsPosition] = useState({ top: 0, left: 0 });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const sqlKeywords = [
+    'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AND', 'OR',
+    'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
+    'CREATE TABLE', 'DROP TABLE', 'ALTER TABLE', 'INDEX', 'EXPLAIN', 'HAVING', 'AS', 'IN', 'LIKE', 'IS NULL'
+  ];
+
+  const addToHistory = (q) => {
+    if (!q || !q.trim()) return;
+    const cleanQ = q.trim();
+    setQueryHistory(prev => {
+      const filtered = prev.filter(item => item.query !== cleanQ);
+      const updated = [{ query: cleanQ, timestamp: new Date().toISOString() }, ...filtered].slice(0, 20);
+      localStorage.setItem(`dms_query_history_${id}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const formatSQLQuery = () => {
+    if (!query || !query.trim()) return;
+    const keywordsToFormat = [
+      'SELECT', 'FROM', 'WHERE', 'JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'INNER JOIN', 'ON', 'AND', 'OR',
+      'GROUP BY', 'ORDER BY', 'LIMIT', 'OFFSET', 'HAVING', 'CREATE TABLE', 'DROP TABLE', 'ALTER TABLE',
+      'SET', 'VALUES', 'INTO', 'UPDATE', 'DELETE FROM'
+    ];
+    let formatted = query.trim();
+    keywordsToFormat.forEach(keyword => {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+      formatted = formatted.replace(regex, keyword);
+    });
+    formatted = formatted
+      .replace(/\bSELECT\b/g, '\nSELECT')
+      .replace(/\bFROM\b/g, '\nFROM')
+      .replace(/\bWHERE\b/g, '\nWHERE')
+      .replace(/\bJOIN\b/g, '\n  JOIN')
+      .replace(/\bAND\b/g, '\n  AND')
+      .replace(/\bOR\b/g, '\n  OR')
+      .replace(/\bGROUP BY\b/g, '\nGROUP BY')
+      .replace(/\bORDER BY\b/g, '\nORDER BY')
+      .replace(/\bVALUES\b/g, '\nVALUES')
+      .replace(/\bSET\b/g, '\nSET')
+      .replace(/\bUPDATE\b/g, '\nUPDATE')
+      .replace(/\bDELETE FROM\b/g, '\nDELETE FROM');
+    formatted = formatted.replace(/\n\s*\n/g, '\n').trim();
+    setQuery(formatted);
+  };
+
+  const runExplain = () => {
+    if (!query || !query.trim()) return;
+    let explainPrefix = 'EXPLAIN ';
+    if (dbType === 'oracle') {
+      explainPrefix = 'EXPLAIN PLAN FOR ';
+    }
+    const explainQuery = explainPrefix + query.trim();
+    const originalQuery = query;
+    setQuery(explainQuery);
+    setTimeout(() => {
+      runQuery(true);
+      setQuery(originalQuery);
+    }, 100);
+  };
+
+  const exportResults = (formatType) => {
+    if (!queryResults || queryResults.length === 0) {
+      alert('No results available to export!');
+      return;
+    }
+    let content = '';
+    let filename = `query_results_${Date.now()}`;
+    let mimeType = '';
+    if (formatType === 'json') {
+      content = JSON.stringify(queryResults, null, 2);
+      filename += '.json';
+      mimeType = 'application/json';
+    } else if (formatType === 'csv') {
+      const headers = Object.keys(queryResults[0]);
+      const csvRows = [
+        headers.join(','),
+        ...queryResults.map(row => 
+          headers.map(header => {
+            const val = row[header] === null ? '' : String(row[header]);
+            const escaped = val.replace(/"/g, '""');
+            return escaped.includes(',') || escaped.includes('\n') || escaped.includes('"') ? `"${escaped}"` : escaped;
+          }).join(',')
+        )
+      ];
+      content = csvRows.join('\n');
+      filename += '.csv';
+      mimeType = 'text/csv';
+    }
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCommentToggle = (textarea) => {
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    let selectionStartLineIndex = text.lastIndexOf('\n', start - 1) + 1;
+    let selectionEndLineIndex = text.indexOf('\n', end);
+    if (selectionEndLineIndex === -1) selectionEndLineIndex = text.length;
+    const before = text.substring(0, selectionStartLineIndex);
+    const target = text.substring(selectionStartLineIndex, selectionEndLineIndex);
+    const after = text.substring(selectionEndLineIndex);
+    const lines = target.split('\n');
+    const allCommented = lines.every(line => !line.trim() || line.trim().startsWith('--') || line.trim().startsWith('//'));
+    const updatedLines = lines.map(line => {
+      if (allCommented) {
+        return line.replace(/^(\s*)--\s?/, '$1').replace(/^(\s*)\/\/\s?/, '$1');
+      } else {
+        if (!line.trim()) return line;
+        return `-- ${line}`;
+      }
+    });
+    const updatedTarget = updatedLines.join('\n');
+    setQuery(before + updatedTarget + after);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(selectionStartLineIndex, selectionStartLineIndex + updatedTarget.length);
+    }, 0);
+  };
+
+  const getCursorXY = (textarea) => {
+    const { selectionStart, value } = textarea;
+    const textBeforeCursor = value.substring(0, selectionStart);
+    const lines = textBeforeCursor.split('\n');
+    const currentLineNumber = lines.length;
+    const currentColumn = lines[lines.length - 1].length;
+    const top = (currentLineNumber * 20) + 15 - textarea.scrollTop;
+    const left = (currentColumn * 7.2) + 40 - textarea.scrollLeft;
+    return { top, left };
+  };
+
+  const handleEditorChange = (e, textareaRefToUse) => {
+    const val = e.target.value;
+    setQuery(val);
+    const textarea = textareaRefToUse.current;
+    if (!textarea) return;
+    const selectionEnd = textarea.selectionEnd;
+    const textBeforeCursor = val.substring(0, selectionEnd);
+    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z_0-9]+)$/);
+    if (lastWordMatch) {
+      const typedWord = lastWordMatch[1];
+      if (typedWord.length >= 2) {
+        const tables = tableDetails ? tableDetails.map(t => t.tableName || t.name || '') : [];
+        const allCandidates = [...sqlKeywords, ...tables].filter(Boolean);
+        const matched = allCandidates.filter(c => 
+          c.toLowerCase().startsWith(typedWord.toLowerCase()) && 
+          c.toLowerCase() !== typedWord.toLowerCase()
+        );
+        if (matched.length > 0) {
+          setSuggestions(matched.slice(0, 10));
+          setSuggestionsActiveIndex(0);
+          const coords = getCursorXY(textarea);
+          setSuggestionsPosition(coords);
+          setShowSuggestions(true);
+          return;
+        }
+      }
+    }
+    setShowSuggestions(false);
+  };
+
+  const insertSuggestion = (textareaRefToUse) => {
+    const textarea = textareaRefToUse.current;
+    if (!textarea || suggestions.length === 0) return;
+    const val = textarea.value;
+    const selectionEnd = textarea.selectionEnd;
+    const textBeforeCursor = val.substring(0, selectionEnd);
+    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z_0-9]+)$/);
+    if (lastWordMatch) {
+      const typedWord = lastWordMatch[1];
+      const selectedSuggestion = suggestions[suggestionsActiveIndex];
+      const before = val.substring(0, selectionEnd - typedWord.length);
+      const after = val.substring(selectionEnd);
+      setQuery(before + selectedSuggestion + ' ' + after);
+      setShowSuggestions(false);
+      setTimeout(() => {
+        textarea.focus();
+        const newCursorPos = before.length + selectedSuggestion.length + 1;
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  const handleEditorKeyDown = (e, textareaRefToUse) => {
+    if (e.ctrlKey && e.key === '/') {
+      e.preventDefault();
+      handleCommentToggle(textareaRefToUse.current);
+      return;
+    }
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestionsActiveIndex(prev => (prev + 1) % suggestions.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestionsActiveIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertSuggestion(textareaRefToUse);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSuggestions(false);
+      }
+    }
+  };
+
   // Query History
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -542,6 +774,7 @@ export default function ConnectionDashboard() {
 
       // Automatically refresh tables list in sidebar without requiring manual reload!
       refreshDatabaseObjects();
+      addToHistory(queryToRun);
     } catch (err) {
       setQueryError(err.response?.data?.error || 'Query failed!');
     } finally {
@@ -1246,6 +1479,40 @@ export default function ConnectionDashboard() {
                   <div className="flex items-center gap-1.5 pb-1 select-none">
                     <button
                       type="button"
+                      onClick={formatSQLQuery}
+                      title="Beautify / Format SQL (Clean layout)"
+                      className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-3xs"
+                    >
+                      <span>🧹</span> Beautify
+                    </button>
+                    {dbType !== 'mongodb' && (
+                      <button
+                        type="button"
+                        onClick={runExplain}
+                        disabled={queryLoading || !query.trim()}
+                        title="Explain Query Execution Plan"
+                        className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-[#0d9da4] text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-3xs disabled:opacity-50"
+                      >
+                        <span>🔍</span> Explain Plan
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowHistoryDrawer(prev => !prev)}
+                      title="Toggle Collapsible Query History Panel"
+                      className={`px-2.5 py-1.5 border text-[11px] font-bold rounded-lg transition flex items-center gap-1 shadow-3xs ${
+                        showHistoryDrawer
+                          ? 'bg-[#0d9da4] border-[#0d9da4] text-white hover:bg-[#0b8a90]'
+                          : 'bg-white border-gray-200 hover:bg-gray-50 text-gray-700'
+                      }`}
+                    >
+                      <span>📜</span> History
+                    </button>
+
+                    <span className="text-gray-300 select-none mx-0.5">|</span>
+
+                    <button
+                      type="button"
                       onClick={() => runQuery(false)}
                       disabled={queryLoading || !query.trim()}
                       title="Execute Selection or Current Statement (Ctrl+Enter)"
@@ -1272,7 +1539,10 @@ export default function ConnectionDashboard() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-250 p-5 mb-4 z-0 relative">
+                <div className="flex gap-4 items-start relative mb-4">
+                  {/* Left Side: Main Editor Box */}
+                  <div className="flex-1 min-w-0">
+                    <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-250 p-5 z-0 relative">
                   
 
                   {/* Scoped styles for overlay syntax highlighter */}
@@ -1376,10 +1646,10 @@ export default function ConnectionDashboard() {
                     <textarea
                       ref={textareaRef}
                       value={query}
-                      onChange={e => setQuery(e.target.value)}
-                      onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') runQuery(false); }}
+                      onChange={e => handleEditorChange(e, textareaRef)}
+                      onKeyDown={e => handleEditorKeyDown(e, textareaRef)}
                       onScroll={handleScroll}
-                      placeholder="Write SQL query here — Press Ctrl+Enter to run"
+                      placeholder="Write SQL query here — Press Ctrl+Enter to run, Ctrl+/ to comment/uncomment"
                       className="sql-editor-textarea"
                     />
                     <pre
@@ -1389,9 +1659,83 @@ export default function ConnectionDashboard() {
                         __html: highlightSQL(query) + '\n'
                       }}
                     />
+
+                    {/* Floating Autocomplete Suggestions */}
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div 
+                        className="absolute z-50 bg-white border border-gray-250 rounded-lg shadow-lg max-h-48 overflow-y-auto w-52 font-mono text-[11px] py-1 select-none"
+                        style={{ top: `${suggestionsPosition.top}px`, left: `${suggestionsPosition.left}px` }}
+                      >
+                        {suggestions.map((cand, idx) => (
+                          <div
+                            key={cand}
+                            onClick={() => {
+                              setSuggestionsActiveIndex(idx);
+                              setTimeout(() => insertSuggestion(textareaRef), 0);
+                            }}
+                            className={`px-3 py-1.5 cursor-pointer flex items-center justify-between ${
+                              idx === suggestionsActiveIndex 
+                                ? 'bg-[#0d9da4] text-white' 
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <span>{cand}</span>
+                            <span className="text-[9px] opacity-75">
+                              {sqlKeywords.includes(cand) ? 'keyword' : 'table'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    </div>
                   </div>
-                  
+
+                  {/* Right Side: Collapsible History Drawer */}
+                  {showHistoryDrawer && (
+                    <div className="w-80 bg-white border border-gray-250 rounded-xl p-4 shadow-sm flex flex-col h-[345px]">
+                      <div className="flex items-center justify-between pb-3 border-b border-gray-150 mb-3 select-none">
+                        <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5 font-mono">
+                          <span>📜</span> Query History ({queryHistory.length})
+                        </h4>
+                        <button 
+                          onClick={() => setShowHistoryDrawer(false)}
+                          className="text-gray-400 hover:text-gray-900 text-xs font-bold"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      
+                      {queryHistory.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center select-none p-4">
+                          <span className="text-2xl mb-1">📭</span>
+                          <p className="text-[10px] text-gray-450">No queries run in this session yet.</p>
+                        </div>
+                      ) : (
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                          {queryHistory.map((item, idx) => (
+                            <div 
+                              key={idx}
+                              onClick={() => {
+                                setQuery(item.query);
+                                setQueryMsg(`Restored from history: "${item.query.substring(0, 30)}..."`);
+                              }}
+                              title="Click to restore query"
+                              className="p-2.5 rounded-lg bg-gray-50/50 border border-gray-150 hover:bg-teal-50/20 hover:border-[#0d9da4] cursor-pointer group transition duration-150 flex flex-col gap-1.5"
+                            >
+                              <code className="text-[10px] text-gray-750 font-mono line-clamp-2 block break-all whitespace-pre-wrap">
+                                {item.query}
+                              </code>
+                              <span className="text-[9px] text-gray-400 select-none block">
+                                {new Date(item.timestamp).toLocaleTimeString('en-IN')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+              </div>
 
                 {/* Full-screen Editor Modal */}
                 {isQueryMaximized && (
@@ -1489,16 +1833,15 @@ export default function ConnectionDashboard() {
                           <textarea
                             ref={fullscreenTextareaRef}
                             value={query}
-                            onChange={e => setQuery(e.target.value)}
+                            onChange={e => handleEditorChange(e, fullscreenTextareaRef)}
                             onKeyDown={e => {
-                              if (e.ctrlKey && e.key === 'Enter') {
-                                runQuery(false);
-                              } else if (e.key === 'Escape') {
+                              handleEditorKeyDown(e, fullscreenTextareaRef);
+                              if (!showSuggestions && e.key === 'Escape') {
                                 setIsQueryMaximized(false);
                               }
                             }}
                             onScroll={handleFullscreenScroll}
-                            placeholder="Write SQL query here — Ctrl+Enter to run, Escape to minimize"
+                            placeholder="Write SQL query here — Ctrl+Enter to run, Ctrl+/ to comment/uncomment, Escape to minimize"
                             className="sql-editor-textarea"
                             autoFocus
                           />
@@ -1509,6 +1852,34 @@ export default function ConnectionDashboard() {
                               __html: highlightSQL(query) + '\n'
                             }}
                           />
+
+                          {/* Floating Autocomplete Suggestions (Fullscreen) */}
+                          {showSuggestions && suggestions.length > 0 && (
+                            <div 
+                              className="absolute z-50 bg-white border border-gray-250 rounded-lg shadow-lg max-h-48 overflow-y-auto w-52 font-mono text-[11px] py-1 select-none"
+                              style={{ top: `${suggestionsPosition.top}px`, left: `${suggestionsPosition.left}px` }}
+                            >
+                              {suggestions.map((cand, idx) => (
+                                <div
+                                  key={cand}
+                                  onClick={() => {
+                                    setSuggestionsActiveIndex(idx);
+                                    setTimeout(() => insertSuggestion(fullscreenTextareaRef), 0);
+                                  }}
+                                  className={`px-3 py-1.5 cursor-pointer flex items-center justify-between ${
+                                    idx === suggestionsActiveIndex 
+                                      ? 'bg-[#0d9da4] text-white' 
+                                      : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  <span>{cand}</span>
+                                  <span className="text-[9px] opacity-75">
+                                    {sqlKeywords.includes(cand) ? 'keyword' : 'table'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -1542,7 +1913,38 @@ export default function ConnectionDashboard() {
                   <div className="mb-4 bg-green-50 text-green-600 text-sm px-4 py-3 rounded-lg">✅ {queryMsg}</div>
                 )}
                 {queryResults.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+                    {/* Results Header with Export controls */}
+                    <div className="px-5 py-3.5 border-b border-gray-150 bg-gray-50/70 flex items-center justify-between select-none">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-800">📋 Output Dataset</span>
+                        <span className="text-[10px] bg-[#0d9da4]/10 text-[#0d9da4] px-2 py-0.5 rounded-full font-bold">
+                          {queryResults.length} records
+                        </span>
+                      </div>
+                      
+                      {/* Export Actions */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-gray-400 font-medium mr-1">Export as:</span>
+                        <button
+                          type="button"
+                          onClick={() => exportResults('csv')}
+                          title="Download results as CSV spreadsheet"
+                          className="px-2.5 py-1.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1"
+                        >
+                          📥 CSV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportResults('json')}
+                          title="Download results as JSON file"
+                          className="px-2.5 py-1.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1"
+                        >
+                          📥 JSON
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b border-gray-200">
