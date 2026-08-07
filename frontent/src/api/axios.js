@@ -1,7 +1,15 @@
 import axios from "axios";
 
+const getBaseURL = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl === '/api' && window.location.hostname === 'localhost') {
+    return 'http://localhost:5001/api';
+  }
+  return envUrl || 'http://localhost:5001/api';
+};
+
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: getBaseURL(),
   withCredentials: true,
 });
 
