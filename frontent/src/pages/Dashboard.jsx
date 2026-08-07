@@ -334,6 +334,7 @@ export default function Dashboard() {
     if (type === 'mysql') return '🐬';
     if (type === 'postgresql') return '🐘';
     if (type === 'mongodb') return '🍃';
+    if (type === 'oracle') return '🔴';
     return '🗄️';
   };
 
@@ -341,12 +342,14 @@ export default function Dashboard() {
     if (type === 'mysql') return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200';
     if (type === 'postgresql') return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200';
     if (type === 'mongodb') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+    if (type === 'oracle') return 'bg-red-50 text-red-700 ring-1 ring-red-200';
     return 'bg-stone-100 text-stone-600 ring-1 ring-stone-200';
   };
 
   const mysqlCount = connections.filter(c => c.type === 'mysql').length;
   const pgCount = connections.filter(c => c.type === 'postgresql').length;
   const mongoCount = connections.filter(c => c.type === 'mongodb').length;
+  const oracleCount = connections.filter(c => c.type === 'oracle').length;
 
   if (loading) {
     return (
@@ -440,7 +443,7 @@ export default function Dashboard() {
 
         {/* Stats Cards */}
         {activeTab === 'connections' && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-7">
             <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-teal-100 dark:ring-teal-900 bg-[#e3f6f6] dark:bg-teal-950/50">🐬</div>
@@ -465,6 +468,15 @@ export default function Dashboard() {
                 <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">MongoDB</span>
               </div>
               <p className="text-[28px] font-bold text-amber-700 dark:text-amber-400 tracking-tight leading-none">{mongoCount}</p>
+              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
+            </div>
+
+            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-red-100 dark:ring-red-900 bg-red-50 dark:bg-red-950/50">🔴</div>
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Oracle</span>
+              </div>
+              <p className="text-[28px] font-bold text-red-700 dark:text-red-400 tracking-tight leading-none">{oracleCount}</p>
               <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
             </div>
           </div>
@@ -529,7 +541,7 @@ export default function Dashboard() {
                           <div>
                             <div className="flex items-center gap-2 flex-wrap text-left">
                               <p className="text-[14px] font-bold text-teal-900 dark:text-teal-50">{conn.name}</p>
-                              {conn.user && conn.user._id !== user?.id && (
+                              {conn.user && conn.user._id !== (user?._id || user?.id) && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-100 dark:ring-amber-900/30">
                                   Shared by {conn.user.name}
                                 </span>
@@ -548,7 +560,7 @@ export default function Dashboard() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                             {conn.type}
                           </span>
-                          {(user?.role === 'admin' || !conn.user || conn.user._id === user?.id) && (
+                          {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                             <button
                               onClick={() => handleOpenShareModal(conn)}
                               className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold"

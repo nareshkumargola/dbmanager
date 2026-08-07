@@ -45,13 +45,77 @@ export default function ConnectionDashboard() {
   const [tableColumns, setTableColumns] = useState([]);
   const [tableLoading, setTableLoading] = useState(false);
 
-  // Query Editor
-  const [query, setQuery] = useState('');
-  const [queryResults, setQueryResults] = useState([]);
-  const [queryColumns, setQueryColumns] = useState([]);
-  const [queryLoading, setQueryLoading] = useState(false);
-  const [queryError, setQueryError] = useState('');
-  const [queryMsg, setQueryMsg] = useState('');
+  // Query Editor Multi-Tab State
+  const [queryTabs, setQueryTabs] = useState([
+    {
+      id: 'tab-1',
+      name: 'Query 1',
+      query: '',
+      results: [],
+      columns: [],
+      error: '',
+      msg: '',
+      loading: false
+    }
+  ]);
+  const [activeQueryTabId, setActiveQueryTabId] = useState('tab-1');
+
+  const activeQueryTab = queryTabs.find(t => t.id === activeQueryTabId) || queryTabs[0];
+  const query = activeQueryTab.query;
+  const queryResults = activeQueryTab.results;
+  const queryColumns = activeQueryTab.columns;
+  const queryLoading = activeQueryTab.loading;
+  const queryError = activeQueryTab.error;
+  const queryMsg = activeQueryTab.msg;
+
+  const setQuery = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, query: typeof val === 'function' ? val(t.query) : val } : t));
+  };
+  const setQueryResults = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, results: typeof val === 'function' ? val(t.results) : val } : t));
+  };
+  const setQueryColumns = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, columns: typeof val === 'function' ? val(t.columns) : val } : t));
+  };
+  const setQueryLoading = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, loading: typeof val === 'function' ? val(t.loading) : val } : t));
+  };
+  const setQueryError = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, error: typeof val === 'function' ? val(t.error) : val } : t));
+  };
+  const setQueryMsg = (val) => {
+    setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, msg: typeof val === 'function' ? val(t.msg) : val } : t));
+  };
+
+  const addQueryTab = () => {
+    const newId = `tab-${Date.now()}`;
+    const newTabNumber = queryTabs.length + 1;
+    const newTab = {
+      id: newId,
+      name: `Query ${newTabNumber}`,
+      query: '',
+      results: [],
+      columns: [],
+      error: '',
+      msg: '',
+      loading: false
+    };
+    setQueryTabs([...queryTabs, newTab]);
+    setActiveQueryTabId(newId);
+  };
+
+  const removeQueryTab = (tabId, e) => {
+    if (e) e.stopPropagation();
+    if (queryTabs.length === 1) return;
+    
+    const newTabs = queryTabs.filter(t => t.id !== tabId);
+    setQueryTabs(newTabs);
+    
+    if (activeQueryTabId === tabId) {
+      const remainingTab = newTabs[newTabs.length - 1];
+      setActiveQueryTabId(remainingTab.id);
+    }
+  };
 
   // Query History
   const [history, setHistory] = useState([]);
@@ -70,6 +134,11 @@ export default function ConnectionDashboard() {
   const [monitorHistory, setMonitorHistory] = useState([]);
   const [tableDetails, setTableDetails] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  
+  // Table search, sort and unit filters
+  const [tableSearch, setTableSearch] = useState('');
+  const [tableSort, setTableSort] = useState('asc'); // 'asc' or 'desc'
+  const [tableSizeUnit, setTableSizeUnit] = useState('MB'); // 'Bytes', 'KB', 'MB', 'GB'
 
   useEffect(() => {
     const initializeConnection = async () => {
@@ -136,12 +205,16 @@ export default function ConnectionDashboard() {
     
     try {
       setDbLoading(true);
-      const [objRes, statsRes] = await Promise.all([
+      const [objRes, statsRes, tablesDetailsRes] = await Promise.all([
         API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`),
         API.get(`/connections/${id}/stats?database=${encodeURIComponent(dbName)}`),
+        API.get(`/monitor/${id}/tables?database=${encodeURIComponent(dbName)}`).catch(() => ({ data: { tables: [] } }))
       ]);
       setObjects(objRes.data);
       setStats(statsRes.data.stats);
+      if (tablesDetailsRes.data?.tables) {
+        setTableDetails(tablesDetailsRes.data.tables);
+      }
     } catch (err) {
       console.error('Failed to select database:', err);
       setError('Data load failed - check database connection');
@@ -592,6 +665,7 @@ export default function ConnectionDashboard() {
     if (type === 'mysql') return result.tables?.map(t => Object.values(t)[0]) || [];
     if (type === 'postgresql') return result.tables?.map(t => t.table_name) || [];
     if (type === 'mongodb') return result.collections?.map(c => c.name) || [];
+    if (type === 'oracle') return result.tables?.map(t => t.table_name || t.TABLE_NAME) || [];
     return [];
   };
 
@@ -599,11 +673,48 @@ export default function ConnectionDashboard() {
     if (type === 'mysql') return '🐬';
     if (type === 'postgresql') return '🐘';
     if (type === 'mongodb') return '🍃';
+    if (type === 'oracle') return '🔴';
     return '🗄️';
   };
 
   const dbType = objects?.type;
   const tables = getTablesArray();
+
+  const formatTableSize = (sizeMB, unit) => {
+    const val = parseFloat(sizeMB || 0);
+    switch (unit) {
+      case 'Bytes':
+        return `${Math.round(val * 1024 * 1024).toLocaleString()} Bytes`;
+      case 'KB':
+        return `${(val * 1024).toFixed(2)} KB`;
+      case 'GB':
+        return `${(val / 1024).toFixed(4)} GB`;
+      case 'MB':
+      default:
+        return `${val.toFixed(2)} MB`;
+    }
+  };
+
+  const getTablesWithMetadata = () => {
+    return tables.map(tableName => {
+      const detail = tableDetails.find(d => d.table === tableName);
+      return {
+        name: tableName,
+        rows: detail ? detail.rows : 0,
+        sizeMB: detail ? detail.sizeMB : 0.01
+      };
+    });
+  };
+
+  const processedTablesList = getTablesWithMetadata()
+    .filter(t => t.name.toLowerCase().includes(tableSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (tableSort === 'asc') {
+        return a.name.localeCompare(b.name);
+      } else {
+        return b.name.localeCompare(a.name);
+      }
+    });
 
   const hasPermission = (permKey) => {
     if (user?.role === 'admin') return true;
@@ -620,7 +731,7 @@ export default function ConnectionDashboard() {
     tabs.push({ id: 'query', label: '⚡ Query Editor' });
   }
   if (hasPermission('history')) {
-    tabs.push({ id: 'history', label: '🕐 History' });
+    tabs.push({ id: 'history', label: '🕐 Query History' });
   }
   if (hasPermission('slowQuery')) {
     tabs.push({ id: 'slow-queries', label: '🐢 Slow Query' });
@@ -804,24 +915,137 @@ export default function ConnectionDashboard() {
                       <p className="text-xl font-bold text-gray-900">{item.value}</p>
                     </div>
                   ))}
+                  {dbType === 'oracle' && [
+                    { label: 'Service Name / SID', value: stats.database },
+                    { label: 'Tables', value: stats.totalTables },
+                    { label: 'Active Sessions', value: stats.activeConnections },
+                    { label: 'Schema Size', value: `${stats.sizeMB} MB` },
+                  ].map((item, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
+                      <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                      <p className="text-xl font-bold text-gray-900">{item.value}</p>
+                    </div>
+                  ))}
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                    {dbType === 'mongodb' ? 'Collections' : 'Tables'}
-                  </h3>
-                  <div className="space-y-2">
-                    {tables.map((table, i) => (
-                      <div
-                        key={i}
-                        onClick={() => fetchTableData(table)}
-                        className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition"
+
+                {/* Top 5 Tables */}
+                <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+                  <div className="flex items-center justify-between border-b border-gray-150 pb-3 mb-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                      <span>📊</span> Top 5 Tables (by Size / Rows)
+                    </h3>
+                    {((tableDetails && tableDetails.length > 0) || (tables && tables.length > 0)) && (
+                      <span className="text-xs font-bold text-gray-500 font-mono">
+                        Table Name — Row Count
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2.5">
+                    {tableDetails && tableDetails.length > 0 ? (
+                      tableDetails.slice(0, 5).map((t, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100/80 rounded-xl transition border border-gray-200 shadow-3xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 font-mono text-xs">{idx + 1}.</span>
+                            <span className="text-xs font-extrabold text-gray-700 font-mono">{t.table}</span>
+                            <span className="text-gray-300 text-xs">—</span>
+                            <span className="text-xs font-bold text-gray-500 font-mono">
+                              {t.rows !== undefined ? t.rows.toLocaleString() : '0'} rows
+                            </span>
+                            <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold font-mono ml-1">
+                              {t.sizeMB !== undefined ? `${t.sizeMB} MB` : t.size || 'N/A'}
+                            </span>
+                          </div>
+                          
+                          <button
+                            onClick={() => fetchTableData(t.table)}
+                            className="px-3 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition border-none shadow-3xs cursor-pointer"
+                          >
+                            View
+                          </button>
+                        </div>
+                      ))
+                    ) : tables && tables.length > 0 ? (
+                      tables.slice(0, 5).map((table, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100/80 rounded-xl transition border border-gray-200 shadow-3xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 font-mono text-xs">{idx + 1}.</span>
+                            <span className="text-xs font-extrabold text-gray-700 font-mono">{table}</span>
+                            <span className="text-gray-300 text-xs">—</span>
+                            <span className="text-xs font-bold text-gray-500 font-mono">
+                              0 rows
+                            </span>
+                            <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold font-mono ml-1">
+                              0.01 MB
+                            </span>
+                          </div>
+                          
+                          <button
+                            onClick={() => fetchTableData(table)}
+                            className="px-3 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition border-none shadow-3xs cursor-pointer"
+                          >
+                            View
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-gray-400">No tables data available.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recent Activity Section */}
+                <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                      <span>⚡</span> Recent Activity
+                    </h3>
+                    {hasPermission('history') && (
+                      <button 
+                         onClick={() => {
+                           setActiveTab('history');
+                           fetchHistory();
+                         }}
+                         className="text-xs font-bold text-[#0d9da4] hover:underline border-none bg-transparent cursor-pointer"
                       >
-                        <span className="text-sm text-gray-700">
-                          {dbType === 'mongodb' ? '📁' : '📋'} {table}
-                        </span>
-                        <span className="text-xs text-gray-400">View →</span>
-                      </div>
-                    ))}
+                        Query History →
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-150 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-blue-750 font-bold uppercase tracking-wider font-sans">Execution Logs</p>
+                      <p className="text-xs font-bold text-blue-900 mt-1 font-mono">
+                        run a query by timestamp
+                      </p>
+                    </div>
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-bold font-mono">
+                      {new Date().toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Slow Queries Section */}
+                <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                      <span>🐢</span> Slow Query Insights
+                    </h3>
+                    <button 
+                      onClick={() => setActiveTab('slow-queries')}
+                      className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 border-none bg-transparent cursor-pointer"
+                    >
+                      View More →
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg border border-red-150">
+                    <div>
+                      <p className="text-xs text-red-750 font-bold uppercase tracking-wider">Monitor Status</p>
+                      <p className="text-sm font-extrabold text-red-900 mt-1">5 running</p>
+                    </div>
+                    <span className="text-xl animate-pulse">⏰</span>
                   </div>
                 </div>
               </div>
@@ -831,8 +1055,78 @@ export default function ConnectionDashboard() {
             {activeTab === 'table' && (
               <div>
                 {!selectedTable ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <p className="text-gray-400 text-sm">Left sidebar se table select karein</p>
+                  <div className="bg-white rounded-xl border border-gray-200 p-6 text-left">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
+                      <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                        📋 Select a Table to View Data
+                      </h3>
+                      
+                      {/* Search, Sort, and Unit Controls */}
+                      <div className="flex flex-wrap items-center gap-3">
+                        {/* Search Input */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Search tables..."
+                            value={tableSearch}
+                            onChange={e => setTableSearch(e.target.value)}
+                            className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-teal-500 transition w-44"
+                          />
+                          <svg className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+
+
+
+                        {/* Unit Filter Selector */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Unit:</span>
+                          <select
+                            value={tableSizeUnit}
+                            onChange={e => setTableSizeUnit(e.target.value)}
+                            className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-teal-500 cursor-pointer font-semibold text-gray-755"
+                          >
+                            <option value="Bytes">Bytes</option>
+                            <option value="KB">KB</option>
+                            <option value="MB">MB</option>
+                            <option value="GB">GB</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {tables.length === 0 ? (
+                      <p className="text-xs text-gray-400">No tables found in this database schema.</p>
+                    ) : processedTablesList.length === 0 ? (
+                      <p className="text-xs text-gray-400">No tables match your search filter.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {processedTablesList.map((t, i) => (
+                          <div
+                            key={i}
+                            onClick={() => fetchTableData(t.name)}
+                            className="flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-150 rounded-xl cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition shadow-3xs group"
+                          >
+                            <div className="flex flex-col min-w-0 pr-2">
+                              <span className="text-xs font-bold text-gray-800 truncate group-hover:text-gray-900">
+                                {dbType === 'mongodb' ? '📁' : '📋'} {t.name}
+                              </span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-gray-400 font-bold font-mono">
+                                  {t.rows.toLocaleString()} rows
+                                </span>
+                                <span className="text-[10px] text-gray-300">•</span>
+                                <span className="text-[10px] bg-gray-200/60 text-gray-700 px-1 py-0.5 rounded font-bold font-mono">
+                                  {formatTableSize(t.sizeMB, tableSizeUnit)}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-xs text-[#0d9da4] font-bold group-hover:translate-x-0.5 transition-transform shrink-0">View →</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : tableLoading ? (
                   <div className="text-center py-12">
@@ -841,8 +1135,18 @@ export default function ConnectionDashboard() {
                 ) : (
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900">{selectedTable}</h3>
-                      <span className="text-xs text-gray-400">{tableData.length} rows</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setSelectedTable(null)}
+                          className="px-2.5 py-1.5 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer bg-white"
+                        >
+                          ← Back to Tables
+                        </button>
+                        <h3 className="text-sm font-extrabold text-gray-900 font-mono">{selectedTable}</h3>
+                      </div>
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold font-mono">
+                        {tableData.length} rows
+                      </span>
                     </div>
                     {tableData.length === 0 ? (
                       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
@@ -896,7 +1200,47 @@ export default function ConnectionDashboard() {
             {/* QUERY EDITOR */}
             {activeTab === 'query' && (
               <div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+                {/* Query Tabs Bar */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
+                  {queryTabs.map((tab) => {
+                    const isActive = tab.id === activeQueryTabId;
+                    return (
+                      <div
+                        key={tab.id}
+                        onClick={() => setActiveQueryTabId(tab.id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
+                          isActive
+                            ? 'bg-white text-gray-900 border-gray-200 border-b-white z-10'
+                            : 'bg-gray-100/70 text-gray-500 border-transparent hover:bg-gray-100 hover:text-gray-700'
+                        }`}
+                      >
+                        <span>📝</span>
+                        <span className="truncate max-w-[120px]">{tab.name}</span>
+                        {queryTabs.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => removeQueryTab(tab.id, e)}
+                            className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-250 hover:text-gray-950 text-gray-400 transition-colors text-[9px]"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Add New Tab Button */}
+                  <button
+                    type="button"
+                    onClick={addQueryTab}
+                    title="Open New Query Tab"
+                    className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1.5"
+                  >
+                    ＋
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-b-xl rounded-tr-xl border border-gray-250 p-5 mb-4 z-0 relative">
                   {/* Query Toolbar */}
                   <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-gray-100">
                     <div className="flex items-center gap-2">
@@ -911,12 +1255,12 @@ export default function ConnectionDashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => runQuery(true)}
+                        onClick={() => runQuery(false)}
                         disabled={queryLoading || !query.trim()}
-                        title="Execute Entire Script"
-                        className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                        title="Execute Query"
+                        className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
                       >
-                        <span>📜</span> Run All
+                        <span>▶</span> Run Query
                       </button>
                     </div>
 
@@ -1043,15 +1387,7 @@ export default function ConnectionDashboard() {
                       }}
                     />
                   </div>
-                  <div className="flex justify-between items-center mt-3">
-                    <button
-                      onClick={() => runQuery(false)}
-                      disabled={queryLoading}
-                      className="px-6 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 disabled:opacity-60"
-                    >
-                      {queryLoading ? 'Running...' : '▶ Run Query'}
-                    </button>
-                  </div>
+                  
                 </div>
 
                 {/* Full-screen Editor Modal */}
@@ -1079,12 +1415,12 @@ export default function ConnectionDashboard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => runQuery(true)}
+                            onClick={() => runQuery(false)}
                             disabled={queryLoading || !query.trim()}
-                            title="Execute Entire Script"
-                            className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                            title="Execute Query"
+                            className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
                           >
-                            <span>📜</span> Run All
+                            <span>▶</span> Run Query
                           </button>
                           <span className="text-gray-300">|</span>
                           <button
@@ -1097,9 +1433,49 @@ export default function ConnectionDashboard() {
                       </div>
 
                       {/* Editor Body */}
-                      <div className="flex-1 p-5 bg-gray-50/50">
+                      <div className="flex-1 p-5 bg-gray-50/50 flex flex-col">
+                        {/* Query Tabs Bar (Fullscreen) */}
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
+                          {queryTabs.map((tab) => {
+                            const isActive = tab.id === activeQueryTabId;
+                            return (
+                              <div
+                                key={tab.id}
+                                onClick={() => setActiveQueryTabId(tab.id)}
+                                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
+                                  isActive
+                                    ? 'bg-white text-gray-900 border-gray-250 border-b-white z-10'
+                                    : 'bg-gray-100/70 text-gray-500 border-transparent hover:bg-gray-100 hover:text-gray-700'
+                                }`}
+                              >
+                                <span>📝</span>
+                                <span className="truncate max-w-[120px]">{tab.name}</span>
+                                {queryTabs.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => removeQueryTab(tab.id, e)}
+                                    className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-250 hover:text-gray-950 text-gray-400 transition-colors text-[9px]"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                          
+                          {/* Add New Tab Button */}
+                          <button
+                            type="button"
+                            onClick={addQueryTab}
+                            title="Open New Query Tab"
+                            className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1.5"
+                          >
+                            ＋
+                          </button>
+                        </div>
+
                         {/* Textarea Overlay Container (Fullscreen) */}
-                        <div className="sql-editor-container h-full">
+                        <div className="sql-editor-container flex-1 rounded-b-xl rounded-tr-xl border border-gray-250 relative overflow-hidden">
                           {/* Gutter Line Numbers */}
                           <div ref={fullscreenLineCounterRef} className="sql-editor-gutter">
                             {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
