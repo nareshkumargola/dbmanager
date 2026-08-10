@@ -1334,30 +1334,52 @@ export default function ConnectionDashboard() {
                     ) : processedTablesList.length === 0 ? (
                       <p className="text-xs text-gray-400">No tables match your search filter.</p>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {processedTablesList.map((t, i) => (
-                          <div
-                            key={i}
-                            onClick={() => fetchTableData(t.name)}
-                            className="flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-150 rounded-xl cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition shadow-3xs group"
-                          >
-                            <div className="flex flex-col min-w-0 pr-2">
-                              <span className="text-xs font-bold text-gray-800 truncate group-hover:text-gray-900">
-                                {dbType === 'mongodb' ? '📁' : '📋'} {t.name}
-                              </span>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[10px] text-gray-400 font-bold font-mono">
-                                  {t.rows.toLocaleString()} rows
-                                </span>
-                                <span className="text-[10px] text-gray-300">•</span>
-                                <span className="text-[10px] bg-gray-200/60 text-gray-700 px-1 py-0.5 rounded font-bold font-mono">
-                                  {formatTableSize(t.sizeMB, tableSizeUnit)}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="text-xs text-[#0d9da4] font-bold group-hover:translate-x-0.5 transition-transform shrink-0">View →</span>
-                          </div>
-                        ))}
+                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-3xs">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                                  {dbType === 'mongodb' ? 'Collection Name' : 'Table Name'}
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                                  Est. Rows
+                                </th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                                  Size
+                                </th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">
+                                  Action
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {processedTablesList.map((t, i) => (
+                                <tr 
+                                  key={i} 
+                                  onClick={() => fetchTableData(t.name)}
+                                  className="hover:bg-teal-50/30 cursor-pointer transition-colors group"
+                                >
+                                  <td className="px-4 py-3 text-xs font-bold text-gray-800 font-mono">
+                                    <span className="mr-1.5">{dbType === 'mongodb' ? '📁' : '📋'}</span>
+                                    {t.name}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs font-mono text-gray-600">
+                                    {t.rows.toLocaleString()} rows
+                                  </td>
+                                  <td className="px-4 py-3 text-xs font-mono">
+                                    <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
+                                      {formatTableSize(t.sizeMB, tableSizeUnit)}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-xs font-bold text-[#0d9da4] group-hover:underline">
+                                    View →
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )}
                   </div>
