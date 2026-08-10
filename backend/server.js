@@ -20,9 +20,26 @@ const app = express();
 app.set("trust proxy", 1);
 const server = http.createServer(app);
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5001",
+  "http://80.225.255.32:5002",
+  "http://80.225.255.32:5001",
+  "http://80.225.255.32",
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+const dynamicCorsOrigin = (origin, callback) => {
+  if (!origin || allowedOrigins.includes(origin) || origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("80.225.255.32")) {
+    callback(null, true);
+  } else {
+    callback(null, true);
+  }
+};
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin: dynamicCorsOrigin,
     credentials: true,
   },
 });
@@ -37,7 +54,7 @@ setupBinlogSocket(io);
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: dynamicCorsOrigin,
     credentials: true,
   }),
 );
@@ -56,8 +73,20 @@ app.use("/api", limiter);
 // Sirf app ka MongoDB connect karo — users, history etc ke liye
 const connectAppDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log("✅ App MongoDB Connected!");
+    let mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/dbmanager";
+    try {
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 3000 });
+      console.log("✅ App MongoDB Connected!");
+    } catch (primaryErr) {
+      if (mongoUri && mongoUri.includes('mongodb:27017')) {
+        const fallbackUri = 'mongodb://127.0.0.1:27017/dbmanager';
+        console.log(`⚠️ Primary MongoDB host unreachable. Retrying fallback: ${fallbackUri}`);
+        await mongoose.connect(fallbackUri);
+        console.log("✅ App MongoDB Connected (via 127.0.0.1 fallback)!");
+      } else {
+        throw primaryErr;
+      }
+    }
   } catch (err) {
     console.error("❌ MongoDB Error:", err.message);
   }
@@ -99,7 +128,7 @@ const {
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, async () => {
-  console.log(`🚀 Server chal raha hai http://localhost:${PORT}`);
+  console.log(`🚀 Server is runing at http://localhost:${PORT}`);
   await connectAppDB();
 
   // Start persistent background binlog poller daemon

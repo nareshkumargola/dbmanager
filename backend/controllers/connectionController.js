@@ -317,7 +317,108 @@ exports.runQuery = async (req, res) => {
     }
 
     else if (type === 'mongodb') {
-      results = { message: 'MongoDB queries use collection methods' };
+      const mongoDb = conn.db(database || connection.database || 'test');
+      const clean = query.replace(/;+\s*$/, '').trim();
+      const upper = clean.toUpperCase();
+
+      const sanitizeMongoDoc = (doc) => {
+        if (!doc || typeof doc !== 'object') return doc;
+        const clone = {};
+        for (const [key, value] of Object.entries(doc)) {
+          if (value && typeof value === 'object') {
+            if (value._bsontype === 'ObjectID' || value.constructor?.name === 'ObjectId') {
+              clone[key] = value.toString();
+            } else if (value instanceof Date) {
+              clone[key] = value.toISOString();
+            } else {
+              clone[key] = JSON.stringify(value);
+            }
+          } else {
+            clone[key] = value;
+          }
+        }
+        return clone;
+      };
+
+      if (upper === 'SHOW TABLES' || upper === 'SHOW COLLECTIONS') {
+        const collections = await mongoDb.listCollections().toArray();
+        results = collections.map(c => ({ collection_name: c.name, type: c.type || 'collection' }));
+      } else if (upper.startsWith('SELECT')) {
+        const fromMatch = clean.match(/FROM\s+[`"']?([a-zA-Z0-9_-]+)[`"']?/i);
+        if (!fromMatch) {
+          throw new Error("MongoDB SQL syntax error: Missing 'FROM <collection_name>'. Example: SELECT * FROM users;");
+        }
+        const collectionName = fromMatch[1];
+        let limit = 100;
+        const limitMatch = clean.match(/LIMIT\s+(\d+)/i);
+        if (limitMatch) limit = parseInt(limitMatch[1], 10);
+
+        let filter = {};
+        const whereMatch = clean.match(/WHERE\s+([\s\S]+?)(?:\s+LIMIT|\s*$)/i);
+        if (whereMatch) {
+          const whereClause = whereMatch[1].trim();
+          const eqMatch = whereClause.match(/^([a-zA-Z0-9_.]+)\s*=\s*['"]?([^'"]+)['"]?$/);
+          if (eqMatch) {
+            let val = eqMatch[2];
+            if (!isNaN(val)) val = Number(val);
+            else if (val.toLowerCase() === 'true') val = true;
+            else if (val.toLowerCase() === 'false') val = false;
+            filter = { [eqMatch[1]]: val };
+          } else if (whereClause.startsWith('{') && whereClause.endsWith('}')) {
+            try { filter = JSON.parse(whereClause); } catch (e) {}
+          }
+        }
+
+        const docs = await mongoDb.collection(collectionName).find(filter).limit(limit).toArray();
+        results = docs.map(doc => sanitizeMongoDoc(doc));
+      } else {
+        const shellMatch = clean.match(/^db\.(?:getCollection\(['"]([^'"]+)['"]\)|([a-zA-Z0-9_-]+))\.(find|findOne|countDocuments|count|aggregate|insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany)\(([\s\S]*)\)$/);
+        if (shellMatch) {
+          const collectionName = shellMatch[1] || shellMatch[2];
+          const method = shellMatch[3];
+          const argsStr = shellMatch[4].trim();
+
+          let args = [];
+          if (argsStr) {
+            try {
+              args = JSON.parse(`[${argsStr}]`);
+            } catch (e) {
+              try {
+                const evalFriendly = argsStr.replace(/([a-zA-Z0-9_]+)\s*:/g, '"$1":').replace(/'/g, '"');
+                args = JSON.parse(`[${evalFriendly}]`);
+              } catch (e2) {
+                args = [{}];
+              }
+            }
+          }
+
+          if (method === 'find') {
+            const docs = await mongoDb.collection(collectionName).find(args[0] || {}).limit(100).toArray();
+            results = docs.map(doc => sanitizeMongoDoc(doc));
+          } else if (method === 'findOne') {
+            const doc = await mongoDb.collection(collectionName).findOne(args[0] || {});
+            results = doc ? [sanitizeMongoDoc(doc)] : [];
+          } else if (method === 'count' || method === 'countDocuments') {
+            const count = await mongoDb.collection(collectionName).countDocuments(args[0] || {});
+            results = [{ total_count: count }];
+          } else if (method === 'aggregate') {
+            const docs = await mongoDb.collection(collectionName).aggregate(args[0] || []).toArray();
+            results = docs.map(doc => sanitizeMongoDoc(doc));
+          } else {
+            const writeResult = await mongoDb.collection(collectionName)[method](...args);
+            results = { affectedRows: writeResult.modifiedCount || writeResult.deletedCount || (writeResult.insertedId || writeResult.insertedCount ? 1 : 0), result: writeResult };
+          }
+        } else if (clean.startsWith('{') && clean.endsWith('}')) {
+          const filter = JSON.parse(clean);
+          const collections = await mongoDb.listCollections().toArray();
+          const targetCollection = collections[0]?.name || 'users';
+          const docs = await mongoDb.collection(targetCollection).find(filter).limit(100).toArray();
+          results = docs.map(doc => sanitizeMongoDoc(doc));
+        } else {
+          const docs = await mongoDb.collection(clean).find({}).limit(100).toArray();
+          results = docs.map(doc => sanitizeMongoDoc(doc));
+        }
+      }
     }
 
     else if (type === 'oracle') {
