@@ -1385,41 +1385,46 @@ export default function ConnectionDashboard() {
                       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
                         <p className="text-gray-400 text-sm">No data found</p>
                       </div>
-                    ) : dbType === 'mongodb' ? (
-                      <div className="space-y-3">
-                        {tableData.map((doc, i) => (
-                          <div key={i} className="bg-white rounded-xl border border-gray-200 p-4">
-                            <pre className="text-xs text-gray-700 overflow-x-auto">
-                              {JSON.stringify(doc, null, 2)}
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
                     ) : (
                       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-gray-50 border-b border-gray-200">
                               <tr>
-                                {tableColumns.map((col, i) => (
+                                {(tableColumns && tableColumns.length > 0
+                                  ? tableColumns
+                                  : Object.keys(tableData[0] || {})
+                                ).map((col, i) => (
                                   <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
-                                    {col.Field || col.name || col}
+                                    {typeof col === 'object' ? (col.Field || col.name || col.column_name || '') : String(col)}
                                   </th>
                                 ))}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {tableData.map((row, i) => (
-                                <tr key={i} className="hover:bg-gray-50">
-                                  {tableColumns.map((col, j) => (
-                                    <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                      {row[col.Field || col.name] === null ? (
-                                        <span className="text-gray-300 italic">null</span>
-                                      ) : String(row[col.Field || col.name])}
-                                    </td>
-                                  ))}
-                                </tr>
-                              ))}
+                              {tableData.map((row, i) => {
+                                const cols = tableColumns && tableColumns.length > 0
+                                  ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name) : c)
+                                  : Object.keys(row);
+                                return (
+                                  <tr key={i} className="hover:bg-gray-50">
+                                    {cols.map((colName, j) => {
+                                      const val = row[colName];
+                                      return (
+                                        <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                          {val === null || val === undefined ? (
+                                            <span className="text-gray-300 italic">null</span>
+                                          ) : typeof val === 'object' ? (
+                                            JSON.stringify(val)
+                                          ) : (
+                                            String(val)
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -2043,9 +2048,13 @@ export default function ConnectionDashboard() {
                             <tr key={i} className="hover:bg-gray-50">
                               {queryColumns.map((col, j) => (
                                 <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                                  {row[col] === null ? (
+                                  {row[col] === null || row[col] === undefined ? (
                                     <span className="text-gray-300 italic">null</span>
-                                  ) : String(row[col])}
+                                  ) : typeof row[col] === 'object' ? (
+                                    JSON.stringify(row[col])
+                                  ) : (
+                                    String(row[col])
+                                  )}
                                 </td>
                               ))}
                             </tr>
