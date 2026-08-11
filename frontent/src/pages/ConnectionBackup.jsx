@@ -27,14 +27,12 @@ export default function ConnectionBackup() {
   const [connectionName, setConnectionName] = useState('');
   const [connection, setConnection] = useState(null);
   const [backupLoading, setBackupLoading] = useState(false);
-  const [restoreLoading, setRestoreLoading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
   const [backupMsg, setBackupMsg] = useState('');
   const [backupError, setBackupError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // New selective backup states
-  const [activeTab, setActiveTab] = useState('selective'); // 'selective' or 'server'
+  // Export / Import backup states
+  const [activeTab, setActiveTab] = useState('selective'); // 'selective' or 'import'
   const [databases, setDatabases] = useState([]); // [{ name, tables: [], loaded: false, expanded: false }]
   const [selections, setSelections] = useState({}); // { [dbName]: string[] }
   const [dbsLoading, setDbsLoading] = useState(false);
@@ -209,31 +207,6 @@ export default function ConnectionBackup() {
     return 'partial';
   };
 
-  const takeBackup = async () => {
-    setBackupLoading(true);
-    setBackupError('');
-    setBackupMsg('');
-    try {
-      const res = await API.get(`/backup/download?connectionId=${id}`, {
-        responseType: 'blob',
-      });
-      const fileExt = connection?.type === 'mongodb' ? 'json' : 'sql';
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `backup_server_${Date.now()}.${fileExt}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      setBackupMsg('Backup downloaded successfully!');
-    } catch (err) {
-      setBackupError('Backup failed!');
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
   const takeSelectedBackup = async () => {
     const totalDbsSelected = Object.keys(selections).length;
     if (totalDbsSelected === 0) {
@@ -266,39 +239,6 @@ export default function ConnectionBackup() {
       setBackupError('Backup of selected items failed!');
     } finally {
       setBackupLoading(false);
-    }
-  };
-
-  const restoreBackup = async () => {
-    const isMongo = connection?.type === 'mongodb';
-    const fileExt = isMongo ? '.json' : '.sql';
-    if (!selectedFile) {
-      setBackupError(`Please select a ${fileExt} file first!`);
-      return;
-    }
-    const confirmMsg = isMongo 
-      ? 'Are you sure you want to restore the MongoDB database server? This will delete existing target collections and insert documents from the JSON script.'
-      : 'Are you sure you want to restore the database server? This will execute statements for all databases contained inside the SQL script.';
-      
-    if (!window.confirm(confirmMsg)) return;
-
-    setRestoreLoading(true);
-    setBackupError('');
-    setBackupMsg('');
-    try {
-      const formData = new FormData();
-      formData.append('sqlFile', selectedFile);
-      const res = await API.post(`/backup/restore?connectionId=${id}`, formData);
-      if (isMongo) {
-        setBackupMsg(`Restore completed successfully! Restored ${res.data.collections} collections and ${res.data.documents} documents.`);
-      } else {
-        setBackupMsg(`Restore completed successfully! Executed ${res.data.statements} statements.`);
-      }
-      setSelectedFile(null);
-    } catch (err) {
-      setBackupError(err.response?.data?.message || err.response?.data?.error || 'Restore failed!');
-    } finally {
-      setRestoreLoading(false);
     }
   };
 
@@ -435,7 +375,7 @@ export default function ConnectionBackup() {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('selective')}
-              className={`flex-grow pb-2.5 text-xs font-bold border-b-2 text-center transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 pb-2.5 text-xs font-bold border-b-2 text-center transition flex items-center justify-center gap-1.5 ${
                 activeTab === 'selective'
                   ? 'text-[#0d9da4]'
                   : 'border-transparent text-gray-400 hover:text-gray-600'
@@ -454,17 +394,6 @@ export default function ConnectionBackup() {
               style={activeTab === 'import' ? { borderColor: '#0d9da4' } : {}}
             >
               📥 Import Backup
-            </button>
-             <button
-              onClick={() => setActiveTab('server')}
-              className={`flex-1 pb-2.5 text-xs font-bold border-b-2 text-center transition flex items-center justify-center gap-1.5 ${
-                activeTab === 'server'
-                  ? 'text-[#0d9da4]'
-                  : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}
-              style={activeTab === 'server' ? { borderColor: '#0d9da4' } : {}}
-            >
-              🌐 Server-Wide Backup
             </button>
           </div>
 
@@ -618,92 +547,7 @@ export default function ConnectionBackup() {
           )}
 
           {/* Tab 2: Server-Wide Backup */}
-          {activeTab === 'server' && (
-            <>
-              <div className="bg-white rounded-xl border border-gray-250 p-6 shadow-xs flex flex-col gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Generate Complete Server Backup</h3>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-normal">
-                    Download a consolidated {connection?.type === 'mongodb' ? 'JSON' : 'SQL'} file containing structural definitions and data rows for ALL user databases on this host.
-                  </p>
-                </div>
-                <button
-                  onClick={takeBackup}
-                  disabled={backupLoading}
-                  className="w-full py-2.5 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-800 disabled:opacity-60 transition shadow-xs flex items-center justify-center gap-2"
-                >
-                  {backupLoading ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                      Generating Backup...
-                    </>
-                  ) : (
-                    '⬇ Download Complete Server Backup'
-                  )}
-                </button>
-              </div>
 
-              {/* Restore Action Card (remains the same) */}
-              <div className="bg-white rounded-xl border border-gray-250 p-6 shadow-xs flex flex-col gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900">Restore Server Data</h3>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-normal">
-                    Upload a structured backup {connection?.type === 'mongodb' ? 'JSON' : 'SQL'} file to reconstruct databases and populate their data tables.
-                  </p>
-                </div>
-
-                <div
-                  className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-gray-400 hover:bg-gray-50/50 transition flex flex-col items-center justify-center gap-2"
-                  onClick={() => document.getElementById('sqlFileConn').click()}
-                >
-                  {selectedFile ? (
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">{selectedFile.name}</p>
-                      <p className="text-[10px] text-gray-400 mt-1">{(selectedFile.size / 1024).toFixed(2)} KB</p>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="text-3xl">📤</span>
-                      <span className="text-xs font-semibold text-gray-400">
-                        Click here to select a {connection?.type === 'mongodb' ? '.json' : '.sql'} backup file
-                      </span>
-                    </>
-                  )}
-                </div>
-
-                <input
-                  id="sqlFileConn"
-                  type="file"
-                  accept={connection?.type === 'mongodb' ? ".json" : ".sql"}
-                  onChange={e => {
-                    const file = e.target.files[0];
-                    const ext = connection?.type === 'mongodb' ? '.json' : '.sql';
-                    if (file?.name.endsWith(ext)) {
-                      setSelectedFile(file);
-                    } else {
-                      setBackupError(`Only ${ext} files are allowed!`);
-                    }
-                  }}
-                  className="hidden"
-                />
-
-                <button
-                  onClick={restoreBackup}
-                  disabled={restoreLoading || !selectedFile}
-                  className="w-full py-2.5 border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 disabled:opacity-60 transition shadow-xs flex items-center justify-center gap-2"
-                >
-                  {restoreLoading ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-red-300 border-t-red-600 rounded-full animate-spin"></div>
-                      Restoring Server Database...
-                    </>
-                  ) : (
-                    '⬆ Execute Restore Script'
-                  )}
-                </button>
-              </div>
-            </>
-          )}
 
           {/* Tab 3: Import Backup */}
           {activeTab === 'import' && (
