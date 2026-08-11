@@ -531,7 +531,8 @@ export default function Dashboard() {
                   {connections.map(conn => (
                     <div
                       key={conn._id}
-                      className="bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200"
+                      onClick={() => navigate(`/connections/${conn._id}`)}
+                      className="bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer group"
                     >
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-3">
@@ -540,7 +541,7 @@ export default function Dashboard() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap text-left">
-                              <p className="text-[14px] font-bold text-teal-900 dark:text-teal-50">{conn.name}</p>
+                              <p className="text-[14px] font-bold text-teal-900 dark:text-teal-50 group-hover:text-[#0d9da4] transition-colors">{conn.name}</p>
                               {conn.user && conn.user._id !== (user?._id || user?.id) && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-100 dark:ring-amber-900/30">
                                   Shared by {conn.user.name}
@@ -556,14 +557,17 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                             {conn.type}
                           </span>
                           {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                             <button
-                              onClick={() => handleOpenShareModal(conn)}
-                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenShareModal(conn);
+                              }}
+                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold cursor-pointer"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -572,10 +576,11 @@ export default function Dashboard() {
                             </button>
                           )}
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               navigate(`/connections/${conn._id}`);
                             }}
-                            className="px-3.5 py-1.5 text-white text-[12px] rounded-lg hover:opacity-90 transition-opacity font-semibold flex items-center gap-1 shadow-sm"
+                            className="px-3.5 py-1.5 text-white text-[12px] rounded-lg hover:opacity-90 transition-opacity font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
                             style={{ backgroundColor: '#0d9da4' }}
                           >
                             Open

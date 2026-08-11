@@ -491,7 +491,8 @@ export default function Connections() {
             {connections.map(conn => (
               <div key={conn._id} className="flex items-stretch gap-3">
                 <div
-                  className="flex-1 bg-white rounded-xl border border-gray-200 p-5 shadow-sm gradient-border-left"
+                  onClick={() => navigate(`/connections/${conn._id}`)}
+                  className="flex-1 bg-white rounded-xl border border-gray-200 p-5 shadow-sm gradient-border-left cursor-pointer hover:shadow-md transition-all group"
                 >
                   <div className="flex items-center justify-between flex-wrap gap-4">
 
@@ -500,7 +501,7 @@ export default function Connections() {
                       <span className="text-2xl">{getTypeIcon(conn.type)}</span>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap text-left">
-                          <p className="text-sm font-semibold text-gray-900">
+                          <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0d9da4] transition-colors">
                             {conn.name}
                           </p>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadge(conn.type)}`}>
@@ -513,7 +514,7 @@ export default function Connections() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-teal-light mt-0.5 text-left">
+                        <p className="text-xs text-teal-light mt-0.5 text-left font-mono">
                           {conn.type === 'mongodb'
                             ? conn.connectionString?.substring(0, 40) + '...'
                             : `${conn.host}:${conn.port} / ${conn.database}`
@@ -523,19 +524,25 @@ export default function Connections() {
                     </div>
 
                     {/* Right — Actions */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       {/* Share Button (Only if admin or owner) */}
                       {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                         <button
-                          onClick={() => handleOpenShareModal(conn)}
-                          className="px-3 py-2 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenShareModal(conn);
+                          }}
+                          className="px-3 py-2 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium cursor-pointer"
                         >
                           👥 Share
                         </button>
                       )}
                       <button
-                        onClick={() => navigate(`/connections/${conn._id}`)}
-                        className="px-4 py-2 gradient-btn text-xs rounded-lg transition"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/connections/${conn._id}`);
+                        }}
+                        className="px-4 py-2 gradient-btn text-xs rounded-lg transition cursor-pointer"
                       >
                         Open →
                       </button>
@@ -543,8 +550,11 @@ export default function Connections() {
                       {/* Delete Button (Only if admin or owner) */}
                       {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
                         <button
-                          onClick={() => handleDelete(conn._id, conn.name)}
-                          className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition font-medium"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(conn._id, conn.name);
+                          }}
+                          className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition font-medium cursor-pointer"
                         >
                           Delete
                         </button>
