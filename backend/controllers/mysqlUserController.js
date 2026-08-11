@@ -336,7 +336,7 @@ exports.updateMySQLUserPrivileges = async (req, res) => {
       console.error('Audit trail logging failed:', auditErr.message);
     }
 
-    res.status(200).json({ success: true, message: 'Permissions successfully update ho gayi hain!' });
+    res.status(200).json({ success: true, message: 'Permissions updated successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error updating privileges', error: err.message });
   }

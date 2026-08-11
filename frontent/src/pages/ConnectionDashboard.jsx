@@ -44,6 +44,8 @@ export default function ConnectionDashboard() {
   const [tableData, setTableData] = useState([]);
   const [tableColumns, setTableColumns] = useState([]);
   const [tableLoading, setTableLoading] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
+  const [tableRowsPerPage, setTableRowsPerPage] = useState(20);
 
   // Query Editor Multi-Tab State
   const [queryTabs, setQueryTabs] = useState([
@@ -464,6 +466,7 @@ export default function ConnectionDashboard() {
   const fetchTableData = async (tableName) => {
     setTableLoading(true);
     setSelectedTable(tableName);
+    setTablePage(1);
     setActiveTab('table');
     try {
       const res = await API.get(
@@ -1389,7 +1392,7 @@ export default function ConnectionDashboard() {
                   </div>
                 ) : (
                   <div>
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setSelectedTable(null)}
@@ -1399,16 +1402,39 @@ export default function ConnectionDashboard() {
                         </button>
                         <h3 className="text-sm font-extrabold text-gray-900 font-mono">{selectedTable}</h3>
                       </div>
-                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold font-mono">
-                        {tableData.length} rows
-                      </span>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg font-bold font-mono">
+                          Total: {tableData.length} records
+                        </span>
+                        
+                        {/* Page Size Selector */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                          <span>Rows per page:</span>
+                          <select
+                            value={tableRowsPerPage}
+                            onChange={(e) => {
+                              setTableRowsPerPage(Number(e.target.value));
+                              setTablePage(1);
+                            }}
+                            className="px-2 py-1 border border-gray-250 rounded-lg text-xs bg-white font-bold outline-none cursor-pointer focus:border-teal-500"
+                          >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={30}>30</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
+
                     {tableData.length === 0 ? (
                       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
                         <p className="text-gray-400 text-sm">No data found</p>
                       </div>
                     ) : (
-                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead className="bg-gray-50 border-b border-gray-200">
@@ -1424,12 +1450,12 @@ export default function ConnectionDashboard() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {tableData.map((row, i) => {
+                              {tableData.slice((tablePage - 1) * tableRowsPerPage, tablePage * tableRowsPerPage).map((row, i) => {
                                 const cols = tableColumns && tableColumns.length > 0
                                   ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name) : c)
                                   : Object.keys(row);
                                 return (
-                                  <tr key={i} className="hover:bg-gray-50">
+                                  <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                                     {cols.map((colName, j) => {
                                       const val = row[colName];
                                       return (
@@ -1450,6 +1476,44 @@ export default function ConnectionDashboard() {
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Pagination Footer */}
+                        {tableData.length > 0 && (() => {
+                          const totalRows = tableData.length;
+                          const totalPages = Math.ceil(totalRows / tableRowsPerPage) || 1;
+                          const startIdx = (tablePage - 1) * tableRowsPerPage + 1;
+                          const endIdx = Math.min(tablePage * tableRowsPerPage, totalRows);
+
+                          return (
+                            <div className="px-5 py-3 border-t border-gray-200 bg-gray-50/80 flex items-center justify-between flex-wrap gap-3">
+                              <span className="text-xs text-gray-500 font-medium">
+                                Showing <span className="font-bold text-gray-800">{startIdx}</span> to <span className="font-bold text-gray-800">{endIdx}</span> of <span className="font-bold text-gray-800">{totalRows}</span> records
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setTablePage(prev => Math.max(prev - 1, 1))}
+                                  disabled={tablePage === 1}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white"
+                                >
+                                  ← Previous
+                                </button>
+
+                                <span className="text-xs font-bold text-gray-700 px-2 font-mono">
+                                  Page {tablePage} of {totalPages}
+                                </span>
+
+                                <button
+                                  onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))}
+                                  disabled={tablePage >= totalPages}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white"
+                                >
+                                  Next →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

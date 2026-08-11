@@ -587,11 +587,11 @@ exports.getDatabaseStats = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
     if (!connection) {
-      return res.status(404).json({ message: 'Connection nahi mila!' });
+      return res.status(404).json({ message: 'Connection not found!' });
     }
 
     if (!checkAccess(connection, req.user)) {
-      return res.status(403).json({ message: 'Aapko is connection ka access nahi hai!' });
+      return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
     const database = req.query.database || connection.database;

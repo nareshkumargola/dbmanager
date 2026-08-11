@@ -11,7 +11,7 @@ exports.protect = (req, res, next) => {
   }
 
   if (!token) {
-    return res.status(401).json({ message: 'Login karo pehle!' });
+    return res.status(401).json({ message: 'Authentication required. Please login first.' });
   }
 
   try {
@@ -19,7 +19,7 @@ exports.protect = (req, res, next) => {
     req.user = decoded;
     next();
   } catch {
-    res.status(401).json({ message: 'Token invalid ya expire ho gaya!' });
+    res.status(401).json({ message: 'Token is invalid or has expired.' });
   }
 };
 
@@ -27,7 +27,7 @@ exports.protect = (req, res, next) => {
 exports.adminOnly = (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ 
-      message: 'Sirf admin kar sakta hai yeh kaam!' 
+      message: 'Admin privileges required for this action.' 
     });
   }
   next();
