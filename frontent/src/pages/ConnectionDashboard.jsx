@@ -1627,6 +1627,11 @@ export default function ConnectionDashboard() {
 
                   {/* Right Side: Execution Controls */}
                   <div className="flex items-center gap-1.5 pb-1 select-none">
+                    {user?.role === 'read' && (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0">
+                        🔒 Read-Only Mode
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={formatSQLQuery}

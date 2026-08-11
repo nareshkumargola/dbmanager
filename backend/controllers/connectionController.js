@@ -284,6 +284,13 @@ exports.runQuery = async (req, res) => {
       return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
+    // Read User role query validation
+    const { validateQueryPermissions } = require('../utils/readOnlyQueryValidator');
+    const validation = validateQueryPermissions(query, req.user, connection.type);
+    if (!validation.isAllowed) {
+      return res.status(403).json({ message: validation.error });
+    }
+
     const database = req.query.database || connection.database;
     const { conn, type } = await getConnection(connection);
     const startTime = Date.now();

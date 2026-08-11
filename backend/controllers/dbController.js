@@ -79,6 +79,13 @@ exports.runMysqlQuery = async (req, res) => {
     const connectionId = req.query.connectionId;
     const database = req.query.database;
 
+    // Read User role query validation
+    const { validateQueryPermissions } = require('../utils/readOnlyQueryValidator');
+    const validation = validateQueryPermissions(query, req.user, 'mysql');
+    if (!validation.isAllowed) {
+      return res.status(403).json({ message: validation.error });
+    }
+
     const upperQuery = query.toUpperCase();
 
     // Check if it is a stored procedure DDL command for auditing
