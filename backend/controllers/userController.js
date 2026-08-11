@@ -214,3 +214,71 @@ exports.updateUserPermissions = async (req, res) => {
     res.status(500).json({ message: 'Error', error: err.message });
   }
 };
+
+// Full user details update (Name, Email, Password, Role, Permissions)
+exports.updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, password, role, permissions } = req.body;
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found!' });
+    }
+
+    if (email && email !== user.email) {
+      const existing = await User.findOne({ email, _id: { $ne: id } });
+      if (existing) {
+        return res.status(400).json({ message: 'Email address is already in use by another account!' });
+      }
+      user.email = email;
+    }
+
+    if (name) user.name = name;
+
+    if (password && password.trim() !== '') {
+      const hashed = await bcrypt.hash(password, 12);
+      user.password = hashed;
+    }
+
+    if (role && id !== req.user.id) {
+      user.role = role;
+    }
+
+    if (permissions && user.role !== 'admin') {
+      user.permissions = {
+        backup: !!permissions.backup,
+        binlog: !!permissions.binlog,
+        monitor: !!permissions.monitor,
+        query: !!permissions.query,
+        history: !!permissions.history,
+        slowQuery: !!permissions.slowQuery,
+        auditLogs: !!permissions.auditLogs,
+        connections: !!permissions.connections
+      };
+    }
+
+    await user.save();
+
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(null, req.user.id, 'UPDATE_USER', `Updated user account details: ${user.name} (${user.email})`);
+    } catch (auditErr) {
+      console.error('Audit log failed:', auditErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'User details updated successfully!',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        permissions: user.permissions
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating user', error: err.message });
+  }
+};

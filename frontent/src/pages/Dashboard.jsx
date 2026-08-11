@@ -45,6 +45,64 @@ export default function Dashboard() {
   const [usersSearch, setUsersSearch] = useState('');
   const usersItemsPerPage = 5;
 
+  // User creation & edit modal states
+  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'read' });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  const [editUserModalUser, setEditUserModalUser] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'read', permissions: {} });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const handleOpenEditUser = (u) => {
+    setEditUserModalUser(u);
+    setEditForm({
+      name: u.name || '',
+      email: u.email || '',
+      password: '', // Blank by default, enter to update
+      role: u.role || 'read',
+      permissions: u.permissions ? { ...u.permissions } : {
+        backup: true, binlog: true, monitor: true, query: true,
+        history: true, slowQuery: true, auditLogs: true, connections: true
+      }
+    });
+    setEditError('');
+  };
+
+  const handleSaveEditUser = async (e) => {
+    e.preventDefault();
+    if (!editUserModalUser) return;
+    setEditLoading(true);
+    setEditError('');
+    try {
+      await API.put(`/users/${editUserModalUser._id}`, editForm);
+      setEditUserModalUser(null);
+      fetchUsers();
+    } catch (err) {
+      setEditError(err.response?.data?.message || 'Failed to update user details.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCreateUserSubmit = async (e) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      await API.post('/users', createForm);
+      setCreateUserModalOpen(false);
+      setCreateForm({ name: '', email: '', password: '', role: 'read' });
+      fetchUsers();
+    } catch (err) {
+      setCreateError(err.response?.data?.message || 'Failed to create user.');
+    } finally {
+      setCreateLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
     fetchConnections();
@@ -608,21 +666,37 @@ export default function Dashboard() {
                   <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
                     <div>
                       <h3 className="text-md font-bold text-gray-900 dark:text-gray-50">Registered Users &amp; Roles</h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Toggle developer privileges or promote accounts to admin instantly.</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage accounts, change roles (Read, ReadWrite, Admin), edit credentials &amp; permissions.</p>
                     </div>
-                    {/* Search users */}
-                    <div className="w-full md:w-72 relative">
-                      <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-xs">🔍</span>
-                      <input
-                        type="text"
-                        placeholder="Search users by name, email or role..."
-                        value={usersSearch}
-                        onChange={e => {
-                          setUsersSearch(e.target.value);
-                          setUsersPage(1);
+
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      {/* Search users */}
+                      <div className="w-full md:w-72 relative">
+                        <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-xs">🔍</span>
+                        <input
+                          type="text"
+                          placeholder="Search users by name, email or role..."
+                          value={usersSearch}
+                          onChange={e => {
+                            setUsersSearch(e.target.value);
+                            setUsersPage(1);
+                          }}
+                          className="w-full pl-8 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl text-xs bg-gray-50 dark:bg-gray-800 focus:bg-white dark:focus:bg-gray-750 text-gray-900 dark:text-gray-100 outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
+                        />
+                      </div>
+
+                      {/* + Create User Button */}
+                      <button
+                        onClick={() => {
+                          setCreateForm({ name: '', email: '', password: '', role: 'read' });
+                          setCreateError('');
+                          setCreateUserModalOpen(true);
                         }}
-                        className="w-full pl-8 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl text-xs bg-gray-50 dark:bg-gray-800 focus:bg-white dark:focus:bg-gray-750 text-gray-900 dark:text-gray-100 outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
-                      />
+                        style={{ backgroundColor: '#0d9da4' }}
+                        className="px-3.5 py-2 text-white text-xs font-bold rounded-xl hover:opacity-90 transition shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                      >
+                        <span>➕</span> Create User
+                      </button>
                     </div>
                   </div>
 
@@ -665,12 +739,14 @@ export default function Dashboard() {
                                 </div>
                               </td>
                               <td className="px-5 py-3.5">
-                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                                   u.role === 'admin'
                                     ? 'bg-gray-950 dark:bg-gray-900 text-white border border-gray-900 dark:border-gray-800'
+                                    : u.role === 'readwrite'
+                                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/40'
                                     : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
                                 }`}>
-                                  {u.role}
+                                  {u.role === 'read' ? 'Read User' : u.role === 'readwrite' ? 'ReadWrite User' : u.role}
                                 </span>
                               </td>
                               <td className="px-5 py-3.5">
@@ -680,21 +756,39 @@ export default function Dashboard() {
                                     onChange={e => updateUserRoleInDashboard(u._id, e.target.value)}
                                     className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
                                   >
-                                    <option value="developer">Developer</option>
+                                    <option value="read">Read User</option>
+                                    <option value="readwrite">ReadWrite User</option>
                                     <option value="admin">Admin</option>
                                   </select>
                                 ) : (
-                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 itaiic">Self Account</span>
+                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">Self Account</span>
                                 )}
                               </td>
                               <td className="px-5 py-3.5 text-right">
                                 {u._id !== user.id ? (
-                                  <button
-                                    onClick={() => deleteUserInDashboard(u._id, u.name)}
-                                    className="px-2.5 py-1 border border-red-200 dark:border-red-900/50 hover:border-red-400 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 font-bold rounded-lg transition text-[11px] cursor-pointer"
-                                  >
-                                    Delete Account
-                                  </button>
+                                  <div className="flex items-center justify-end gap-2">
+                                    {/* Edit Icon Button */}
+                                    <button
+                                      onClick={() => handleOpenEditUser(u)}
+                                      className="p-1.5 rounded-lg border border-teal-200 dark:border-teal-900/50 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-[#0d9da4] transition cursor-pointer"
+                                      title="Edit User Details, Email, Password & Permissions"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                    </button>
+
+                                    {/* Delete Icon Button */}
+                                    <button
+                                      onClick={() => deleteUserInDashboard(u._id, u.name)}
+                                      className="p-1.5 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 transition cursor-pointer"
+                                      title="Delete User Account"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 ) : (
                                   <span className="text-[11px] text-gray-400 dark:text-gray-500 italic font-medium">Locked</span>
                                 )}
@@ -970,6 +1064,244 @@ export default function Dashboard() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Create User Modal */}
+      {createUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <span>➕</span> Create New User Account
+              </h3>
+              <button
+                onClick={() => setCreateUserModalOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUserSubmit} className="p-6 space-y-4">
+              {createError && (
+                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {createError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. John Doe"
+                  value={createForm.name}
+                  onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. john@example.com"
+                  value={createForm.email}
+                  onChange={e => setCreateForm({ ...createForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Minimum 6 characters"
+                  value={createForm.password}
+                  onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  System Role
+                </label>
+                <select
+                  value={createForm.role}
+                  onChange={e => setCreateForm({ ...createForm, role: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                >
+                  <option value="read">Read User (Read-Only Access)</option>
+                  <option value="readwrite">ReadWrite User (Read & Write Access)</option>
+                  <option value="admin">Admin (Full System Access)</option>
+                </select>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setCreateUserModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  style={{ backgroundColor: '#0d9da4' }}
+                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {createLoading ? 'Creating...' : 'Create Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editUserModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-lg w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <span>✏️</span> Edit User: {editUserModalUser.name}
+              </h3>
+              <button
+                onClick={() => setEditUserModalUser(null)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              {editError && (
+                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.name}
+                  onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Change Password <span className="text-[10px] text-gray-400 font-normal">(Leave blank to keep current password)</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter new password"
+                  value={editForm.password}
+                  onChange={e => setEditForm({ ...editForm, password: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Account Role
+                </label>
+                <select
+                  value={editForm.role}
+                  onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                >
+                  <option value="read">Read User (Read-Only Access)</option>
+                  <option value="readwrite">ReadWrite User (Read & Write Access)</option>
+                  <option value="admin">Admin (Full System Access)</option>
+                </select>
+              </div>
+
+              {editForm.role !== 'admin' && (
+                <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider text-[10px]">
+                    Module Access Permissions
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[
+                      { key: 'query', label: 'Query Editor' },
+                      { key: 'connections', label: 'Connection Manager' },
+                      { key: 'monitor', label: 'Health & Monitor' },
+                      { key: 'auditLogs', label: 'Audit Logs' },
+                      { key: 'binlog', label: 'Binlog Poller' },
+                      { key: 'backup', label: 'Backup & Restore' },
+                      { key: 'history', label: 'Query History' },
+                      { key: 'slowQuery', label: 'Slow Query' }
+                    ].map(perm => (
+                      <label key={perm.key} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 dark:border-gray-750 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                        <input
+                          type="checkbox"
+                          checked={!!editForm.permissions[perm.key]}
+                          onChange={e => setEditForm({
+                            ...editForm,
+                            permissions: {
+                              ...editForm.permissions,
+                              [perm.key]: e.target.checked
+                            }
+                          })}
+                          className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
+                        />
+                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{perm.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setEditUserModalUser(null)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  style={{ backgroundColor: '#0d9da4' }}
+                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {editLoading ? 'Saving...' : 'Save User Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
