@@ -369,10 +369,12 @@ export default function ConnectionDashboard() {
   const [tableDetails, setTableDetails] = useState([]);
   const [autoRefresh, setAutoRefresh] = useState(false);
   
-  // Table search, sort and unit filters
+  // Table search, sort, unit filters, and pagination
   const [tableSearch, setTableSearch] = useState('');
   const [tableSort, setTableSort] = useState('asc'); // 'asc' or 'desc'
   const [tableSizeUnit, setTableSizeUnit] = useState('MB'); // 'Bytes', 'KB', 'MB', 'GB'
+  const [tablesListPage, setTablesListPage] = useState(1);
+  const [tablesListRowsPerPage, setTablesListRowsPerPage] = useState(10);
 
   useEffect(() => {
     const initializeConnection = async () => {
@@ -1297,7 +1299,7 @@ export default function ConnectionDashboard() {
                         📋 Select a Table to View Data
                       </h3>
                       
-                      {/* Search, Sort, and Unit Controls */}
+                      {/* Search, Sort, Unit Controls & Pagination Selector */}
                       <div className="flex flex-wrap items-center gap-3">
                         {/* Search Input */}
                         <div className="relative">
@@ -1305,15 +1307,16 @@ export default function ConnectionDashboard() {
                             type="text"
                             placeholder="Search tables..."
                             value={tableSearch}
-                            onChange={e => setTableSearch(e.target.value)}
+                            onChange={e => {
+                              setTableSearch(e.target.value);
+                              setTablesListPage(1);
+                            }}
                             className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-gray-50/50 focus:bg-white focus:border-teal-500 transition w-44"
                           />
                           <svg className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
-
-
 
                         {/* Unit Filter Selector */}
                         <div className="flex items-center gap-1.5">
@@ -1327,6 +1330,24 @@ export default function ConnectionDashboard() {
                             <option value="KB">KB</option>
                             <option value="MB">MB</option>
                             <option value="GB">GB</option>
+                          </select>
+                        </div>
+
+                        {/* Tables Per Page Selector */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                          <span>Tables per page:</span>
+                          <select
+                            value={tablesListRowsPerPage}
+                            onChange={(e) => {
+                              setTablesListRowsPerPage(Number(e.target.value));
+                              setTablesListPage(1);
+                            }}
+                            className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white font-bold outline-none cursor-pointer focus:border-teal-500"
+                          >
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
                           </select>
                         </div>
                       </div>
@@ -1357,7 +1378,7 @@ export default function ConnectionDashboard() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {processedTablesList.map((t, i) => (
+                              {processedTablesList.slice((tablesListPage - 1) * tablesListRowsPerPage, tablesListPage * tablesListRowsPerPage).map((t, i) => (
                                 <tr 
                                   key={i} 
                                   onClick={() => fetchTableData(t.name)}
@@ -1383,6 +1404,44 @@ export default function ConnectionDashboard() {
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Tables List Pagination Footer */}
+                        {processedTablesList.length > 0 && (() => {
+                          const totalTablesCount = processedTablesList.length;
+                          const totalTablesListPages = Math.ceil(totalTablesCount / tablesListRowsPerPage) || 1;
+                          const startIdx = (tablesListPage - 1) * tablesListRowsPerPage + 1;
+                          const endIdx = Math.min(tablesListPage * tablesListRowsPerPage, totalTablesCount);
+
+                          return (
+                            <div className="px-5 py-3 border-t border-gray-200 bg-gray-50/80 flex items-center justify-between flex-wrap gap-3 select-none">
+                              <span className="text-xs text-gray-500 font-medium">
+                                Showing <span className="font-bold text-gray-800">{startIdx}</span> to <span className="font-bold text-gray-800">{endIdx}</span> of <span className="font-bold text-gray-800">{totalTablesCount}</span> tables
+                              </span>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setTablesListPage(prev => Math.max(prev - 1, 1))}
+                                  disabled={tablesListPage === 1}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white"
+                                >
+                                  ← Previous
+                                </button>
+
+                                <span className="text-xs font-bold text-gray-700 px-2 font-mono">
+                                  Page {tablesListPage} of {totalTablesListPages}
+                                </span>
+
+                                <button
+                                  onClick={() => setTablesListPage(prev => Math.min(prev + 1, totalTablesListPages))}
+                                  disabled={tablesListPage >= totalTablesListPages}
+                                  className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white"
+                                >
+                                  Next →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
