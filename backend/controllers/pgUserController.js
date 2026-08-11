@@ -55,7 +55,10 @@ exports.listPGUsers = async (req, res) => {
     });
   } catch (err) {
     console.error('List PG Users error:', err.message);
-    res.status(500).json({ message: 'Error retrieving PostgreSQL users', error: err.message });
+    const msg = (err.message && (err.message.toLowerCase().includes('denied') || err.message.toLowerCase().includes('permission') || err.message.toLowerCase().includes('must be superuser')))
+      ? 'Access Denied: You are not logged in with root or superuser credentials for this connection. You cannot view or manage the database users list.'
+      : (err.message || 'Error retrieving PostgreSQL users');
+    res.status(403).json({ message: msg, error: err.message, isRootRequired: true });
   }
 };
 

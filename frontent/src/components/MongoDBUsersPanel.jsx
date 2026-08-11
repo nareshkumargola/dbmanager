@@ -177,8 +177,14 @@ export default function MongoDBUsersPanel({ connectionId }) {
       
       {/* Toast Alert Messages */}
       {error && (
-        <div className="bg-red-50 text-red-600 text-xs px-4 py-3 rounded-lg border border-red-200">
-          ❌ {error}
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-900 dark:text-amber-200 text-sm px-4 py-3.5 rounded-xl flex items-start gap-3 shadow-xs">
+          <span className="text-xl shrink-0">🔒</span>
+          <div>
+            <p className="font-bold text-amber-950 dark:text-amber-100">Root / Admin Privileges Required</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed font-medium">
+              {error}
+            </p>
+          </div>
         </div>
       )}
       {successMsg && (

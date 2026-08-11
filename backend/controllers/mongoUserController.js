@@ -42,7 +42,10 @@ exports.listMongoUsers = async (req, res) => {
 
     res.status(200).json({ success: true, users: mappedUsers });
   } catch (err) {
-    res.status(500).json({ message: 'Error listing MongoDB users', error: err.message });
+    const msg = (err.message && (err.message.toLowerCase().includes('authorized') || err.message.toLowerCase().includes('unauthorized') || err.message.toLowerCase().includes('requires') || err.message.toLowerCase().includes('permission')))
+      ? 'Access Denied: You are not logged in with root or admin credentials for this connection. You cannot view or manage the database users list.'
+      : (err.message || 'Error listing MongoDB users');
+    res.status(403).json({ message: msg, error: err.message, isRootRequired: true });
   }
 };
 

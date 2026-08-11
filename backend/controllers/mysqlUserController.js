@@ -84,7 +84,10 @@ exports.listMySQLUsers = async (req, res) => {
 
     res.status(200).json({ success: true, users: result });
   } catch (err) {
-    res.status(500).json({ message: 'Error listing MySQL users', error: err.message });
+    const msg = (err.message && (err.message.toLowerCase().includes('denied') || err.message.toLowerCase().includes('access') || err.message.toLowerCase().includes('command denied')))
+      ? 'Access Denied: You are not logged in with root credentials for this connection. You cannot view or manage the database users list.'
+      : (err.message || 'Error listing MySQL users');
+    res.status(403).json({ message: msg, error: err.message, isRootRequired: true });
   }
 };
 
