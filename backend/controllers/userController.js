@@ -178,6 +178,7 @@ exports.updateUserPermissions = async (req, res) => {
     // Admins implicitly have all permissions
     if (targetUser.role !== 'admin' && permissions) {
       targetUser.permissions = {
+        userManagement: !!permissions?.userManagement,
         backup: !!permissions?.backup,
         binlog: !!permissions?.binlog,
         monitor: !!permissions?.monitor,
@@ -244,6 +245,7 @@ exports.updateUser = async (req, res) => {
 
     if (permissions && user.role !== 'admin') {
       user.permissions = {
+        userManagement: !!permissions.userManagement,
         backup: !!permissions.backup,
         binlog: !!permissions.binlog,
         monitor: !!permissions.monitor,
