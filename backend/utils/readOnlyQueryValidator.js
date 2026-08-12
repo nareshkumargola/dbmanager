@@ -3,13 +3,17 @@
  * Read Users ('read') are strictly limited to Read-Only operations across MySQL, PostgreSQL, Oracle, and MongoDB.
  */
 function validateQueryPermissions(rawQuery, user, dbType) {
-  // Admins and ReadWrite users have full query execution rights
-  if (!user || user.role === 'admin' || user.role === 'readwrite') {
+  if (!user || user.role === 'admin') {
     return { isAllowed: true };
   }
 
-  // If user role is 'read' (Read User), enforce strict read-only rules
-  if (user.role === 'read') {
+  const effectiveMode = user.accessMode || (user.role === 'readwrite' ? 'readwrite' : 'read');
+
+  if (effectiveMode === 'readwrite') {
+    return { isAllowed: true };
+  }
+
+  if (effectiveMode === 'read') {
     if (!rawQuery || typeof rawQuery !== 'string' || !rawQuery.trim()) {
       return { isAllowed: false, error: 'Query string cannot be empty.' };
     }

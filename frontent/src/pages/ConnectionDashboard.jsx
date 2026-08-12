@@ -1629,25 +1629,30 @@ export default function ConnectionDashboard() {
                   {/* Right Side: Execution Controls */}
                   <div className="flex items-center gap-1.5 pb-1 select-none">
                     {/* Interactive Role Mode Button & Privileges Modal Trigger */}
-                    <button
-                      type="button"
-                      onClick={() => setShowModeInfoModal(true)}
-                      title="Click to view Query Editor permissions & capabilities"
-                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0 transition cursor-pointer border shadow-3xs ${
-                        user?.role === 'admin'
-                          ? 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100'
-                          : user?.role === 'readwrite'
-                          ? 'bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100'
-                          : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                      }`}
-                    >
-                      {user?.role === 'admin'
-                        ? '👑 Admin Mode'
-                        : user?.role === 'readwrite'
-                        ? '⚡ Read-Write Mode'
-                        : '🔒 Read-Only Mode'}{' '}
-                      <span className="text-[9px] bg-white/60 dark:bg-black/20 px-1 py-0.2 rounded font-mono ml-0.5">ℹ️</span>
-                    </button>
+                    {(() => {
+                      const effectiveMode = user?.accessMode || (user?.role === 'readwrite' ? 'readwrite' : user?.role === 'read' ? 'read' : 'read');
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setShowModeInfoModal(true)}
+                          title="Click to view Query Editor permissions & capabilities"
+                          className={`text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 shrink-0 transition cursor-pointer border shadow-3xs ${
+                            user?.role === 'admin'
+                              ? 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100'
+                              : effectiveMode === 'readwrite'
+                              ? 'bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100'
+                              : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                          }`}
+                        >
+                          {user?.role === 'admin'
+                            ? '👑 Admin Mode'
+                            : effectiveMode === 'readwrite'
+                            ? '⚡ Developer (Read-Write)'
+                            : '🔒 Developer (Read-Only)'}{' '}
+                          <span className="text-[9px] bg-white/60 dark:bg-black/20 px-1 py-0.2 rounded font-mono ml-0.5">ℹ️</span>
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={formatSQLQuery}
@@ -2360,62 +2365,70 @@ export default function ConnectionDashboard() {
               </p>
 
               {/* CAN DO SECTION */}
-              <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
-                <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-300 mb-2 flex items-center gap-1.5">
-                  <span className="text-sm">✅</span> Allowed Operations (What You CAN Do)
-                </h4>
-                <ul className="space-y-1.5 text-xs text-emerald-800 dark:text-emerald-400 font-medium list-disc list-inside">
-                  <li>Run <strong>SELECT</strong> data queries across all tables & views.</li>
-                  <li>Run <strong>SHOW TABLES</strong>, <strong>SHOW DATABASES</strong>, & schema inspection.</li>
-                  <li>Use <strong>EXPLAIN</strong> / <strong>EXPLAIN ANALYZE</strong> to check query execution plans.</li>
-                  <li>Execute MongoDB <strong>find()</strong>, <strong>aggregate()</strong>, <strong>countDocuments()</strong>, & <strong>distinct()</strong>.</li>
-                  {user?.role !== 'read' && (
-                    <>
-                      <li>Execute <strong>INSERT</strong> statements to create new table rows / MongoDB documents.</li>
-                      <li>Execute <strong>UPDATE</strong> statements to modify existing data.</li>
-                      <li>Execute <strong>DELETE</strong> statements to purge data records.</li>
-                      <li>Execute <strong>CREATE TABLE</strong> & <strong>ALTER TABLE</strong> DDL scripts.</li>
-                    </>
-                  )}
-                  {user?.role === 'admin' && (
-                    <li>Full administrative database operations (DROP, TRUNCATE, Stored Procedures, User Grants).</li>
-                  )}
-                </ul>
-              </div>
+              {(() => {
+                const effectiveMode = user?.accessMode || (user?.role === 'readwrite' ? 'readwrite' : user?.role === 'read' ? 'read' : 'read');
+                const isReadOnly = user?.role !== 'admin' && effectiveMode === 'read';
+                return (
+                  <>
+                    <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900/40">
+                      <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-300 mb-2 flex items-center gap-1.5">
+                        <span className="text-sm">✅</span> Allowed Operations (What You CAN Do)
+                      </h4>
+                      <ul className="space-y-1.5 text-xs text-emerald-800 dark:text-emerald-400 font-medium list-disc list-inside">
+                        <li>Run <strong>SELECT</strong> data queries across all tables & views.</li>
+                        <li>Run <strong>SHOW TABLES</strong>, <strong>SHOW DATABASES</strong>, & schema inspection.</li>
+                        <li>Use <strong>EXPLAIN</strong> / <strong>EXPLAIN ANALYZE</strong> to check query execution plans.</li>
+                        <li>Execute MongoDB <strong>find()</strong>, <strong>aggregate()</strong>, <strong>countDocuments()</strong>, & <strong>distinct()</strong>.</li>
+                        {!isReadOnly && (
+                          <>
+                            <li>Execute <strong>INSERT</strong> statements to create new table rows / MongoDB documents.</li>
+                            <li>Execute <strong>UPDATE</strong> statements to modify existing data.</li>
+                            <li>Execute <strong>DELETE</strong> statements to purge data records.</li>
+                            <li>Execute <strong>CREATE TABLE</strong> & <strong>ALTER TABLE</strong> DDL scripts.</li>
+                          </>
+                        )}
+                        {user?.role === 'admin' && (
+                          <li>Full administrative database operations (DROP, TRUNCATE, Stored Procedures, User Grants).</li>
+                        )}
+                      </ul>
+                    </div>
 
-              {/* CANNOT DO SECTION */}
-              {user?.role === 'read' ? (
-                <div className="p-4 bg-rose-50/80 dark:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900/40">
-                  <h4 className="text-xs font-bold text-rose-900 dark:text-rose-300 mb-2 flex items-center gap-1.5">
-                    <span className="text-sm">❌</span> Prohibited Operations (What You CANNOT Do)
-                  </h4>
-                  <ul className="space-y-1.5 text-xs text-rose-800 dark:text-rose-400 font-medium list-disc list-inside">
-                    <li><strong>INSERT / UPDATE / DELETE:</strong> You cannot insert, update, or delete data records.</li>
-                    <li><strong>DROP / TRUNCATE / ALTER:</strong> You cannot modify database schemas or drop tables.</li>
-                    <li><strong>MongoDB Mutations:</strong> Methods like <code>insertOne()</code>, <code>updateOne()</code>, <code>deleteOne()</code>, and <code>drop()</code> are blocked.</li>
-                    <li><strong>Stored Procedures & Grants:</strong> You cannot execute <code>CALL</code>, <code>EXEC</code>, <code>GRANT</code>, or <code>REVOKE</code>.</li>
-                  </ul>
-                </div>
-              ) : user?.role === 'readwrite' ? (
-                <div className="p-4 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/40">
-                  <h4 className="text-xs font-bold text-amber-900 dark:text-amber-300 mb-2 flex items-center gap-1.5">
-                    <span className="text-sm">⚠️</span> Restricted System Operations
-                  </h4>
-                  <ul className="space-y-1.5 text-xs text-amber-800 dark:text-amber-400 font-medium list-disc list-inside">
-                    <li>System User & Role Management is restricted to Admin accounts.</li>
-                    <li>System Audit Trail Logs can only be deleted or managed by Admins.</li>
-                  </ul>
-                </div>
-              ) : (
-                <div className="p-4 bg-purple-50/80 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-900/40">
-                  <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 mb-1 flex items-center gap-1.5">
-                    <span className="text-sm">👑</span> Full System Privilege
-                  </h4>
-                  <p className="text-xs text-purple-800 dark:text-purple-400 font-medium">
-                    As an Admin user, you have unrestricted execution rights across all connected database engines.
-                  </p>
-                </div>
-              )}
+                    {/* CANNOT DO SECTION */}
+                    {isReadOnly ? (
+                      <div className="p-4 bg-rose-50/80 dark:bg-rose-950/30 rounded-xl border border-rose-200 dark:border-rose-900/40">
+                        <h4 className="text-xs font-bold text-rose-900 dark:text-rose-300 mb-2 flex items-center gap-1.5">
+                          <span className="text-sm">❌</span> Prohibited Operations (What You CANNOT Do)
+                        </h4>
+                        <ul className="space-y-1.5 text-xs text-rose-800 dark:text-rose-400 font-medium list-disc list-inside">
+                          <li><strong>INSERT / UPDATE / DELETE:</strong> You cannot insert, update, or delete data records.</li>
+                          <li><strong>DROP / TRUNCATE / ALTER:</strong> You cannot modify database schemas or drop tables.</li>
+                          <li><strong>MongoDB Mutations:</strong> Methods like <code>insertOne()</code>, <code>updateOne()</code>, <code>deleteOne()</code>, and <code>drop()</code> are blocked.</li>
+                          <li><strong>Stored Procedures & Grants:</strong> You cannot execute <code>CALL</code>, <code>EXEC</code>, <code>GRANT</code>, or <code>REVOKE</code>.</li>
+                        </ul>
+                      </div>
+                    ) : user?.role !== 'admin' ? (
+                      <div className="p-4 bg-amber-50/80 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                        <h4 className="text-xs font-bold text-amber-900 dark:text-amber-300 mb-2 flex items-center gap-1.5">
+                          <span className="text-sm">⚠️</span> Restricted System Operations
+                        </h4>
+                        <ul className="space-y-1.5 text-xs text-amber-800 dark:text-amber-400 font-medium list-disc list-inside">
+                          <li>System User & Role Management is restricted to Admin accounts.</li>
+                          <li>System Audit Trail Logs can only be deleted or managed by Admins.</li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-purple-50/80 dark:bg-purple-950/30 rounded-xl border border-purple-200 dark:border-purple-900/40">
+                        <h4 className="text-xs font-bold text-purple-900 dark:text-purple-300 mb-1 flex items-center gap-1.5">
+                          <span className="text-sm">👑</span> Full System Privilege
+                        </h4>
+                        <p className="text-xs text-purple-800 dark:text-purple-400 font-medium">
+                          As an Admin user, you have unrestricted execution rights across all connected database engines.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               <div className="pt-2 text-center border-t border-gray-150 dark:border-gray-800">
                 <button

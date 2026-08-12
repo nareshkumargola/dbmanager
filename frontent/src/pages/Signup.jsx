@@ -4,7 +4,7 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
 export default function Signup() {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'read' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -121,9 +121,8 @@ export default function Signup() {
               onFocus={(e) => e.target.style.borderColor = '#0d9da4'}
               onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
             >
-              <option value="read">Read User (Read-Only Access)</option>
-              <option value="readwrite">ReadWrite User (Read & Write Access)</option>
-              <option value="admin">Admin (Full System Access)</option>
+              <option value="developer">Developer</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
 

@@ -107,9 +107,10 @@ exports.deleteUser = async (req, res) => {
 };
 
 // Naya user banao — sirf admin
+// Naya user banao — sirf admin
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, accessMode } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -117,12 +118,20 @@ exports.createUser = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 12);
-    const user = await User.create({ name, email, password: hashed, role });
+    const userRole = role || 'developer';
+    const userAccessMode = accessMode || 'read';
+    const user = await User.create({
+      name,
+      email,
+      password: hashed,
+      role: userRole,
+      accessMode: userAccessMode
+    });
 
     // Log to system audit trail
     try {
       const { logAuditTrail } = require('../utils/auditLogger');
-      await logAuditTrail(null, req.user.id, 'CREATE_USER', `Created new user account: ${user.name} (${user.email}) with role ${role}`);
+      await logAuditTrail(null, req.user.id, 'CREATE_USER', `Created new user account: ${user.name} (${user.email}) with role ${userRole} (${userAccessMode})`);
     } catch (auditErr) {
       console.error('Audit trail logging failed:', auditErr.message);
     }
@@ -135,6 +144,7 @@ exports.createUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        accessMode: user.accessMode,
         permissions: user.permissions
       }
     });
@@ -146,7 +156,7 @@ exports.createUser = async (req, res) => {
 // User permissions update karo — sirf admin
 exports.updateUserPermissions = async (req, res) => {
   try {
-    const { permissions } = req.body;
+    const { permissions, accessMode } = req.body;
     const { id } = req.params;
 
     // Apna permission khud mat badlo
@@ -161,43 +171,25 @@ exports.updateUserPermissions = async (req, res) => {
       return res.status(404).json({ message: 'User not found!' });
     }
 
-    // Admins implicitly have all permissions
-    if (targetUser.role === 'admin') {
-      return res.status(400).json({ 
-        message: 'Admin users always have all permissions enabled!' 
-      });
+    if (accessMode && ['read', 'readwrite'].includes(accessMode)) {
+      targetUser.accessMode = accessMode;
     }
 
-    targetUser.permissions = {
-      backup: !!permissions?.backup,
-      binlog: !!permissions?.binlog,
-      monitor: !!permissions?.monitor,
-      query: !!permissions?.query,
-      history: !!permissions?.history,
-      slowQuery: !!permissions?.slowQuery,
-      auditLogs: !!permissions?.auditLogs,
-      connections: !!permissions?.connections
-    };
+    // Admins implicitly have all permissions
+    if (targetUser.role !== 'admin' && permissions) {
+      targetUser.permissions = {
+        backup: !!permissions?.backup,
+        binlog: !!permissions?.binlog,
+        monitor: !!permissions?.monitor,
+        query: !!permissions?.query,
+        history: !!permissions?.history,
+        slowQuery: !!permissions?.slowQuery,
+        auditLogs: !!permissions?.auditLogs,
+        connections: !!permissions?.connections
+      };
+    }
 
     await targetUser.save();
-
-    // Log to system audit trail
-    try {
-      const { logAuditTrail } = require('../utils/auditLogger');
-      const grants = Object.keys(targetUser.permissions.toObject())
-        .filter(k => targetUser.permissions[k] === true)
-        .join(', ');
-      const revokes = Object.keys(targetUser.permissions.toObject())
-        .filter(k => targetUser.permissions[k] === false)
-        .join(', ');
-
-      const detailMsg = `Updated permissions for ${targetUser.name} (${targetUser.email}). ` +
-        `Granted: [${grants || 'None'}], Revoked: [${revokes || 'None'}]`;
-
-      await logAuditTrail(null, req.user.id, 'UPDATE_USER_PERMISSIONS', detailMsg);
-    } catch (auditErr) {
-      console.error('Audit trail logging failed:', auditErr.message);
-    }
 
     res.status(200).json({
       success: true,
@@ -207,6 +199,7 @@ exports.updateUserPermissions = async (req, res) => {
         name: targetUser.name,
         email: targetUser.email,
         role: targetUser.role,
+        accessMode: targetUser.accessMode,
         permissions: targetUser.permissions
       }
     });
@@ -215,11 +208,11 @@ exports.updateUserPermissions = async (req, res) => {
   }
 };
 
-// Full user details update (Name, Email, Password, Role, Permissions)
+// Full user details update (Name, Email, Password, Role, AccessMode, Permissions)
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, permissions } = req.body;
+    const { name, email, password, role, accessMode, permissions } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -245,6 +238,10 @@ exports.updateUser = async (req, res) => {
       user.role = role;
     }
 
+    if (accessMode && ['read', 'readwrite'].includes(accessMode)) {
+      user.accessMode = accessMode;
+    }
+
     if (permissions && user.role !== 'admin') {
       user.permissions = {
         backup: !!permissions.backup,
@@ -262,7 +259,7 @@ exports.updateUser = async (req, res) => {
 
     try {
       const { logAuditTrail } = require('../utils/auditLogger');
-      await logAuditTrail(null, req.user.id, 'UPDATE_USER', `Updated user account details: ${user.name} (${user.email})`);
+      await logAuditTrail(null, req.user.id, 'UPDATE_USER', `Updated user account details: ${user.name} (${user.email}) - Role: ${user.role}, Mode: ${user.accessMode}`);
     } catch (auditErr) {
       console.error('Audit log failed:', auditErr.message);
     }
@@ -275,6 +272,7 @@ exports.updateUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        accessMode: user.accessMode,
         permissions: user.permissions
       }
     });

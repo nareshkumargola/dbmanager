@@ -47,12 +47,12 @@ export default function Dashboard() {
 
   // User creation & edit modal states
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'read' });
+  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
 
   const [editUserModalUser, setEditUserModalUser] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'read', permissions: {} });
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -62,7 +62,8 @@ export default function Dashboard() {
       name: u.name || '',
       email: u.email || '',
       password: '', // Blank by default, enter to update
-      role: u.role || 'read',
+      role: u.role === 'admin' ? 'admin' : 'developer',
+      accessMode: u.accessMode || (u.role === 'readwrite' ? 'readwrite' : 'read'),
       permissions: u.permissions ? { ...u.permissions } : {
         backup: true, binlog: true, monitor: true, query: true,
         history: true, slowQuery: true, auditLogs: true, connections: true
@@ -739,25 +740,34 @@ export default function Dashboard() {
                                 </div>
                               </td>
                               <td className="px-5 py-3.5">
-                                <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                  u.role === 'admin'
-                                    ? 'bg-gray-950 dark:bg-gray-900 text-white border border-gray-900 dark:border-gray-800'
-                                    : u.role === 'readwrite'
-                                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/40'
-                                    : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
-                                }`}>
-                                  {u.role === 'read' ? 'Read User' : u.role === 'readwrite' ? 'ReadWrite User' : u.role}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                    u.role === 'admin'
+                                      ? 'bg-gray-950 dark:bg-gray-900 text-white border border-gray-900 dark:border-gray-800'
+                                      : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
+                                  }`}>
+                                    {u.role === 'admin' ? 'Admin' : 'Developer'}
+                                  </span>
+
+                                  {u.role !== 'admin' && (
+                                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                      (u.accessMode === 'readwrite' || u.role === 'readwrite')
+                                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/40'
+                                        : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
+                                    }`}>
+                                      {(u.accessMode === 'readwrite' || u.role === 'readwrite') ? '⚡ Read/Write' : '🔒 Read Only'}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-5 py-3.5">
                                 {u._id !== user.id ? (
                                   <select
-                                    value={u.role}
+                                    value={u.role === 'admin' ? 'admin' : 'developer'}
                                     onChange={e => updateUserRoleInDashboard(u._id, e.target.value)}
                                     className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
                                   >
-                                    <option value="read">Read User</option>
-                                    <option value="readwrite">ReadWrite User</option>
+                                    <option value="developer">Developer</option>
                                     <option value="admin">Admin</option>
                                   </select>
                                 ) : (
@@ -1146,11 +1156,26 @@ export default function Dashboard() {
                   onChange={e => setCreateForm({ ...createForm, role: e.target.value })}
                   className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
                 >
-                  <option value="read">Read User (Read-Only Access)</option>
-                  <option value="readwrite">ReadWrite User (Read & Write Access)</option>
-                  <option value="admin">Admin (Full System Access)</option>
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
+
+              {createForm.role === 'developer' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Developer Query Permission
+                  </label>
+                  <select
+                    value={createForm.accessMode}
+                    onChange={e => setCreateForm({ ...createForm, accessMode: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                  >
+                    <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
+                    <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
+                  </select>
+                </div>
+              )}
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
                 <button
@@ -1245,11 +1270,26 @@ export default function Dashboard() {
                   onChange={e => setEditForm({ ...editForm, role: e.target.value })}
                   className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
                 >
-                  <option value="read">Read User (Read-Only Access)</option>
-                  <option value="readwrite">ReadWrite User (Read & Write Access)</option>
-                  <option value="admin">Admin (Full System Access)</option>
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
                 </select>
               </div>
+
+              {editForm.role === 'developer' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Developer Query Permission
+                  </label>
+                  <select
+                    value={editForm.accessMode}
+                    onChange={e => setEditForm({ ...editForm, accessMode: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                  >
+                    <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
+                    <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
+                  </select>
+                </div>
+              )}
 
               {editForm.role !== 'admin' && (
                 <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
