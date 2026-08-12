@@ -767,7 +767,7 @@ exports.getShareInfo = async (req, res) => {
     }
 
     const User = require('../models/userModel');
-    const users = await User.find({ role: 'developer' })
+    const users = await User.find({ _id: { $ne: req.user.id } })
       .select('name email role');
 
     res.status(200).json({

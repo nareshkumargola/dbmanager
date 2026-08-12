@@ -976,7 +976,7 @@ export default function Dashboard() {
               )}
 
               <p className="text-[11px] font-bold text-teal-600 mb-3 uppercase tracking-wider">
-                Select developers
+                Select users to grant connection access
               </p>
 
               {/* Search Box */}
@@ -994,19 +994,19 @@ export default function Dashboard() {
 
               {usersList.length === 0 ? (
                 <p className="text-[13px] text-teal-700/50 text-center py-6">
-                  No developers found.
+                  No registered users found.
                 </p>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-1.5 ring-1 ring-teal-50 rounded-xl p-2.5 bg-teal-50/30">
                   {usersList.filter(u => {
                     const q = shareSearch.toLowerCase();
-                    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+                    return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.toLowerCase().includes(q);
                   }).length === 0 ? (
                     <p className="text-[12px] text-teal-650 text-center py-4">No matching users found.</p>
                   ) : (
                     usersList.filter(u => {
                       const q = shareSearch.toLowerCase();
-                      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+                      return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.toLowerCase().includes(q);
                     }).map(u => {
                       const isChecked = selectedUserIds.includes(u._id);
                       return (
@@ -1035,9 +1035,13 @@ export default function Dashboard() {
                             </div>
                           </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-cyan-100 text-cyan-800'
+                            u.role === 'admin'
+                              ? 'bg-gray-900 text-white'
+                              : u.role === 'readwrite'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-teal-100 text-teal-800'
                           }`}>
-                            {u.role}
+                            {u.role === 'read' ? 'Read User' : u.role === 'readwrite' ? 'ReadWrite User' : u.role}
                           </span>
                         </label>
                       );
