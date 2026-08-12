@@ -120,12 +120,28 @@ exports.createUser = async (req, res) => {
     const hashed = await bcrypt.hash(password, 12);
     const userRole = role || 'developer';
     const userAccessMode = accessMode || 'read';
+    const userPermissions = (req.body.permissions && userRole !== 'admin') ? {
+      userManagement: !!req.body.permissions.userManagement,
+      backup: req.body.permissions.backup !== undefined ? !!req.body.permissions.backup : true,
+      binlog: req.body.permissions.binlog !== undefined ? !!req.body.permissions.binlog : true,
+      monitor: req.body.permissions.monitor !== undefined ? !!req.body.permissions.monitor : true,
+      query: req.body.permissions.query !== undefined ? !!req.body.permissions.query : true,
+      history: req.body.permissions.history !== undefined ? !!req.body.permissions.history : true,
+      slowQuery: req.body.permissions.slowQuery !== undefined ? !!req.body.permissions.slowQuery : true,
+      auditLogs: req.body.permissions.auditLogs !== undefined ? !!req.body.permissions.auditLogs : true,
+      connections: req.body.permissions.connections !== undefined ? !!req.body.permissions.connections : true
+    } : {
+      userManagement: false,
+      backup: true, binlog: true, monitor: true, query: true, history: true, slowQuery: true, auditLogs: true, connections: true
+    };
+
     const user = await User.create({
       name,
       email,
       password: hashed,
       role: userRole,
-      accessMode: userAccessMode
+      accessMode: userAccessMode,
+      permissions: userPermissions
     });
 
     // Log to system audit trail
@@ -188,6 +204,7 @@ exports.updateUserPermissions = async (req, res) => {
         auditLogs: !!permissions?.auditLogs,
         connections: !!permissions?.connections
       };
+      targetUser.markModified('permissions');
     }
 
     await targetUser.save();
@@ -255,6 +272,7 @@ exports.updateUser = async (req, res) => {
         auditLogs: !!permissions.auditLogs,
         connections: !!permissions.connections
       };
+      user.markModified('permissions');
     }
 
     await user.save();

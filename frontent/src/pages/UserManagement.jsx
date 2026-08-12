@@ -66,8 +66,8 @@ export default function UserManagement() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
-    // Only allow admin
-    if (currentUser && currentUser.role !== 'admin') {
+    // Allow admin or users with userManagement permission
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions?.userManagement) {
       navigate('/dashboard');
       return;
     }
