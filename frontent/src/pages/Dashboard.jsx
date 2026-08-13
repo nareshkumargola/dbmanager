@@ -47,7 +47,18 @@ export default function Dashboard() {
 
   // User creation & edit modal states
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'developer',
+    accessMode: 'read',
+    permissions: {
+      userManagement: false,
+      backup: true, binlog: true, monitor: true, query: true,
+      history: true, slowQuery: true, auditLogs: true, connections: true
+    }
+  });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -700,7 +711,18 @@ export default function Dashboard() {
                       {/* + Create User Button */}
                       <button
                         onClick={() => {
-                          setCreateForm({ name: '', email: '', password: '', role: 'read' });
+                          setCreateForm({
+                            name: '',
+                            email: '',
+                            password: '',
+                            role: 'developer',
+                            accessMode: 'read',
+                            permissions: {
+                              userManagement: false,
+                              backup: true, binlog: true, monitor: true, query: true,
+                              history: true, slowQuery: true, auditLogs: true, connections: true
+                            }
+                          });
                           setCreateError('');
                           setCreateUserModalOpen(true);
                         }}
@@ -1096,7 +1118,7 @@ export default function Dashboard() {
       {/* Create User Modal */}
       {createUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-md w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-lg w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
             <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <span>➕</span> Create New User Account
@@ -1109,7 +1131,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateUserSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleCreateUserSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
               {createError && (
                 <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
                   ❌ {createError}
@@ -1173,19 +1195,57 @@ export default function Dashboard() {
               </div>
 
               {createForm.role === 'developer' && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Developer Query Permission
-                  </label>
-                  <select
-                    value={createForm.accessMode}
-                    onChange={e => setCreateForm({ ...createForm, accessMode: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                  >
-                    <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
-                    <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      Developer Query Permission
+                    </label>
+                    <select
+                      value={createForm.accessMode || 'read'}
+                      onChange={e => setCreateForm({ ...createForm, accessMode: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                    >
+                      <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
+                      <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider text-[10px]">
+                      Module Access Permissions
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {[
+                        { key: 'userManagement', label: 'Database Users Manager (Default Unchecked)' },
+                        { key: 'query', label: 'Query Editor' },
+                        { key: 'connections', label: 'Connection Manager' },
+                        { key: 'monitor', label: 'Health & Monitor' },
+                        { key: 'auditLogs', label: 'Audit Logs' },
+                        { key: 'binlog', label: 'Binlog Poller' },
+                        { key: 'backup', label: 'Backup & Restore' },
+                        { key: 'history', label: 'Query History' },
+                        { key: 'slowQuery', label: 'Slow Query' }
+                      ].map(perm => (
+                        <label key={perm.key} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 dark:border-gray-750 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                          <input
+                            type="checkbox"
+                            checked={!!createForm.permissions?.[perm.key]}
+                            onChange={e => setCreateForm({
+                              ...createForm,
+                              permissions: {
+                                ...(createForm.permissions || {}),
+                                [perm.key]: e.target.checked
+                              }
+                            })}
+                            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
+                          />
+                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{perm.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
