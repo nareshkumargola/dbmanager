@@ -1120,7 +1120,7 @@ export default function Dashboard() {
       {/* Create User Modal */}
       {createUserModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-lg w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl w-[80vw] max-w-4xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
             <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <span>➕</span> Create New User Account
@@ -1247,7 +1247,7 @@ export default function Dashboard() {
       {/* Edit User Modal */}
       {editUserModalUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-lg w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl w-[80vw] max-w-4xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
             <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <span>✏️</span> Edit User: {editUserModalUser.name}

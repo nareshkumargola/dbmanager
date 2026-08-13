@@ -139,7 +139,7 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
         </span>
       </div>
 
-      <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+      <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
         {connections.map(conn => {
           const connEntry = value.find(v => v.connectionId === conn._id);
           const isConnEnabled = !!connEntry;
