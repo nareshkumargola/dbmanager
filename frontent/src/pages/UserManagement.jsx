@@ -49,7 +49,7 @@ export default function UserManagement() {
   const getActivePermsList = (u) => {
     if (u.role === 'admin') return ['Master Bypass'];
     const list = [];
-    if (u.permissions?.userManagement) list.push('👥 Users & Roles');
+    if (u.permissions?.userManagement) list.push('👤 DB Users Manager');
     if (u.permissions?.query ?? true) list.push('⚡ Query');
     if (u.permissions?.history ?? true) list.push('📜 History');
     if (u.permissions?.slowQuery ?? true) list.push('🐢 Slow Query');
@@ -536,7 +536,7 @@ export default function UserManagement() {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {[
-                          { key: 'userManagement', label: '👥 Users & Roles Management', desc: 'Allows viewing & managing registered accounts (Default Unchecked)' },
+                          { key: 'userManagement', label: '👤 Database Users Manager', desc: 'Allows managing database connection users (MySQL, MongoDB, PostgreSQL) (Default Unchecked)' },
                           { key: 'query', label: '⚡ Query Editor', desc: 'Allows running custom database queries' },
                           { key: 'history', label: '📜 Query History', desc: 'Allows viewing past queries execution logs' },
                           { key: 'slowQuery', label: '🐢 Slow Query Logs', desc: 'Allows access to connection slow-query metrics' },

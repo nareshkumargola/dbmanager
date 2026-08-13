@@ -471,20 +471,6 @@ export default function Dashboard() {
               <span className="text-base leading-none">⚙️</span> Manage Connections
             </button>
 
-            {(user?.role === 'admin' || user?.permissions?.userManagement === true) && (
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
-                  activeTab === 'users'
-                    ? 'text-white shadow-sm'
-                    : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
-                }`}
-                style={activeTab === 'users' ? { backgroundColor: '#0d9da4' } : {}}
-              >
-                <span className="text-base leading-none">👥</span> Users &amp; Roles
-              </button>
-            )}
-
             {user?.role === 'admin' && (
               <>
                 <div className="w-px h-6 bg-teal-200 dark:bg-teal-800 mx-1 self-center hidden sm:block"></div>
@@ -500,19 +486,27 @@ export default function Dashboard() {
                 >
                   <span className="text-base leading-none">📜</span> Application Audit Logs
                 </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
+                    activeTab === 'users'
+                      ? 'text-white shadow-sm'
+                      : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
+                  }`}
+                  style={activeTab === 'users' ? { backgroundColor: '#0d9da4' } : {}}
+                >
+                  <span className="text-base leading-none">👥</span> System Users &amp; Roles
+                </button>
+                <button
+                  onClick={() => navigate('/permissions')}
+                  className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  Application Permissions
+                </button>
               </>
-            )}
-
-            {(user?.role === 'admin' || user?.permissions?.userManagement === true) && (
-              <button
-                onClick={() => navigate('/permissions')}
-                className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                Application Permissions
-              </button>
             )}
           </div>
         </div>
@@ -678,7 +672,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {(activeTab === 'users' && (user?.role === 'admin' || user?.permissions?.userManagement === true)) && (
+            {activeTab === 'users' && user?.role === 'admin' && (
               <div className="p-6 bg-teal-50/20 dark:bg-gray-900/40 text-left">
                 <div className="bg-white dark:bg-gray-850 rounded-xl border border-gray-250 dark:border-gray-800 p-5 shadow-xs">
                   <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
@@ -1316,7 +1310,7 @@ export default function Dashboard() {
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     {[
-                      { key: 'userManagement', label: 'Users & Roles Tab (Default Unchecked)' },
+                      { key: 'userManagement', label: 'Database Users Manager (Default Unchecked)' },
                       { key: 'query', label: 'Query Editor' },
                       { key: 'connections', label: 'Connection Manager' },
                       { key: 'monitor', label: 'Health & Monitor' },
