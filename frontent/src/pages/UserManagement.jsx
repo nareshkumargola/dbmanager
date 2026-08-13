@@ -13,7 +13,7 @@ export default function UserManagement() {
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: '', email: '', password: '', role: 'developer'
+    name: '', email: '', password: '', role: 'developer', accessMode: 'read'
   });
   const [formLoading, setFormLoading] = useState(false);
 
@@ -168,7 +168,7 @@ export default function UserManagement() {
       const res = await API.post('/users', form);
       setSuccess('New user created successfully!');
       setShowForm(false);
-      setForm({ name: '', email: '', password: '', role: 'developer' });
+      setForm({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
       fetchUsers();
       fetchHistory();
       if (res.data.user?.id) {
@@ -264,7 +264,7 @@ export default function UserManagement() {
               👤 Create New User Profile
             </h3>
             <form onSubmit={createUser} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Name</label>
                   <input
@@ -303,12 +303,25 @@ export default function UserManagement() {
                   <select
                     value={form.role}
                     onChange={e => setForm({ ...form, role: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition"
+                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition font-semibold"
                   >
                     <option value="developer">Developer</option>
                     <option value="admin">Admin</option>
                   </select>
                 </div>
+                {form.role === 'developer' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Permission Mode</label>
+                    <select
+                      value={form.accessMode}
+                      onChange={e => setForm({ ...form, accessMode: e.target.value })}
+                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition font-semibold cursor-pointer"
+                    >
+                      <option value="read">🔒 Read-Only (SELECT, SHOW, FIND)</option>
+                      <option value="readwrite">⚡ Read & Write (INSERT, UPDATE, DELETE)</option>
+                    </select>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
