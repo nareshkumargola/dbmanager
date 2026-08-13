@@ -107,10 +107,34 @@ exports.deleteUser = async (req, res) => {
 };
 
 // Naya user banao — sirf admin
+const syncConnectionAllowedUsers = async (userId, allowedConnections) => {
+  if (!allowedConnections || !Array.isArray(allowedConnections)) return;
+  try {
+    const Connection = require('../models/connectionModel');
+    const allowedConnIds = allowedConnections.map(ac => ac.connectionId).filter(Boolean);
+    
+    // Add user to allowed connections
+    if (allowedConnIds.length > 0) {
+      await Connection.updateMany(
+        { _id: { $in: allowedConnIds } },
+        { $addToSet: { allowedUsers: userId } }
+      );
+    }
+    
+    // Remove user from non-allowed connections
+    await Connection.updateMany(
+      { _id: { $nin: allowedConnIds } },
+      { $pull: { allowedUsers: userId } }
+    );
+  } catch (err) {
+    console.error('Error syncing connection allowedUsers:', err.message);
+  }
+};
+
 // Naya user banao — sirf admin
 exports.createUser = async (req, res) => {
   try {
-    const { name, email, password, role, accessMode } = req.body;
+    const { name, email, password, role, accessMode, allowedConnections } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) {
@@ -141,8 +165,13 @@ exports.createUser = async (req, res) => {
       password: hashed,
       role: userRole,
       accessMode: userAccessMode,
-      permissions: userPermissions
+      permissions: userPermissions,
+      allowedConnections: Array.isArray(allowedConnections) ? allowedConnections : []
     });
+
+    if (Array.isArray(allowedConnections)) {
+      await syncConnectionAllowedUsers(user._id, allowedConnections);
+    }
 
     // Log to system audit trail
     try {
@@ -161,7 +190,8 @@ exports.createUser = async (req, res) => {
         email: user.email,
         role: user.role,
         accessMode: user.accessMode,
-        permissions: user.permissions
+        permissions: user.permissions,
+        allowedConnections: user.allowedConnections
       }
     });
   } catch (err) {
@@ -172,7 +202,7 @@ exports.createUser = async (req, res) => {
 // User permissions update karo — sirf admin
 exports.updateUserPermissions = async (req, res) => {
   try {
-    const { permissions, accessMode } = req.body;
+    const { permissions, accessMode, allowedConnections } = req.body;
     const { id } = req.params;
 
     // Apna permission khud mat badlo
@@ -189,6 +219,12 @@ exports.updateUserPermissions = async (req, res) => {
 
     if (accessMode && ['read', 'readwrite'].includes(accessMode)) {
       targetUser.accessMode = accessMode;
+    }
+
+    if (Array.isArray(allowedConnections)) {
+      targetUser.allowedConnections = allowedConnections;
+      targetUser.markModified('allowedConnections');
+      await syncConnectionAllowedUsers(targetUser._id, allowedConnections);
     }
 
     // Admins implicitly have all permissions
@@ -218,7 +254,8 @@ exports.updateUserPermissions = async (req, res) => {
         email: targetUser.email,
         role: targetUser.role,
         accessMode: targetUser.accessMode,
-        permissions: targetUser.permissions
+        permissions: targetUser.permissions,
+        allowedConnections: targetUser.allowedConnections
       }
     });
   } catch (err) {
@@ -230,7 +267,7 @@ exports.updateUserPermissions = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, role, accessMode, permissions } = req.body;
+    const { name, email, password, role, accessMode, permissions, allowedConnections } = req.body;
 
     const user = await User.findById(id);
     if (!user) {
@@ -258,6 +295,12 @@ exports.updateUser = async (req, res) => {
 
     if (accessMode && ['read', 'readwrite'].includes(accessMode)) {
       user.accessMode = accessMode;
+    }
+
+    if (Array.isArray(allowedConnections)) {
+      user.allowedConnections = allowedConnections;
+      user.markModified('allowedConnections');
+      await syncConnectionAllowedUsers(user._id, allowedConnections);
     }
 
     if (permissions && user.role !== 'admin') {

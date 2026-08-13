@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
+import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 
 export default function UserManagement() {
   const navigate = useNavigate();
@@ -97,6 +98,7 @@ export default function UserManagement() {
           auditLogs: u.permissions?.auditLogs ?? true,
           connections: u.permissions?.connections ?? true,
         });
+        setUserAllowedConnections(Array.isArray(u.allowedConnections) ? u.allowedConnections : []);
       }
     }
   }, [selectedUserId, users]);
@@ -186,7 +188,10 @@ export default function UserManagement() {
     setError('');
     setSuccess('');
     try {
-      await API.put(`/users/${selectedUserId}/permissions`, { permissions: perms });
+      await API.put(`/users/${selectedUserId}/permissions`, {
+        permissions: perms,
+        allowedConnections: userAllowedConnections
+      });
       setSuccess('Permissions saved successfully!');
       fetchUsers();
       fetchHistory();
@@ -323,6 +328,16 @@ export default function UserManagement() {
                   </div>
                 )}
               </div>
+
+              {form.role === 'developer' && (
+                <div className="pt-3 border-t border-gray-150">
+                  <ConnectionSchemaSelector
+                    value={form.allowedConnections || []}
+                    onChange={allowedConnections => setForm({ ...form, allowedConnections })}
+                    role={form.role}
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -539,46 +554,19 @@ export default function UserManagement() {
 
                     {/* Permissions Settings Form */}
                     <div>
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Feature Tab Permissions</h4>
-                      
                       {selectedUserObj.role === 'admin' ? (
                         <div className="bg-yellow-50 border border-yellow-200 text-yellow-850 text-xs px-4 py-3 rounded-lg mb-4">
                           ⚠️ <strong>Admin Permission Bypass:</strong> Admin accounts automatically hold master authorizations. Permissions cannot be customized or restricted for admins.
                         </div>
-                      ) : null}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {[
-                          { key: 'userManagement', label: '👤 Database Users Manager', desc: 'Allows managing database connection users (MySQL, MongoDB, PostgreSQL) (Default Unchecked)' },
-                          { key: 'query', label: '⚡ Query Editor', desc: 'Allows running custom database queries' },
-                          { key: 'history', label: '📜 Query History', desc: 'Allows viewing past queries execution logs' },
-                          { key: 'slowQuery', label: '🐢 Slow Query Logs', desc: 'Allows access to connection slow-query metrics' },
-                          { key: 'auditLogs', label: '🔍 Connection Audit Logs', desc: 'Allows viewing connection audit logs history' },
-                          { key: 'backup', label: '💾 Backup & Restore', desc: 'Allows exporting/importing sql dumps' },
-                          { key: 'binlog', label: '📡 WAL / Binlog Monitor', desc: 'Allows tracking database transactional event streams' },
-                          { key: 'monitor', label: '📊 Health Monitor', desc: 'Allows viewing database system metrics' },
-                          { key: 'connections', label: '⚙️ Manage Connections', desc: 'Allows registering or deleting database profiles' },
-                        ].map(item => (
-                          <label
-                            key={item.key}
-                            className={`border rounded-xl p-4 flex items-start gap-3 transition cursor-pointer select-none ${
-                              perms[item.key] ? 'border-teal-250 bg-teal-50/10' : 'border-gray-200 bg-white hover:bg-gray-50/50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedUserObj.role === 'admin' ? true : !!perms[item.key]}
-                              disabled={selectedUserObj.role === 'admin' || saveLoading}
-                              onChange={e => setPerms(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                              className="mt-1 w-4 h-4 text-[#0d9da4] border-gray-300 rounded focus:ring-[#0d9da4] accent-[#0d9da4]"
-                            />
-                            <div>
-                              <span className="text-sm font-bold text-gray-900 block">{item.label}</span>
-                              <span className="text-xs text-gray-400 mt-0.5 block">{item.desc}</span>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
+                      ) : (
+                        <div className="mt-2">
+                          <ConnectionSchemaSelector
+                            value={userAllowedConnections}
+                            onChange={setUserAllowedConnections}
+                            role={selectedUserObj.role}
+                          />
+                        </div>
+                      )}
 
                       {/* Save button */}
                       {selectedUserObj.role !== 'admin' && (

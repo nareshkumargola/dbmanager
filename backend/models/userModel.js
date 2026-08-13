@@ -50,6 +50,15 @@ const userSchema = new mongoose.Schema({
       connections: true
     }
   },
+  allowedConnections: [{
+    connectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Connection'
+    },
+    databases: [{
+      type: String
+    }]
+  }],
   passwordResetToken: {
     type: String,
     default: null,

@@ -732,6 +732,19 @@ exports.getDatabases = async (req, res) => {
         .filter(d => !['admin', 'local', 'config'].includes(d));
     }
 
+    if (req.user.role !== 'admin') {
+      const User = require('../models/userModel');
+      const currentUser = await User.findById(req.user.id);
+      if (currentUser && currentUser.allowedConnections) {
+        const allowedConn = currentUser.allowedConnections.find(
+          ac => ac.connectionId && ac.connectionId.toString() === req.params.id
+        );
+        if (allowedConn && Array.isArray(allowedConn.databases) && allowedConn.databases.length > 0 && !allowedConn.databases.includes('*')) {
+          databases = databases.filter(db => allowedConn.databases.includes(db));
+        }
+      }
+    }
+
     res.status(200).json({ success: true, databases });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });

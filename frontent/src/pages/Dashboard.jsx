@@ -4,6 +4,7 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
+import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -75,6 +76,7 @@ export default function Dashboard() {
       password: '', // Blank by default, enter to update
       role: u.role === 'admin' ? 'admin' : 'developer',
       accessMode: u.accessMode || (u.role === 'readwrite' ? 'readwrite' : 'read'),
+      allowedConnections: Array.isArray(u.allowedConnections) ? u.allowedConnections : [],
       permissions: u.permissions ? {
         userManagement: !!u.permissions.userManagement,
         backup: u.permissions.backup !== undefined ? u.permissions.backup : true,
@@ -1211,39 +1213,11 @@ export default function Dashboard() {
                   </div>
 
                   <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider text-[10px]">
-                      Module Access Permissions
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {[
-                        { key: 'userManagement', label: 'Database Users Manager (Default Unchecked)' },
-                        { key: 'query', label: 'Query Editor' },
-                        { key: 'connections', label: 'Connection Manager' },
-                        { key: 'monitor', label: 'Health & Monitor' },
-                        { key: 'auditLogs', label: 'Audit Logs' },
-                        { key: 'binlog', label: 'Binlog Poller' },
-                        { key: 'backup', label: 'Backup & Restore' },
-                        { key: 'history', label: 'Query History' },
-                        { key: 'slowQuery', label: 'Slow Query' }
-                      ].map(perm => (
-                        <label key={perm.key} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 dark:border-gray-750 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                          <input
-                            type="checkbox"
-                            checked={!!createForm.permissions?.[perm.key]}
-                            onChange={e => setCreateForm({
-                              ...createForm,
-                              permissions: {
-                                ...(createForm.permissions || {}),
-                                [perm.key]: e.target.checked
-                              }
-                            })}
-                            className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
-                          />
-                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{perm.label}</span>
-                        </label>
-                      ))}
-                    </div>
+                    <ConnectionSchemaSelector
+                      value={createForm.allowedConnections || []}
+                      onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
+                      role={createForm.role}
+                    />
                   </div>
                 </>
               )}
@@ -1364,39 +1338,11 @@ export default function Dashboard() {
 
               {editForm.role !== 'admin' && (
                 <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wider text-[10px]">
-                    Module Access Permissions
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {[
-                      { key: 'userManagement', label: 'Database Users Manager (Default Unchecked)' },
-                      { key: 'query', label: 'Query Editor' },
-                      { key: 'connections', label: 'Connection Manager' },
-                      { key: 'monitor', label: 'Health & Monitor' },
-                      { key: 'auditLogs', label: 'Audit Logs' },
-                      { key: 'binlog', label: 'Binlog Poller' },
-                      { key: 'backup', label: 'Backup & Restore' },
-                      { key: 'history', label: 'Query History' },
-                      { key: 'slowQuery', label: 'Slow Query' }
-                    ].map(perm => (
-                      <label key={perm.key} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 dark:border-gray-750 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                        <input
-                          type="checkbox"
-                          checked={!!editForm.permissions[perm.key]}
-                          onChange={e => setEditForm({
-                            ...editForm,
-                            permissions: {
-                              ...editForm.permissions,
-                              [perm.key]: e.target.checked
-                            }
-                          })}
-                          className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4"
-                        />
-                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{perm.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <ConnectionSchemaSelector
+                    value={editForm.allowedConnections || []}
+                    onChange={allowedConnections => setEditForm({ ...editForm, allowedConnections })}
+                    role={editForm.role}
+                  />
                 </div>
               )}
 
