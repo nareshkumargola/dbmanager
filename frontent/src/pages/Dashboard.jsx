@@ -651,20 +651,7 @@ export default function Dashboard() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                             {conn.type}
                           </span>
-                          {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenShareModal(conn);
-                              }}
-                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold cursor-pointer"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                              </svg>
-                              Share
-                            </button>
-                          )}
+
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -993,136 +980,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Share Modal */}
-      {shareModalOpen && sharingConn && (
-        <div className="fixed inset-0 bg-teal-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl ring-1 ring-teal-100 shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn text-left">
 
-            <div className="px-6 py-4 border-b border-teal-100 bg-teal-50/60 flex justify-between items-center">
-              <div>
-                <h3 className="text-[15px] font-bold text-teal-900">
-                  Share Access
-                </h3>
-                <p className="text-[12px] text-teal-700/60 mt-0.5">
-                  Connection: <span className="font-semibold text-teal-800">{sharingConn.name}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setShareModalOpen(false)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-teal-500 hover:text-teal-800 hover:bg-teal-100 transition-colors text-lg font-medium"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6">
-              {shareError && (
-                <div className="mb-4 bg-rose-50 text-rose-600 text-[12px] px-4 py-2.5 rounded-lg ring-1 ring-rose-200 font-medium">
-                  {shareError}
-                </div>
-              )}
-              {shareSuccess && (
-                <div className="mb-4 bg-teal-50 text-teal-700 text-[12px] px-4 py-2.5 rounded-lg ring-1 ring-teal-200 font-medium">
-                  {shareSuccess}
-                </div>
-              )}
-
-              <p className="text-[11px] font-bold text-teal-600 mb-3 uppercase tracking-wider">
-                Select users to grant connection access
-              </p>
-
-              {/* Search Box */}
-              {usersList.length > 0 && (
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    placeholder="🔍 Search users by name, email or role..."
-                    value={shareSearch}
-                    onChange={e => setShareSearch(e.target.value)}
-                    className="w-full px-3 py-1.5 border border-teal-100 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
-                  />
-                </div>
-              )}
-
-              {usersList.length === 0 ? (
-                <p className="text-[13px] text-teal-700/50 text-center py-6">
-                  No registered users found.
-                </p>
-              ) : (
-                <div className="max-h-60 overflow-y-auto space-y-1.5 ring-1 ring-teal-50 rounded-xl p-2.5 bg-teal-50/30">
-                  {usersList.filter(u => {
-                    const q = shareSearch.toLowerCase();
-                    return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.toLowerCase().includes(q);
-                  }).length === 0 ? (
-                    <p className="text-[12px] text-teal-650 text-center py-4">No matching users found.</p>
-                  ) : (
-                    usersList.filter(u => {
-                      const q = shareSearch.toLowerCase();
-                      return u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.role?.toLowerCase().includes(q);
-                    }).map(u => {
-                      const isChecked = selectedUserIds.includes(u._id);
-                      return (
-                        <label
-                          key={u._id}
-                          className={`flex items-center justify-between p-2.5 rounded-lg ring-1 cursor-pointer transition-all ${
-                            isChecked
-                              ? 'bg-teal-50/70 ring-teal-200'
-                              : 'bg-white ring-teal-50 hover:ring-teal-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleUser(u._id)}
-                              className="rounded border-teal-300 text-teal-600 focus:ring-teal-400 w-4 h-4"
-                            />
-                            <div>
-                              <p className="text-[13px] font-semibold text-teal-900">
-                                {u.name}
-                              </p>
-                              <p className="text-[11px] text-teal-700/50">
-                                {u.email}
-                              </p>
-                            </div>
-                          </div>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            u.role === 'admin'
-                              ? 'bg-gray-900 text-white'
-                              : u.role === 'readwrite'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-teal-100 text-teal-800'
-                          }`}>
-                            {u.role === 'read' ? 'Read User' : u.role === 'readwrite' ? 'ReadWrite User' : u.role}
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 py-4 bg-teal-50/60 border-t border-teal-100 flex gap-3">
-              <button
-                onClick={() => setShareModalOpen(false)}
-                className="flex-1 py-2.5 ring-1 ring-teal-200 text-teal-700 text-[13px] font-semibold rounded-lg hover:bg-teal-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveShare}
-                disabled={shareLoading || usersList.length === 0}
-                className="flex-1 py-2.5 text-white text-[13px] font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-                style={{ backgroundColor: '#0d9da4' }}
-              >
-                {shareLoading ? 'Saving…' : 'Save Access'}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
 
       {/* Create User Modal */}
       {createUserModalOpen && (

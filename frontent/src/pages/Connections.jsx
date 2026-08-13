@@ -525,18 +525,7 @@ export default function Connections() {
 
                     {/* Right — Actions */}
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      {/* Share Button (Only if admin or owner) */}
-                      {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenShareModal(conn);
-                          }}
-                          className="px-3 py-2 border border-gray-300 text-gray-700 text-xs rounded-lg hover:bg-gray-50 transition flex items-center gap-1 font-medium cursor-pointer"
-                        >
-                          👥 Share
-                        </button>
-                      )}
+
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -619,136 +608,7 @@ export default function Connections() {
       </div>
       )}
 
-      {/* Share Modal */}
-      {shareModalOpen && sharingConn && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn text-left">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <div>
-                <h3 className="text-base font-bold text-gray-900">
-                  👥 Share Access
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Share connection <span className="font-semibold text-gray-700">{sharingConn.name}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setShareModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 text-lg font-semibold"
-              >
-                &times;
-              </button>
-            </div>
 
-            {/* Modal Body */}
-            <div className="p-6">
-              {shareError && (
-                <div className="mb-4 bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
-                  ❌ {shareError}
-                </div>
-              )}
-              {shareSuccess && (
-                <div className="mb-4 bg-green-50 text-green-600 text-xs px-4 py-2.5 rounded-lg border border-green-200">
-                  ✅ {shareSuccess}
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Select Developers:
-                </p>
-              </div>
-
-              {/* Search Box */}
-              {usersList.length > 0 && (
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    placeholder="🔍 Search users by name, email or role..."
-                    value={shareSearch}
-                    onChange={e => setShareSearch(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400"
-                  />
-                </div>
-              )}
-
-              {usersList.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-6">
-                  No developers found.
-                </p>
-              ) : (
-                <div className="max-h-60 overflow-y-auto space-y-2 border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-                  {usersList.filter(u => {
-                    const q = shareSearch.toLowerCase();
-                    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
-                  }).length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-4">No matching users found.</p>
-                  ) : (
-                    usersList.filter(u => {
-                      const q = shareSearch.toLowerCase();
-                      return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
-                    }).map(u => {
-                      const isChecked = selectedUserIds.includes(u._id);
-                      return (
-                        <label
-                          key={u._id}
-                          className={`flex items-center justify-between p-2.5 rounded-lg border cursor-pointer transition ${
-                            isChecked
-                              ? 'bg-blue-50/50 border-blue-200'
-                              : 'bg-white border-gray-100 hover:border-gray-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleUser(u._id)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">
-                                {u.name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                {u.email}
-                              </p>
-                            </div>
-                          </div>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            u.role === 'developer' ? 'bg-amber-100 text-amber-800' : 'bg-teal-100 text-teal-800'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
-              <button
-                onClick={() => setShareModalOpen(false)}
-                className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-100 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveShare}
-                disabled={shareLoading || usersList.length === 0}
-                className="flex-1 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50"
-              >
-                {shareLoading ? 'Saving...' : 'Save Access'}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
 
     </div>
   );
