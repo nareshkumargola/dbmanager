@@ -565,7 +565,7 @@ export default function Connections() {
 
                 {/* Action Button Cards Outside on the Right Side */}
                 <div className="flex gap-2 shrink-0 items-center">
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql') && (
+                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql') && hasPermission('userManagement') && (
                     <button
                       onClick={() => navigate(`/connections/${conn._id}/users`)}
                       className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import MySQLUsersPanel from '../components/MySQLUsersPanel';
 import MongoDBUsersPanel from '../components/MongoDBUsersPanel';
@@ -8,11 +9,18 @@ import PostgreSQLUsersPanel from '../components/PostgreSQLUsersPanel';
 
 export default function ConnectionUsers() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [connectionName, setConnectionName] = useState('');
   const [connectionType, setConnectionType] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (user && user.role !== 'admin' && !user.permissions?.userManagement) {
+      navigate('/connections');
+      return;
+    }
+
     const fetchConnectionInfo = async () => {
       try {
         setLoading(true);
@@ -29,7 +37,7 @@ export default function ConnectionUsers() {
       }
     };
     fetchConnectionInfo();
-  }, [id]);
+  }, [id, user, navigate]);
 
   const getDbIcon = (type) => {
     if (type === 'mongodb') return '🍃';
