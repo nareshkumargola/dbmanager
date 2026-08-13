@@ -4,10 +4,13 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
+import Toast from '../components/Toast';
 
 export default function UserManagement() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success') => setToast({ message, type });
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -150,14 +153,14 @@ export default function UserManagement() {
       setError('');
       setSuccess('');
       await API.delete(`/users/${id}`);
-      setSuccess('User deleted successfully!');
+      showToast(`User profile '${name}' deleted successfully!`);
       if (editingUser === id) {
         setEditingUser(null);
       }
       fetchUsers();
       fetchHistory();
     } catch (err) {
-      setError(err.response?.data?.message || 'Delete failed!');
+      showToast(err.response?.data?.message || 'Delete failed!', 'error');
     }
   };
 
@@ -168,7 +171,7 @@ export default function UserManagement() {
     setSuccess('');
     try {
       const res = await API.post('/users', form);
-      setSuccess('New user created successfully!');
+      showToast(`User account '${form.name}' created successfully with granted database permissions!`);
       setShowForm(false);
       setForm({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
       fetchUsers();
@@ -177,7 +180,7 @@ export default function UserManagement() {
         setSelectedUserId(res.data.user.id);
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'User create failed!');
+      showToast(err.response?.data?.message || 'User create failed!', 'error');
     } finally {
       setFormLoading(false);
     }
@@ -192,11 +195,11 @@ export default function UserManagement() {
         permissions: perms,
         allowedConnections: userAllowedConnections
       });
-      setSuccess('Permissions saved successfully!');
+      showToast(`Database & module permissions saved successfully for '${selectedUserObj?.name || 'User'}'!`);
       fetchUsers();
       fetchHistory();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save permissions!');
+      showToast(err.response?.data?.message || 'Failed to save permissions!', 'error');
     } finally {
       setSaveLoading(false);
     }
@@ -715,6 +718,7 @@ export default function UserManagement() {
           </div>
         )}
 
+      <Toast toast={toast} onClose={() => setToast(null)} />
       </div>
     </div>
   );

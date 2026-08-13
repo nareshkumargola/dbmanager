@@ -5,10 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
 import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
+import Toast from '../components/Toast';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success') => setToast({ message, type });
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -103,6 +106,7 @@ export default function Dashboard() {
     setEditError('');
     try {
       await API.put(`/users/${editUserModalUser._id}`, editForm);
+      showToast(`User profile & permissions for '${editForm.name}' updated successfully!`);
       setEditUserModalUser(null);
       fetchUsers();
     } catch (err) {
@@ -118,8 +122,9 @@ export default function Dashboard() {
     setCreateError('');
     try {
       await API.post('/users', createForm);
+      showToast(`User account '${createForm.name}' created successfully with granted database permissions!`);
       setCreateUserModalOpen(false);
-      setCreateForm({ name: '', email: '', password: '', role: 'read' });
+      setCreateForm({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
       fetchUsers();
     } catch (err) {
       setCreateError(err.response?.data?.message || 'Failed to create user.');
@@ -202,9 +207,10 @@ export default function Dashboard() {
   const updateUserRoleInDashboard = async (id, newRole) => {
     try {
       await API.put(`/users/${id}/role`, { role: newRole });
+      showToast(`User role updated successfully!`);
       fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update user role.');
+      showToast(err.response?.data?.message || 'Failed to update user role.', 'error');
     }
   };
 
@@ -212,9 +218,10 @@ export default function Dashboard() {
     if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
     try {
       await API.delete(`/users/${id}`);
+      showToast(`User account '${name}' deleted successfully!`);
       fetchUsers();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete user.');
+      showToast(err.response?.data?.message || 'Failed to delete user.', 'error');
     }
   };
 
@@ -1377,6 +1384,7 @@ export default function Dashboard() {
           animation: fadeIn 0.18s ease-out;
         }
       `}</style>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }
