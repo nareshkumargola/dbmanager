@@ -1125,14 +1125,43 @@ export default function ConnectionDashboard() {
     });
   };
 
+  const [tablesListSortCol, setTablesListSortCol] = useState(null);
+  const [tablesListSortDir, setTablesListSortDir] = useState(null); // 'asc' | 'desc' | null
+
+  const handleTablesListSort = (colKey) => {
+    if (tablesListSortCol === colKey) {
+      if (tablesListSortDir === 'asc') {
+        setTablesListSortDir('desc');
+      } else if (tablesListSortDir === 'desc') {
+        setTablesListSortCol(null);
+        setTablesListSortDir(null);
+      } else {
+        setTablesListSortDir('asc');
+      }
+    } else {
+      setTablesListSortCol(colKey);
+      setTablesListSortDir('asc');
+    }
+    setTablesListPage(1);
+  };
+
   const processedTablesList = getTablesWithMetadata()
     .filter(t => t.name.toLowerCase().includes(tableSearch.toLowerCase()))
     .sort((a, b) => {
-      if (tableSort === 'asc') {
-        return a.name.localeCompare(b.name);
-      } else {
-        return b.name.localeCompare(a.name);
+      if (!tablesListSortCol || !tablesListSortDir) return 0;
+      const valA = a[tablesListSortCol];
+      const valB = b[tablesListSortCol];
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return tablesListSortDir === 'asc' ? valA - valB : valB - valA;
       }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+
+      if (strA < strB) return tablesListSortDir === 'asc' ? -1 : 1;
+      if (strA > strB) return tablesListSortDir === 'asc' ? 1 : -1;
+      return 0;
     });
 
   const hasPermission = (permKey) => {
@@ -1553,6 +1582,37 @@ export default function ConnectionDashboard() {
                             <option value={100}>100</option>
                           </select>
                         </div>
+
+                        {/* TOP PAGINATION BUTTONS */}
+                        {processedTablesList.length > 0 && (() => {
+                          const totalTablesCount = processedTablesList.length;
+                          const totalTablesListPages = Math.ceil(totalTablesCount / tablesListRowsPerPage) || 1;
+                          return (
+                            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3">
+                              <button
+                                type="button"
+                                onClick={() => setTablesListPage(prev => Math.max(prev - 1, 1))}
+                                disabled={tablesListPage === 1}
+                                className="px-2.5 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+                              >
+                                ← Previous
+                              </button>
+
+                              <span className="text-xs font-bold text-gray-700 font-mono px-1">
+                                Page {tablesListPage} of {totalTablesListPages}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => setTablesListPage(prev => Math.min(prev + 1, totalTablesListPages))}
+                                disabled={tablesListPage >= totalTablesListPages}
+                                className="px-2.5 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+                              >
+                                Next →
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -1564,16 +1624,49 @@ export default function ConnectionDashboard() {
                       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-3xs">
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
-                            <thead className="bg-gray-50 border-b border-gray-200">
+                            <thead className="bg-gray-50/80 border-b border-gray-200 select-none">
                               <tr>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                                  {dbType === 'mongodb' ? 'Collection Name' : 'Table Name'}
+                                <th
+                                  onClick={() => handleTablesListSort('name')}
+                                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                                  title="Click to sort by Table Name"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{dbType === 'mongodb' ? 'Collection Name' : 'Table Name'}</span>
+                                    <span className="text-[11px]">
+                                      {tablesListSortCol === 'name'
+                                        ? tablesListSortDir === 'asc' ? '🔼' : '🔽'
+                                        : '↕️'}
+                                    </span>
+                                  </div>
                                 </th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                                  Est. Rows
+                                <th
+                                  onClick={() => handleTablesListSort('rows')}
+                                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                                  title="Click to sort by Row Count"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Est. Rows</span>
+                                    <span className="text-[11px]">
+                                      {tablesListSortCol === 'rows'
+                                        ? tablesListSortDir === 'asc' ? '🔼' : '🔽'
+                                        : '↕️'}
+                                    </span>
+                                  </div>
                                 </th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
-                                  Size
+                                <th
+                                  onClick={() => handleTablesListSort('sizeMB')}
+                                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                                  title="Click to sort by Size"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Size</span>
+                                    <span className="text-[11px]">
+                                      {tablesListSortCol === 'sizeMB'
+                                        ? tablesListSortDir === 'asc' ? '🔼' : '🔽'
+                                        : '↕️'}
+                                    </span>
+                                  </div>
                                 </th>
                                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">
                                   Action
@@ -1665,7 +1758,7 @@ export default function ConnectionDashboard() {
                         <h3 className="text-sm font-extrabold text-gray-900 font-mono">{selectedTable}</h3>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg font-bold font-mono">
                           Total: {tableData.length} records
                         </span>
@@ -1688,6 +1781,37 @@ export default function ConnectionDashboard() {
                             <option value={100}>100</option>
                           </select>
                         </div>
+
+                        {/* Top Pagination Buttons */}
+                        {tableData.length > 0 && (() => {
+                          const totalRows = tableData.length;
+                          const totalPages = Math.ceil(totalRows / tableRowsPerPage) || 1;
+                          return (
+                            <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3 select-none">
+                              <button
+                                type="button"
+                                onClick={() => setTablePage(prev => Math.max(prev - 1, 1))}
+                                disabled={tablePage === 1}
+                                className="px-2.5 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+                              >
+                                ← Previous
+                              </button>
+
+                              <span className="text-xs font-bold text-gray-700 font-mono px-1">
+                                Page {tablePage} of {totalPages}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => setTablePage(prev => Math.min(prev + 1, totalPages))}
+                                disabled={tablePage >= totalPages}
+                                className="px-2.5 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+                              >
+                                Next →
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
