@@ -102,12 +102,14 @@ const monitorRoutes = require("./routes/monitorRoutes");
 const backupRoutes = require("./routes/backupRoutes");
 const dbRoutes = require("./routes/dbRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
+const savedQueryRoutes = require("./routes/savedQueryRoutes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/connections", connectionRoutes);
 app.use("/api/history", queryHistoryRoutes);
 app.use("/api/slow-queries", slowQueryRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/saved-queries", savedQueryRoutes);
 app.use("/api/monitor", monitorRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/db", dbRoutes);
