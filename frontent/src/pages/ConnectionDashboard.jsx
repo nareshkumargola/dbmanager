@@ -31,7 +31,27 @@ export default function ConnectionDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarWidth, setSidebarWidth] = useState('normal'); // 'normal' (w-64) or 'wide' (w-88)
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  const startResizingSidebar = (mouseDownEvent) => {
+    mouseDownEvent.preventDefault();
+    setIsResizingSidebar(true);
+
+    const onMouseMove = (moveEvent) => {
+      const newWidth = Math.min(Math.max(160, moveEvent.clientX), 550);
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingSidebar(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
   const [isOwner, setIsOwner] = useState(false);
   const [isQueryMaximized, setIsQueryMaximized] = useState(false);
   const [showModeInfoModal, setShowModeInfoModal] = useState(false);
@@ -1040,23 +1060,17 @@ export default function ConnectionDashboard() {
       <div className="flex h-[calc(100vh-53px)] relative">
 
         {/* Sidebar (on the left showing databases) */}
-        <div className={`${
-          !sidebarOpen ? 'w-0 overflow-hidden border-none' : sidebarWidth === 'wide' ? 'w-88' : 'w-64'
-        } bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shrink-0 relative`}>
+        <div
+          style={{ width: sidebarOpen ? `${sidebarWidth}px` : '0px' }}
+          className={`${!sidebarOpen ? 'overflow-hidden border-none' : ''} bg-white border-r border-gray-200 flex flex-col shrink-0 relative ${
+            isResizingSidebar ? 'select-none transition-none' : 'transition-[width] duration-200'
+          }`}
+        >
           <div className="px-3.5 py-3 border-b border-gray-100 flex items-center justify-between">
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
               Databases ({databases.length})
             </p>
-
-            {/* Expand / Narrow Width Toggle */}
-            <button
-              type="button"
-              onClick={() => setSidebarWidth(sidebarWidth === 'normal' ? 'wide' : 'normal')}
-              className="text-[10px] text-gray-600 hover:text-teal-700 font-bold px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 transition cursor-pointer flex items-center gap-1 shadow-3xs"
-              title={sidebarWidth === 'normal' ? "Expand sidebar width to view full database names" : "Narrow sidebar width"}
-            >
-              <span>{sidebarWidth === 'normal' ? '↔️ Expand' : '◀ Narrow'}</span>
-            </button>
+            <span className="text-[10px] text-gray-400 font-mono font-medium">{sidebarWidth}px</span>
           </div>
 
           <div className="overflow-y-auto flex-1 py-1">
@@ -1075,22 +1089,37 @@ export default function ConnectionDashboard() {
                   title={db}
                 >
                   <span className="shrink-0 text-sm">🗄️</span>
-                  <span className="break-all leading-tight">{db}</span>
+                  <span className="truncate" title={db}>{db}</span>
                 </button>
               ))
             )}
           </div>
+
+          {/* Mouse Drag Resize Handle Bar */}
+          {sidebarOpen && (
+            <div
+              onMouseDown={startResizingSidebar}
+              className={`absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize z-30 group flex items-center justify-center hover:bg-teal-500/20 ${
+                isResizingSidebar ? 'bg-teal-500/30' : ''
+              }`}
+              title="Drag right/left with cursor to resize sidebar width"
+            >
+              <div className={`w-1 h-8 bg-gray-300 rounded group-hover:bg-[#0d9da4] transition-colors ${
+                isResizingSidebar ? 'bg-[#0d9da4] h-12' : ''
+              }`} />
+            </div>
+          )}
         </div>
 
-        {/* Sidebar Toggle Button */}
+        {/* Sidebar Toggle Collapse/Open Button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all duration-300 focus:outline-none cursor-pointer"
+          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all duration-200 focus:outline-none cursor-pointer"
           style={{
-            left: !sidebarOpen ? '4px' : sidebarWidth === 'wide' ? '340px' : '244px',
+            left: !sidebarOpen ? '4px' : `${sidebarWidth - 12}px`,
             transform: 'translateY(-50%)',
           }}
-          title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          title={sidebarOpen ? "Collapse Sidebar" : "Open Sidebar"}
         >
           {sidebarOpen ? (
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
