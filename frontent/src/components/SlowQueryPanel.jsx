@@ -180,17 +180,45 @@ export default function SlowQueryPanel({ connectionId }) {
   const useQuery = (queryText) => {
     if (!queryText) return;
     if (location.pathname.startsWith('/connections/')) {
-      navigate(location.pathname, { state: { openTab: 'query', query: queryText } });
+      navigate(location.pathname, { state: { openTab: 'query', query: queryText, openNewTab: true } });
     } else {
-      navigate('/query', { state: { query: queryText } });
+      navigate('/query', { state: { query: queryText, openNewTab: true } });
     }
   };
 
   const copyToClipboard = (text, id) => {
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopiedId(id);
+          setTimeout(() => setCopiedId(null), 2000);
+        }).catch(() => fallbackCopy(text, id));
+      } else {
+        fallbackCopy(text, id);
+      }
+    } catch (e) {
+      fallbackCopy(text, id);
+    }
+  };
+
+  const fallbackCopy = (text, id) => {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-999999px';
+      textarea.style.top = '-999999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+    }
   };
 
   const formatTime = (dateStr) => {

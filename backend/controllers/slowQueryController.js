@@ -164,9 +164,9 @@ exports.getLiveProcesses = async (req, res) => {
           usename AS "User",
           COALESCE(client_addr::text, 'localhost') || ':' || COALESCE(client_port::text, '0') AS "Host",
           datname AS "db",
-          state AS "Command",
+          COALESCE(backend_type, 'client backend') AS "Command",
           ROUND(EXTRACT(EPOCH FROM (clock_timestamp() - query_start)) * 1000) AS "Time",
-          state AS "State",
+          COALESCE(state, 'active') AS "State",
           query AS "Info"
         FROM pg_stat_activity
         WHERE datname = $1
@@ -179,10 +179,10 @@ exports.getLiveProcesses = async (req, res) => {
           User: r.User || 'postgres',
           Host: r.Host || 'localhost',
           db: r.db || dbName,
-          Command: r.Command || 'active',
+          Command: r.Command || 'client backend',
           Time: tMs,
           TimeSec: Math.round(tMs / 1000),
-          State: r.State || 'running',
+          State: r.State || 'active',
           Info: r.Info || null
         };
       });

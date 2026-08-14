@@ -418,7 +418,30 @@ export default function ConnectionDashboard() {
   useEffect(() => {
     if (location?.state?.openTab) {
       setActiveTab(location.state.openTab);
-      if (location.state.query) setQuery(location.state.query);
+      if (location.state.query) {
+        const queryText = location.state.query;
+        setQueryTabs(prevTabs => {
+          const currentActive = prevTabs.find(t => t.id === activeQueryTabId) || prevTabs[0];
+          if (currentActive && (!currentActive.query || !currentActive.query.trim())) {
+            return prevTabs.map(t => t.id === currentActive.id ? { ...t, query: queryText } : t);
+          }
+          const newTabId = `tab-${Date.now()}`;
+          const newTabNumber = prevTabs.length + 1;
+          const newTab = {
+            id: newTabId,
+            name: `Query ${newTabNumber}`,
+            query: queryText,
+            results: [],
+            columns: [],
+            error: '',
+            msg: '',
+            loading: false
+          };
+          setActiveQueryTabId(newTabId);
+          return [...prevTabs, newTab];
+        });
+        window.history.replaceState({}, document.title);
+      }
     }
   }, [location]);
 
