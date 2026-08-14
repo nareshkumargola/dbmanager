@@ -145,6 +145,54 @@ export default function ConnectionDashboard() {
   const [savingScript, setSavingScript] = useState(false);
   const [savedScriptsDbFilter, setSavedScriptsDbFilter] = useState('all');
 
+  // Output Dataset Table Pagination & Column Sorting States
+  const [resultPage, setResultPage] = useState(1);
+  const [resultRowsPerPage, setResultRowsPerPage] = useState(10);
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState(null); // 'asc' | 'desc' | null
+
+  const handleHeaderSort = (colName) => {
+    if (sortColumn === colName) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortColumn(null);
+        setSortDirection(null);
+      } else {
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(colName);
+      setSortDirection('asc');
+    }
+    setResultPage(1);
+  };
+
+  const sortedResults = [...queryResults].sort((a, b) => {
+    if (!sortColumn || !sortDirection) return 0;
+    const valA = a[sortColumn];
+    const valB = b[sortColumn];
+
+    if (valA === null || valA === undefined) return 1;
+    if (valB === null || valB === undefined) return -1;
+
+    if (typeof valA === 'number' && typeof valB === 'number') {
+      return sortDirection === 'asc' ? valA - valB : valB - valA;
+    }
+
+    const strA = String(valA).toLowerCase();
+    const strB = String(valB).toLowerCase();
+
+    if (strA < strB) return sortDirection === 'asc' ? -1 : 1;
+    if (strA > strB) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const totalResultRows = sortedResults.length;
+  const totalResultPages = Math.max(1, Math.ceil(totalResultRows / resultRowsPerPage));
+  const startResultIndex = (resultPage - 1) * resultRowsPerPage;
+  const paginatedQueryResults = sortedResults.slice(startResultIndex, startResultIndex + resultRowsPerPage);
+
   const fetchSavedQueries = async () => {
     try {
       const res = await API.get('/saved-queries');
@@ -880,6 +928,9 @@ export default function ConnectionDashboard() {
     setQueryMsg('');
     setQueryResults([]);
     setQueryColumns([]);
+    setResultPage(1);
+    setSortColumn(null);
+    setSortDirection(null);
     try {
       const queryPath = `/connections/${id}/query${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`;
       const res = await API.post(queryPath, { query: queryToRun });
@@ -2380,56 +2431,133 @@ export default function ConnectionDashboard() {
                   </div>
                 )}
                 {queryResults.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
-                    {/* Results Header with Export controls */}
-                    <div className="px-5 py-3.5 border-b border-gray-150 bg-gray-50/70 flex items-center justify-between select-none">
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4 shadow-3xs">
+                    {/* Results Header with Top Pagination & Export controls */}
+                    <div className="px-5 py-3.5 border-b border-gray-150 bg-gray-50/90 flex items-center justify-between flex-wrap gap-3 select-none">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-gray-800">📋 Output Dataset</span>
                         <span className="text-[10px] bg-[#0d9da4]/10 text-[#0d9da4] px-2 py-0.5 rounded-full font-bold">
-                          {queryResults.length} records
+                          {totalResultRows} records
                         </span>
+                        {sortColumn && (
+                          <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                            <span>Sorted: {sortColumn} ({sortDirection === 'asc' ? '🔼 Asc' : '🔽 Desc'})</span>
+                            <button
+                              type="button"
+                              onClick={() => { setSortColumn(null); setSortDirection(null); }}
+                              className="hover:text-rose-600 ml-1 font-bold cursor-pointer"
+                              title="Clear sort"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        )}
                       </div>
-                      
-                      {/* Export Actions */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 font-medium mr-1">Export as:</span>
-                        <button
-                          type="button"
-                          onClick={() => exportResults('csv')}
-                          title="Download results as CSV spreadsheet"
-                          className="px-2.5 py-1.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1"
-                        >
-                          📥 CSV
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => exportResults('json')}
-                          title="Download results as JSON file"
-                          className="px-2.5 py-1.5 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1"
-                        >
-                          📥 JSON
-                        </button>
+
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {/* TOP PAGINATION CONTROLS */}
+                        {totalResultRows > 0 && (
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                              <span>Rows:</span>
+                              <select
+                                value={resultRowsPerPage}
+                                onChange={(e) => {
+                                  setResultRowsPerPage(Number(e.target.value));
+                                  setResultPage(1);
+                                }}
+                                className="text-xs font-bold px-2 py-1 bg-white border border-gray-300 rounded-lg text-gray-800 outline-none focus:border-teal-500 cursor-pointer shadow-3xs"
+                              >
+                                <option value={10}>10 per page</option>
+                                <option value={20}>20 per page</option>
+                                <option value={30}>30 per page</option>
+                                <option value={50}>50 per page</option>
+                                <option value={100}>100 per page</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setResultPage(prev => Math.max(prev - 1, 1))}
+                                disabled={resultPage === 1}
+                                className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                              >
+                                ← Prev
+                              </button>
+
+                              <span className="text-xs font-bold text-gray-700 font-mono px-1">
+                                {resultPage} / {totalResultPages}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() => setResultPage(prev => Math.min(prev + 1, totalResultPages))}
+                                disabled={resultPage >= totalResultPages}
+                                className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                              >
+                                Next →
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Export Actions */}
+                        <div className="flex items-center gap-1.5 border-l border-gray-200 pl-3">
+                          <span className="text-[10px] text-gray-400 font-medium mr-1">Export:</span>
+                          <button
+                            type="button"
+                            onClick={() => exportResults('csv')}
+                            title="Download results as CSV spreadsheet"
+                            className="px-2.5 py-1 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1 cursor-pointer"
+                          >
+                            📥 CSV
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => exportResults('json')}
+                            title="Download results as JSON file"
+                            className="px-2.5 py-1 bg-white border border-gray-200 hover:border-gray-300 text-gray-700 text-[10px] font-bold rounded-lg transition shadow-3xs flex items-center gap-1 cursor-pointer"
+                          >
+                            📥 JSON
+                          </button>
+                        </div>
                       </div>
                     </div>
 
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-gray-50/80 border-b border-gray-200 select-none">
                           <tr>
-                            {queryColumns.map((col, i) => (
-                              <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
-                                {col}
-                              </th>
-                            ))}
+                            {queryColumns.map((col, i) => {
+                              const isSorted = sortColumn === col;
+                              return (
+                                <th
+                                  key={i}
+                                  onClick={() => handleHeaderSort(col)}
+                                  className="px-4 py-3 text-xs font-bold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                                  title={`Click to sort by ${col}`}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{col}</span>
+                                    <span className="text-[11px]">
+                                      {isSorted
+                                        ? sortDirection === 'asc' ? '🔼' : '🔽'
+                                        : '↕️'}
+                                    </span>
+                                  </div>
+                                </th>
+                              );
+                            })}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {queryResults.map((row, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
+                        <tbody className="divide-y divide-gray-100 font-mono text-xs">
+                          {paginatedQueryResults.map((row, i) => (
+                            <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                               {queryColumns.map((col, j) => (
                                 <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap">
                                   {row[col] === null ? (
-                                    <span className="text-gray-300 italic">null</span>
+                                    <span className="text-gray-300 italic font-sans text-[11px]">null</span>
                                   ) : String(row[col])}
                                 </td>
                               ))}
