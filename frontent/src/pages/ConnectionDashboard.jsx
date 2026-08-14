@@ -890,14 +890,19 @@ export default function ConnectionDashboard() {
 
       const data = res.data.results;
       const selectionSuffix = isSelection ? ' (Executed selection)' : '';
-      if (Array.isArray(data) && data.length > 0) {
-        setQueryColumns(Object.keys(data[0]));
+      if (Array.isArray(data)) {
         setQueryResults(data);
-        setQueryMsg(`${data.length} rows — ${res.data.executionTime}ms${selectionSuffix}`);
+        if (data.length > 0) {
+          setQueryColumns(Object.keys(data[0]));
+          setQueryMsg(`${data.length} rows returned — ${res.data.executionTime}ms${selectionSuffix}`);
+        } else {
+          setQueryColumns([]);
+          setQueryMsg(`0 rows returned (No data in table) — ${res.data.executionTime}ms${selectionSuffix}`);
+        }
       } else if (data?.affectedRows !== undefined) {
-        setQueryMsg(`✅ ${data.affectedRows} rows affected${selectionSuffix}`);
+        setQueryMsg(`${data.affectedRows} rows affected — ${res.data.executionTime}ms${selectionSuffix}`);
       } else {
-        setQueryMsg(`Query executed successfully!${selectionSuffix}`);
+        setQueryMsg(`Query executed successfully! — ${res.data.executionTime}ms${selectionSuffix}`);
       }
 
       // Automatically refresh tables list in sidebar without requiring manual reload!
@@ -2360,10 +2365,17 @@ export default function ConnectionDashboard() {
                   </div>
                 )}
                 {queryError && (
-                  <div className="mb-4 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">❌ {queryError}</div>
+                  <div className="mb-4 bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl border border-red-200">❌ {queryError}</div>
                 )}
                 {queryMsg && !queryError && (
-                  <div className="mb-4 bg-green-50 text-green-600 text-sm px-4 py-3 rounded-lg">✅ {queryMsg}</div>
+                  <div className={`mb-4 text-sm px-4 py-3 rounded-xl border flex items-center gap-2 font-medium ${
+                    queryMsg.includes('0 rows') || queryMsg.includes('No data')
+                      ? 'bg-amber-50 text-amber-900 border-amber-200'
+                      : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                  }`}>
+                    <span>{queryMsg.includes('0 rows') || queryMsg.includes('No data') ? '⚠️' : '✅'}</span>
+                    <span>{queryMsg}</span>
+                  </div>
                 )}
                 {queryResults.length > 0 && (
                   <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
