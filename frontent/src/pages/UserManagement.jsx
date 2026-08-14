@@ -572,22 +572,133 @@ export default function UserManagement() {
                     <div>
                       {selectedUserObj.role === 'admin' ? (
                         <div className="bg-yellow-50 border border-yellow-200 text-yellow-850 text-xs px-4 py-3 rounded-lg mb-4">
-                          ⚠️ <strong>Admin Permission Bypass:</strong> Admin accounts automatically hold master authorizations. Permissions cannot be customized or restricted for admins.
+                          ⚠️ <strong>Admin Permission Bypass:</strong> Admin accounts automatically hold master authorizations across all features and connections. Permissions cannot be restricted for admins.
                         </div>
                       ) : (
-                        <div className="mt-2 space-y-4">
-                          <label className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                            <input
-                              type="checkbox"
-                              checked={!!perms.userManagement}
-                              onChange={e => setPerms(prev => ({ ...prev, userManagement: e.target.checked }))}
-                              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4.5 h-4.5 accent-teal-600 cursor-pointer"
-                            />
-                            <div>
-                              <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
-                              <span className="text-[11px] text-gray-500 block">Allows developer/user to view and manage database instance users & application permissions</span>
+                        <div className="mt-2 space-y-6">
+                          <div>
+                            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-3">
+                              🛡️ Module & Feature Permissions
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.query}
+                                  onChange={e => setPerms(prev => ({ ...prev, query: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">⚡ Query Editor</span>
+                                  <span className="text-[11px] text-gray-500 block">Execute SQL / NoSQL queries & scripts</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.history}
+                                  onChange={e => setPerms(prev => ({ ...prev, history: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">📜 Query History</span>
+                                  <span className="text-[11px] text-gray-500 block">Access session query execution history</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.slowQuery}
+                                  onChange={e => setPerms(prev => ({ ...prev, slowQuery: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">🐢 Slow Queries</span>
+                                  <span className="text-[11px] text-gray-500 block">Monitor slow execution queries & logs</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.auditLogs}
+                                  onChange={e => setPerms(prev => ({ ...prev, auditLogs: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">🔍 Audit Logs</span>
+                                  <span className="text-[11px] text-gray-500 block">View system & database action audit trails</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.backup}
+                                  onChange={e => setPerms(prev => ({ ...prev, backup: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">💾 Backup & Restore</span>
+                                  <span className="text-[11px] text-gray-500 block">Export SQL dumps and restore backups</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.binlog}
+                                  onChange={e => setPerms(prev => ({ ...prev, binlog: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">📡 WAL / Binlog Streaming</span>
+                                  <span className="text-[11px] text-gray-500 block">Monitor live binary transaction logs</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.monitor}
+                                  onChange={e => setPerms(prev => ({ ...prev, monitor: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">📊 System Monitor</span>
+                                  <span className="text-[11px] text-gray-500 block">View real-time connection vitals & stats</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.connections}
+                                  onChange={e => setPerms(prev => ({ ...prev, connections: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">⚙️ Manage Connections</span>
+                                  <span className="text-[11px] text-gray-500 block">Access & configure database connections</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition sm:col-span-2">
+                                <input
+                                  type="checkbox"
+                                  checked={!!perms.userManagement}
+                                  onChange={e => setPerms(prev => ({ ...prev, userManagement: e.target.checked }))}
+                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                                />
+                                <div>
+                                  <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
+                                  <span className="text-[11px] text-gray-500 block">Allows user to view & manage database instance users and application permissions</span>
+                                </div>
+                              </label>
                             </div>
-                          </label>
+                          </div>
 
                           <ConnectionSchemaSelector
                             value={userAllowedConnections}
