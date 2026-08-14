@@ -40,6 +40,20 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+// Admin Only Route
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-500 text-sm">Loading...</p>
+      </div>
+    );
+  }
+  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 // Public Route
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
@@ -86,12 +100,12 @@ function AppRoutes() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/backup" element={<Backup />} />
           <Route path="/slow-queries" element={<SlowQuery />} />
-          <Route path="/permissions" element={<UserManagement />} />
+          <Route path="/permissions" element={<AdminRoute><UserManagement /></AdminRoute>} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/connections/:id" element={<ConnectionDashboard />} />
           <Route path="/connections/:id/select-db" element={<DatabaseSelector />} />
           <Route path="/connections/:id/db/:database" element={<ConnectionDashboard />} />
-          <Route path="/connections/:id/users" element={<ConnectionUsers />} />
+          <Route path="/connections/:id/users" element={<AdminRoute><ConnectionUsers /></AdminRoute>} />
           <Route path="/connections/:id/monitor" element={<ConnectionMonitor />} />
           <Route path="/connections/:id/binlog" element={<ConnectionBinlog />} />
           <Route path="/connections/:id/backup" element={<ConnectionBackup />} />
