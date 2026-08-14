@@ -1077,7 +1077,26 @@ export default function Dashboard() {
                     </select>
                   </div>
 
-                  <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
+                  <div className="pt-2 border-t border-gray-150 dark:border-gray-800 space-y-3">
+                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                      <input
+                        type="checkbox"
+                        checked={!!createForm.permissions?.userManagement}
+                        onChange={e => setCreateForm({
+                          ...createForm,
+                          permissions: {
+                            ...createForm.permissions,
+                            userManagement: e.target.checked
+                          }
+                        })}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">👤 Database Users Manager Access</span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                      </div>
+                    </label>
+
                     <ConnectionSchemaSelector
                       value={createForm.allowedConnections || []}
                       onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
@@ -1202,7 +1221,26 @@ export default function Dashboard() {
               )}
 
               {editForm.role !== 'admin' && (
-                <div className="pt-2 border-t border-gray-150 dark:border-gray-800">
+                <div className="pt-2 border-t border-gray-150 dark:border-gray-800 space-y-3">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!editForm.permissions?.userManagement}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        permissions: {
+                          ...(editForm.permissions || {}),
+                          userManagement: e.target.checked
+                        }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">👤 Database Users Manager Access</span>
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                    </div>
+                  </label>
+
                   <ConnectionSchemaSelector
                     value={editForm.allowedConnections || []}
                     onChange={allowedConnections => setEditForm({ ...editForm, allowedConnections })}

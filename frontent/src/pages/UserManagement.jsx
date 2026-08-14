@@ -26,6 +26,7 @@ export default function UserManagement() {
   
   // Selected user for permissions toggle
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [userAllowedConnections, setUserAllowedConnections] = useState([]);
   const [perms, setPerms] = useState({
     userManagement: false,
     backup: true,
@@ -451,8 +452,20 @@ export default function UserManagement() {
                               onClick={() => {
                                 setSelectedUserId(u._id);
                                 setEditingUser(u._id);
+                                setPerms({
+                                  userManagement: u.permissions?.userManagement ?? false,
+                                  backup: u.permissions?.backup ?? true,
+                                  binlog: u.permissions?.binlog ?? true,
+                                  monitor: u.permissions?.monitor ?? true,
+                                  query: u.permissions?.query ?? true,
+                                  history: u.permissions?.history ?? true,
+                                  slowQuery: u.permissions?.slowQuery ?? true,
+                                  auditLogs: u.permissions?.auditLogs ?? true,
+                                  connections: u.permissions?.connections ?? true,
+                                });
+                                setUserAllowedConnections(Array.isArray(u.allowedConnections) ? u.allowedConnections : []);
                               }}
-                              className="text-xs text-[#0d9da4] hover:underline"
+                              className="text-xs text-[#0d9da4] hover:underline cursor-pointer"
                             >
                               ✏️ Edit
                             </button>
@@ -562,7 +575,20 @@ export default function UserManagement() {
                           ⚠️ <strong>Admin Permission Bypass:</strong> Admin accounts automatically hold master authorizations. Permissions cannot be customized or restricted for admins.
                         </div>
                       ) : (
-                        <div className="mt-2">
+                        <div className="mt-2 space-y-4">
+                          <label className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                            <input
+                              type="checkbox"
+                              checked={!!perms.userManagement}
+                              onChange={e => setPerms(prev => ({ ...prev, userManagement: e.target.checked }))}
+                              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4.5 h-4.5 accent-teal-600 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
+                              <span className="text-[11px] text-gray-500 block">Allows developer to view and manage database instance users (MySQL, MongoDB, PostgreSQL)</span>
+                            </div>
+                          </label>
+
                           <ConnectionSchemaSelector
                             value={userAllowedConnections}
                             onChange={setUserAllowedConnections}
