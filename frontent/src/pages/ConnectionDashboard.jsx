@@ -1874,34 +1874,6 @@ export default function ConnectionDashboard() {
                     >
                       <span>📜</span> History
                     </button>
-
-                    <span className="text-gray-300 select-none mx-0.5">|</span>
-
-                    <button
-                      type="button"
-                      onClick={() => runQuery(false)}
-                      disabled={queryLoading || !query.trim()}
-                      title="Execute Selection or Current Statement (Ctrl+Enter)"
-                      className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1.5 shadow-3xs disabled:opacity-50"
-                    >
-                      <span>⚡</span> Run Selection
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => runQuery(false)}
-                      disabled={queryLoading || !query.trim()}
-                      title="Execute Query"
-                      className="px-2.5 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-[11px] font-bold rounded-lg transition flex items-center gap-1.5 shadow-3xs disabled:opacity-50"
-                    >
-                      <span>▶</span> Run Query
-                    </button>
-                    <span className="text-gray-300 select-none">|</span>
-                    <button
-                      onClick={() => setIsQueryMaximized(true)}
-                      className="text-[11px] font-bold text-[#0d9da4] hover:underline flex items-center gap-1.5 border border-gray-200 bg-white px-2.5 py-1.5 rounded-lg shadow-3xs transition hover:bg-gray-50"
-                    >
-                      <span>🗖</span> Expand Fullscreen
-                    </button>
                   </div>
                 </div>
 
@@ -2053,6 +2025,48 @@ export default function ConnectionDashboard() {
                         ))}
                       </div>
                     )}
+                    </div>
+
+                    {/* Bottom Left Execution Bar */}
+                    <div className="mt-3 pt-3 border-t border-gray-150 flex items-center justify-between flex-wrap gap-3 select-none">
+                      {/* Left Side: Run Selection & Run Query Buttons */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => runQuery(false)}
+                          disabled={queryLoading || !query.trim()}
+                          title="Execute Selection or Current Statement (Ctrl+Enter)"
+                          className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                        >
+                          <span>⚡</span> Run Selection
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => runQuery(false)}
+                          disabled={queryLoading || !query.trim()}
+                          title="Execute Full Query"
+                          style={{ backgroundColor: '#0d9da4' }}
+                          className="px-4 py-2 hover:opacity-90 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shadow-2xs disabled:opacity-50 cursor-pointer"
+                        >
+                          <span>▶</span> Run Query
+                        </button>
+                      </div>
+
+                      {/* Right Side: Shortcut Hints & Expand Fullscreen */}
+                      <div className="flex items-center gap-3 text-xs text-gray-500 font-medium">
+                        <span className="hidden sm:inline font-mono text-[11px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700">
+                          Shortcuts: <kbd className="font-bold">Ctrl+Enter</kbd> (Run) | <kbd className="font-bold">Ctrl+/</kbd> (Comment)
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsQueryMaximized(true)}
+                          className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 border border-gray-200 bg-white px-3 py-1.5 rounded-xl shadow-3xs transition hover:bg-gray-50 cursor-pointer"
+                        >
+                          <span>🗖</span> Expand Fullscreen
+                        </button>
+                      </div>
                     </div>
                   </div>
 
