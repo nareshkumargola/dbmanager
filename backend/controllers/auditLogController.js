@@ -59,7 +59,7 @@ exports.getSystemAuditLogs = async (req, res) => {
     if (queryType) {
       const typeLower = queryType.toLowerCase();
       logs = logs.filter(log => {
-        if (log.action !== 'RUN_QUERY') return false;
+        if (log.action !== 'RUN_QUERY' && log.action !== 'SLOW_QUERY') return false;
         
         const detailsLower = (log.details || '').toLowerCase().trim();
         

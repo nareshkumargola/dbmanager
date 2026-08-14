@@ -518,6 +518,28 @@ exports.runQuery = async (req, res) => {
       console.error('History save error:', e.message);
     }
 
+    // Save to System AuditLog
+    try {
+      const AuditLog = require('../models/auditLogModel');
+      const targetDb = (database || connection.database || 'default').toUpperCase();
+      await AuditLog.create({
+        connection: id,
+        user: req.user.id,
+        action: 'RUN_QUERY',
+        details: `[${targetDb}] (${executionTime}ms, ${rowsAffected} rows): ${query.substring(0, 400)}`
+      });
+    } catch (auditErr) {
+      console.error('AuditLog creation error for RUN_QUERY:', auditErr.message);
+    }
+
+    // Check and save slow query if threshold exceeded
+    try {
+      const { saveSlowQuery } = require('./slowQueryController');
+      await saveSlowQuery(id, req.user.id, query, executionTime, rowsAffected);
+    } catch (sqErr) {
+      console.error('Slow query check error:', sqErr.message);
+    }
+
     // Save MySQL/Postgres query to BinlogAudit collection as part of unified history logs
     try {
       const clean = query.replace(/\/\*.*?\*\//g, '').trim();

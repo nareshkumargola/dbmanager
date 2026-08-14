@@ -47,6 +47,19 @@ exports.saveSlowQuery = async (connectionId, userId, query, executionTime, rowsE
         suggestion,
       });
 
+      // Save AuditLog entry so slow queries appear in Application Audit Logs
+      try {
+        const AuditLog = require('../models/auditLogModel');
+        await AuditLog.create({
+          connection: connectionId,
+          user: userId,
+          action: 'SLOW_QUERY',
+          details: `[SLOW QUERY] Latency: ${executionTime}ms (threshold: ${threshold}ms, ${rowsExamined || 0} rows). Query: ${query.substring(0, 400)}`
+        });
+      } catch (aErr) {
+        console.error('Failed to log slow query to AuditLog:', aErr.message);
+      }
+
       // Send Alert notification if alerts are enabled
       if (connection && connection.alertsEnabled) {
         const alertPayload = {

@@ -16,6 +16,7 @@ const auditLogSchema = new mongoose.Schema({
     type: String,
     enum: [
       'RUN_QUERY',
+      'SLOW_QUERY',
       'RESTORE_BACKUP',
       'EXPORT_BACKUP',
       'CREATE_DB_USER',

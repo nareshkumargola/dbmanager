@@ -102,6 +102,8 @@ export default function SystemAuditLogsPanel() {
     switch (action) {
       case 'RUN_QUERY':
         return <span className="bg-blue-50 text-blue-700 border border-blue-150 px-2 py-0.5 rounded text-[10px] font-bold">RUN QUERY</span>;
+      case 'SLOW_QUERY':
+        return <span className="bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">SLOW QUERY</span>;
       case 'RESTORE_BACKUP':
         return <span className="bg-purple-50 text-purple-700 border border-purple-150 px-2 py-0.5 rounded text-[10px] font-bold">RESTORE BACKUP</span>;
       case 'EXPORT_BACKUP':
@@ -295,6 +297,7 @@ export default function SystemAuditLogsPanel() {
             >
               <option value="">All Actions</option>
               <option value="RUN_QUERY">RUN_QUERY (SQL Run)</option>
+              <option value="SLOW_QUERY">SLOW_QUERY (Slow Latency)</option>
               <option value="EXPORT_BACKUP">EXPORT_BACKUP</option>
               <option value="RESTORE_BACKUP">RESTORE_BACKUP</option>
               <option value="CREATE_DB_USER">CREATE_DB_USER</option>
@@ -318,7 +321,7 @@ export default function SystemAuditLogsPanel() {
               value={queryType}
               onChange={e => setQueryType(e.target.value)}
               className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
-              disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY'}
+              disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY' && selectedAction !== 'SLOW_QUERY'}
             >
               <option value="">All Operations</option>
               <option value="select">Read / Select (SELECT/FIND)</option>
