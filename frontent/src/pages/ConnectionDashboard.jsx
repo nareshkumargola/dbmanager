@@ -31,6 +31,7 @@ export default function ConnectionDashboard() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState('normal'); // 'normal' (w-64) or 'wide' (w-88)
   const [isOwner, setIsOwner] = useState(false);
   const [isQueryMaximized, setIsQueryMaximized] = useState(false);
   const [showModeInfoModal, setShowModeInfoModal] = useState(false);
@@ -1039,12 +1040,25 @@ export default function ConnectionDashboard() {
       <div className="flex h-[calc(100vh-53px)] relative">
 
         {/* Sidebar (on the left showing databases) */}
-        <div className={`${sidebarOpen ? 'w-44' : 'w-0 overflow-hidden'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shrink-0`}>
-          <div className="px-3 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className={`${
+          !sidebarOpen ? 'w-0 overflow-hidden border-none' : sidebarWidth === 'wide' ? 'w-88' : 'w-64'
+        } bg-white border-r border-gray-200 flex flex-col transition-all duration-300 shrink-0 relative`}>
+          <div className="px-3.5 py-3 border-b border-gray-100 flex items-center justify-between">
             <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
               Databases ({databases.length})
             </p>
+
+            {/* Expand / Narrow Width Toggle */}
+            <button
+              type="button"
+              onClick={() => setSidebarWidth(sidebarWidth === 'normal' ? 'wide' : 'normal')}
+              className="text-[10px] text-gray-600 hover:text-teal-700 font-bold px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 transition cursor-pointer flex items-center gap-1 shadow-3xs"
+              title={sidebarWidth === 'normal' ? "Expand sidebar width to view full database names" : "Narrow sidebar width"}
+            >
+              <span>{sidebarWidth === 'normal' ? '↔️ Expand' : '◀ Narrow'}</span>
+            </button>
           </div>
+
           <div className="overflow-y-auto flex-1 py-1">
             {databases.length === 0 ? (
               <p className="text-[10px] text-gray-400 px-3 py-3">No databases</p>
@@ -1053,7 +1067,7 @@ export default function ConnectionDashboard() {
                 <button
                   key={i}
                   onClick={() => selectDatabase(db)}
-                  className={`w-full text-left px-3 py-2 text-xs font-semibold border-b border-gray-50/50 transition flex items-center gap-1.5 ${
+                  className={`w-full text-left px-3.5 py-2 text-xs font-semibold border-b border-gray-50/50 transition flex items-center gap-2 ${
                     activeDb === db
                       ? 'bg-gray-900 text-white'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -1061,7 +1075,7 @@ export default function ConnectionDashboard() {
                   title={db}
                 >
                   <span className="shrink-0 text-sm">🗄️</span>
-                  <span className="truncate">{db}</span>
+                  <span className="break-all leading-tight">{db}</span>
                 </button>
               ))
             )}
@@ -1071,9 +1085,9 @@ export default function ConnectionDashboard() {
         {/* Sidebar Toggle Button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
+          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-all duration-300 focus:outline-none cursor-pointer"
           style={{
-            left: sidebarOpen ? '164px' : '4px',
+            left: !sidebarOpen ? '4px' : sidebarWidth === 'wide' ? '340px' : '244px',
             transform: 'translateY(-50%)',
           }}
           title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
