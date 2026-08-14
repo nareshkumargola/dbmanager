@@ -162,7 +162,7 @@ export default function ConnectionDashboard() {
       alert('Please enter a title for the script.');
       return;
     }
-    const currentQuery = activeQueryTab?.query || '';
+    const currentQuery = query || activeQueryTab?.query || '';
     if (!currentQuery.trim()) {
       alert('Query Editor is empty! Write some SQL/NoSQL first.');
       return;
@@ -171,27 +171,28 @@ export default function ConnectionDashboard() {
     try {
       setSavingScript(true);
       await API.post('/saved-queries', {
-        title: scriptTitle,
-        description: scriptDesc,
+        title: scriptTitle.trim(),
+        description: scriptDesc.trim(),
         query: currentQuery,
         connectionId: id,
         database: activeDb || stats?.database || '',
       });
-      setToastMsg(`Script "${scriptTitle}" saved successfully!`);
+      setQueryMsg(`Script "${scriptTitle.trim()}" saved successfully to your personal library!`);
       setShowSaveScriptModal(false);
       setScriptTitle('');
       setScriptDesc('');
       fetchSavedQueries();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save script');
+      console.error('Save script error:', err);
+      alert(err.response?.data?.message || 'Failed to save script: ' + err.message);
     } finally {
       setSavingScript(false);
     }
   };
 
   const handleLoadSavedQuery = (savedItem) => {
-    setQueryText(savedItem.query);
-    setToastMsg(`Loaded "${savedItem.title}" into active editor!`);
+    setQuery(savedItem.query);
+    setQueryMsg(`Loaded saved script "${savedItem.title}" into active Query Editor!`);
     setShowSavedQueriesModal(false);
   };
 
@@ -199,7 +200,7 @@ export default function ConnectionDashboard() {
     if (!window.confirm('Are you sure you want to delete this saved script?')) return;
     try {
       await API.delete(`/saved-queries/${queryId}`);
-      setToastMsg('Saved script deleted.');
+      setQueryMsg('Saved script deleted successfully.');
       fetchSavedQueries();
     } catch (err) {
       alert('Failed to delete saved query');
