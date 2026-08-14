@@ -31,8 +31,8 @@ exports.signup = async (req, res) => {
       name,
       email,
       password: hashed,
-      role: role || "developer",
-      accessMode: req.body.accessMode || "read",
+      role: "developer",
+      accessMode: "read",
     });
 
     const token = generateToken(user._id, user.role);

@@ -109,22 +109,7 @@ export default function Signup() {
             onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
           />
 
-          <div>
-            <label className="block text-[11px] font-bold text-gray-500 mb-1">
-              Account Role
-            </label>
-            <select
-              name="role"
-              value={form.role}
-              onChange={handleChange}
-              className="w-full px-3.5 py-2 rounded-lg text-[13px] outline-none border border-gray-200 bg-white transition-colors"
-              onFocus={(e) => e.target.style.borderColor = '#0d9da4'}
-              onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-            >
-              <option value="developer">Developer</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+
 
 
           <button
