@@ -275,6 +275,20 @@ export default function SlowQueryPanel({ connectionId }) {
     return 'bg-teal-100 text-teal-800 border-teal-200';
   };
 
+  // Live Processes Pagination States
+  const [livePage, setLivePage] = useState(1);
+  const [liveRowsPerPage, setLiveRowsPerPage] = useState(10);
+
+  // History Queries Pagination States
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyRowsPerPage, setHistoryRowsPerPage] = useState(10);
+
+  // Reset pages on search or filter change
+  useEffect(() => {
+    setLivePage(1);
+    setHistoryPage(1);
+  }, [searchQuery, threshold, selectedConnection, selectedDatabase]);
+
   // Filter live processes
   const filteredLiveProcesses = liveProcesses.filter(p => {
     if (!searchQuery.trim()) return true;
@@ -290,6 +304,11 @@ export default function SlowQueryPanel({ connectionId }) {
     );
   });
 
+  const totalLiveRows = filteredLiveProcesses.length;
+  const totalLivePages = Math.max(1, Math.ceil(totalLiveRows / liveRowsPerPage));
+  const startLiveIndex = (livePage - 1) * liveRowsPerPage;
+  const paginatedLiveProcesses = filteredLiveProcesses.slice(startLiveIndex, startLiveIndex + liveRowsPerPage);
+
   // Filter history queries
   const filteredQueries = queries.filter(qItem => {
     if (!searchQuery.trim()) return true;
@@ -298,9 +317,14 @@ export default function SlowQueryPanel({ connectionId }) {
       String(qItem.query).toLowerCase().includes(q) ||
       String(qItem.user?.name).toLowerCase().includes(q) ||
       String(qItem.user?.email).toLowerCase().includes(q) ||
-      String(qItem.suggestion).toLowerCase().includes(q)
+      String(qItem.connection?.name).toLowerCase().includes(q)
     );
   });
+
+  const totalHistoryRows = filteredQueries.length;
+  const totalHistoryPages = Math.max(1, Math.ceil(totalHistoryRows / historyRowsPerPage));
+  const startHistoryIndex = (historyPage - 1) * historyRowsPerPage;
+  const paginatedHistoryQueries = filteredQueries.slice(startHistoryIndex, startHistoryIndex + historyRowsPerPage);
 
   return (
     <div className="space-y-6 text-left">
@@ -484,13 +508,61 @@ export default function SlowQueryPanel({ connectionId }) {
       ) : activeTab === 'live' ? (
         /* LIVE SERVER PROCESSLIST TABLE VIEW */
         <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-          <div className="px-5 py-3.5 bg-gray-50/80 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
-              ⚡ Running Server Processlist (Time &gt;= {threshold}ms)
-            </h3>
-            <span className="text-xs font-bold text-gray-500">
-              Showing {filteredLiveProcesses.length} active threads
-            </span>
+          <div className="px-5 py-3.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3 select-none">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
+                ⚡ Running Server Processlist (Time &gt;= {threshold}ms)
+              </h3>
+              <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                {totalLiveRows} active threads
+              </span>
+            </div>
+
+            {/* TOP PAGINATION CONTROLS FOR PROCESSLIST */}
+            {totalLiveRows > 0 && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                  <span>Rows:</span>
+                  <select
+                    value={liveRowsPerPage}
+                    onChange={(e) => {
+                      setLiveRowsPerPage(Number(e.target.value));
+                      setLivePage(1);
+                    }}
+                    className="text-xs font-bold px-2 py-1 bg-white border border-gray-300 rounded-lg text-gray-800 outline-none focus:border-teal-500 cursor-pointer shadow-3xs"
+                  >
+                    <option value={10}>10 per page</option>
+                    <option value={20}>20 per page</option>
+                    <option value={30}>30 per page</option>
+                    <option value={50}>50 per page</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setLivePage(prev => Math.max(prev - 1, 1))}
+                    disabled={livePage === 1}
+                    className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                  >
+                    ← Prev
+                  </button>
+
+                  <span className="text-xs font-bold text-gray-700 font-mono px-1">
+                    {livePage} / {totalLivePages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setLivePage(prev => Math.min(prev + 1, totalLivePages))}
+                    disabled={livePage >= totalLivePages}
+                    className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {filteredLiveProcesses.length === 0 ? (
@@ -516,7 +588,7 @@ export default function SlowQueryPanel({ connectionId }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-150 font-mono">
-                  {filteredLiveProcesses.map(p => (
+                  {paginatedLiveProcesses.map(p => (
                     <tr key={p.Id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-4 py-3 font-bold text-gray-800">{p.rawId || p.Id}</td>
                       <td className="px-4 py-3 font-bold text-teal-700 font-sans whitespace-nowrap">{p.connectionName || 'Server'}</td>
@@ -571,11 +643,63 @@ export default function SlowQueryPanel({ connectionId }) {
       ) : (
         /* LOGGED SLOW QUERIES HISTORY TABLE VIEW */
         <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
-          <div className="px-5 py-3.5 bg-gray-50/80 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
-              📜 Logged Slow Query History (Execution &gt;= {threshold}ms)
-            </h3>
-            <div className="flex items-center gap-3">
+          <div className="px-5 py-3.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3 select-none">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
+                📜 Logged Slow Query History (Execution &gt;= {threshold}ms)
+              </h3>
+              <span className="text-[10px] bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                {totalHistoryRows} records
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* TOP PAGINATION CONTROLS FOR HISTORY */}
+              {totalHistoryRows > 0 && (
+                <div className="flex items-center gap-3 mr-2">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                    <span>Rows:</span>
+                    <select
+                      value={historyRowsPerPage}
+                      onChange={(e) => {
+                        setHistoryRowsPerPage(Number(e.target.value));
+                        setHistoryPage(1);
+                      }}
+                      className="text-xs font-bold px-2 py-1 bg-white border border-gray-300 rounded-lg text-gray-800 outline-none focus:border-teal-500 cursor-pointer shadow-3xs"
+                    >
+                      <option value={10}>10 per page</option>
+                      <option value={20}>20 per page</option>
+                      <option value={30}>30 per page</option>
+                      <option value={50}>50 per page</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
+                      disabled={historyPage === 1}
+                      className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                    >
+                      ← Prev
+                    </button>
+
+                    <span className="text-xs font-bold text-gray-700 font-mono px-1">
+                      {historyPage} / {totalHistoryPages}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setHistoryPage(prev => Math.min(prev + 1, totalHistoryPages))}
+                      disabled={historyPage >= totalHistoryPages}
+                      className="px-2.5 py-1 border border-gray-300 bg-white text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-3xs"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {filteredQueries.length > 0 && (
                 <button
                   onClick={exportHistoryToCSV}
@@ -617,7 +741,7 @@ export default function SlowQueryPanel({ connectionId }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-150">
-                  {filteredQueries.map((item) => (
+                  {paginatedHistoryQueries.map((item) => (
                     <tr key={item._id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-4 py-3 font-mono text-gray-500 text-[10px]">{item._id.substring(item._id.length - 6)}</td>
                       <td className="px-4 py-3">
