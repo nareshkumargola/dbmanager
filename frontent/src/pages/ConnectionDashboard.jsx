@@ -143,6 +143,7 @@ export default function ConnectionDashboard() {
   const [scriptTitle, setScriptTitle] = useState('');
   const [scriptDesc, setScriptDesc] = useState('');
   const [savingScript, setSavingScript] = useState(false);
+  const [savedScriptsDbFilter, setSavedScriptsDbFilter] = useState('all');
 
   const fetchSavedQueries = async () => {
     try {
@@ -2720,95 +2721,143 @@ export default function ConnectionDashboard() {
       )}
 
       {/* Saved Scripts Library Modal */}
-      {showSavedQueriesModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 max-h-[85vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  <span>📁</span> Your Saved Scripts Library
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Scripts saved by your user account ({savedQueries.length} scripts saved)
-                </p>
-              </div>
-              <button
-                onClick={() => setShowSavedQueriesModal(false)}
-                className="text-gray-400 hover:text-gray-700 text-lg font-bold px-2 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      {showSavedQueriesModal && (() => {
+        const savedDatabasesList = Array.from(new Set([
+          ...savedQueries.map(q => q.database).filter(Boolean),
+          ...databases
+        ]));
 
-            <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-              {savedQueries.length === 0 ? (
-                <div className="p-12 text-center text-gray-400">
-                  <span className="text-3xl">📁</span>
-                  <p className="text-sm font-semibold mt-2">No saved scripts found!</p>
-                  <p className="text-xs mt-1">Write a query in the Query Editor and click "💾 Save Script" to build your library.</p>
+        const filteredSavedQueries = savedQueries.filter(item => {
+          if (savedScriptsDbFilter === 'all') return true;
+          return (item.database || '').toLowerCase() === savedScriptsDbFilter.toLowerCase();
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-4 mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                    <span>📁</span> Your Saved Scripts Library
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Scripts saved by your user account ({savedQueries.length} total scripts saved)
+                  </p>
                 </div>
-              ) : (
-                savedQueries.map((item) => (
-                  <div
-                    key={item._id}
-                    className="p-4 bg-gray-50 dark:bg-gray-750 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-teal-400 transition flex flex-col gap-2"
+                <button
+                  onClick={() => setShowSavedQueriesModal(false)}
+                  className="text-gray-400 hover:text-gray-700 text-lg font-bold px-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Database Filter Dropdown */}
+              <div className="flex items-center gap-2 mb-4 bg-gray-50 dark:bg-gray-750 p-3 rounded-xl border border-gray-200 dark:border-gray-700 justify-between flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-300 shrink-0">🗄️ Filter by Database:</span>
+                  <select
+                    value={savedScriptsDbFilter}
+                    onChange={(e) => setSavedScriptsDbFilter(e.target.value)}
+                    className="text-xs font-bold font-mono px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-800 dark:text-white outline-none focus:border-teal-500 cursor-pointer shadow-3xs"
                   >
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <span>📝</span> {item.title}
-                        {item.database && (
-                          <span className="text-[10px] bg-teal-100 dark:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-mono px-2 py-0.5 rounded font-bold">
-                            🗄️ {item.database}
-                          </span>
-                        )}
-                      </h4>
+                    <option value="all">🌟 All Databases ({savedQueries.length} scripts)</option>
+                    {savedDatabasesList.map(db => {
+                      const count = savedQueries.filter(q => (q.database || '').toLowerCase() === db.toLowerCase()).length;
+                      return (
+                        <option key={db} value={db}>
+                          🗄️ {db} ({count} scripts)
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleLoadSavedQuery(item)}
-                          className="px-3 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
-                        >
-                          ⚡ Load into Tab
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSavedQuery(item._id)}
-                          className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold transition cursor-pointer"
-                          title="Delete Script"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
+                {activeDb && (
+                  <button
+                    type="button"
+                    onClick={() => setSavedScriptsDbFilter(activeDb)}
+                    className="text-[11px] font-bold text-teal-700 dark:text-teal-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>🎯 Active DB:</span> <span className="font-mono bg-teal-100 dark:bg-teal-900/40 px-1.5 py-0.5 rounded">{activeDb}</span>
+                  </button>
+                )}
+              </div>
 
-                    {item.description && (
-                      <p className="text-xs text-gray-600 dark:text-gray-400 italic">{item.description}</p>
-                    )}
-
-                    <pre className="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg font-mono text-xs text-teal-900 dark:text-teal-300 max-h-24 overflow-y-auto whitespace-pre-wrap">
-                      {item.query}
-                    </pre>
-
-                    <p className="text-[10px] text-gray-400 text-right font-mono">
-                      Saved: {new Date(item.updatedAt || item.createdAt).toLocaleString()}
+              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                {filteredSavedQueries.length === 0 ? (
+                  <div className="p-12 text-center text-gray-400">
+                    <span className="text-3xl">📁</span>
+                    <p className="text-sm font-semibold mt-2">No saved scripts found!</p>
+                    <p className="text-xs mt-1">
+                      {savedScriptsDbFilter === 'all'
+                        ? 'Write a query in the Query Editor and click "💾 Save Script" to build your library.'
+                        : `No scripts saved under database "${savedScriptsDbFilter}". Select "All Databases" or save a new script for this DB.`}
                     </p>
                   </div>
-                ))
-              )}
-            </div>
+                ) : (
+                  filteredSavedQueries.map((item) => (
+                    <div
+                      key={item._id}
+                      className="p-4 bg-gray-50 dark:bg-gray-750 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-teal-400 transition flex flex-col gap-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                          <span>📝</span> {item.title}
+                          {item.database && (
+                            <span className="text-[10px] bg-teal-100 dark:bg-teal-900/50 text-teal-800 dark:text-teal-300 font-mono px-2 py-0.5 rounded font-bold">
+                              🗄️ {item.database}
+                            </span>
+                          )}
+                        </h4>
 
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700 mt-4 text-right">
-              <button
-                onClick={() => setShowSavedQueriesModal(false)}
-                className="px-5 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition cursor-pointer"
-              >
-                Close
-              </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleLoadSavedQuery(item)}
+                            className="px-3 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                          >
+                            ⚡ Load into Tab
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSavedQuery(item._id)}
+                            className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold transition cursor-pointer"
+                            title="Delete Script"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+
+                      {item.description && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 italic">{item.description}</p>
+                      )}
+
+                      <pre className="p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg font-mono text-xs text-teal-900 dark:text-teal-300 max-h-24 overflow-y-auto whitespace-pre-wrap">
+                        {item.query}
+                      </pre>
+
+                      <p className="text-[10px] text-gray-400 text-right font-mono">
+                        Saved: {new Date(item.updatedAt || item.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700 mt-4 text-right">
+                <button
+                  onClick={() => setShowSavedQueriesModal(false)}
+                  className="px-5 py-2 bg-gray-100 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-200 transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       </div>
     </div>
