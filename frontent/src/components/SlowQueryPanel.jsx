@@ -22,6 +22,25 @@ export default function SlowQueryPanel({ connectionId }) {
 
   const refreshTimerRef = useRef(null);
 
+  // Connection & Database filter states
+  const [selectedConnection, setSelectedConnection] = useState(connectionId || 'all');
+  const [selectedDatabase, setSelectedDatabase] = useState('all');
+  const [connectionsList, setConnectionsList] = useState([]);
+  const [databasesList, setDatabasesList] = useState([]);
+
+  useEffect(() => {
+    fetchAvailableConnections();
+  }, []);
+
+  useEffect(() => {
+    if (selectedConnection && selectedConnection !== 'all') {
+      fetchDatabasesForConnection(selectedConnection);
+    } else {
+      setDatabasesList([]);
+      setSelectedDatabase('all');
+    }
+  }, [selectedConnection]);
+
   useEffect(() => {
     if (connectionId) {
       fetchConnectionSettings();
@@ -30,7 +49,7 @@ export default function SlowQueryPanel({ connectionId }) {
 
   useEffect(() => {
     fetchData();
-  }, [connectionId, threshold, activeTab]);
+  }, [connectionId, selectedConnection, selectedDatabase, threshold, activeTab]);
 
   useEffect(() => {
     if (autoRefresh && activeTab === 'live') {
@@ -43,7 +62,26 @@ export default function SlowQueryPanel({ connectionId }) {
     return () => {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
     };
-  }, [autoRefresh, activeTab, connectionId, threshold]);
+  }, [autoRefresh, activeTab, connectionId, selectedConnection, selectedDatabase, threshold]);
+
+  const fetchAvailableConnections = async () => {
+    try {
+      const res = await API.get('/connections');
+      setConnectionsList(res.data.connections || []);
+    } catch (err) {
+      console.error('Failed to load connections list:', err.message);
+    }
+  };
+
+  const fetchDatabasesForConnection = async (connId) => {
+    try {
+      const res = await API.get(`/connections/${connId}/databases`);
+      setDatabasesList(res.data.databases || []);
+    } catch (err) {
+      console.error('Failed to load databases for connection:', err.message);
+      setDatabasesList([]);
+    }
+  };
 
   const fetchConnectionSettings = async () => {
     try {
@@ -79,16 +117,13 @@ export default function SlowQueryPanel({ connectionId }) {
   };
 
   const fetchLiveProcesses = async (showLoading = true) => {
-    if (!connectionId) {
-      setLiveProcesses([]);
-      setLoading(false);
-      return;
-    }
     try {
       if (showLoading) setLoading(true);
       setError('');
       const minMs = parseInt(threshold) || 0;
-      const res = await API.get(`/slow-queries/live?connectionId=${connectionId}&minMs=${minMs}`);
+      const connParam = selectedConnection || 'all';
+      const dbParam = selectedDatabase || 'all';
+      const res = await API.get(`/slow-queries/live?connectionId=${connParam}&database=${dbParam}&minMs=${minMs}`);
       setLiveProcesses(res.data.processes || []);
     } catch (err) {
       setError('Failed to fetch live server processes.');
@@ -102,7 +137,9 @@ export default function SlowQueryPanel({ connectionId }) {
       setLoading(true);
       setError('');
       const minMs = parseInt(threshold) || 0;
-      const url = `/slow-queries?${connectionId ? `connectionId=${connectionId}&` : ''}minMs=${minMs}`;
+      const connParam = selectedConnection || 'all';
+      const dbParam = selectedDatabase || 'all';
+      const url = `/slow-queries?connectionId=${connParam}&database=${dbParam}&minMs=${minMs}`;
       const res = await API.get(url);
       setQueries(res.data.queries || []);
       setStats(res.data.stats || null);
@@ -282,6 +319,45 @@ export default function SlowQueryPanel({ connectionId }) {
 
           {/* Interactive Threshold & Controls */}
           <div className="flex flex-wrap items-center gap-3">
+            {/* Connection Selector Dropdown */}
+            {!connectionId && (
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-250 rounded-xl px-3 py-1.5 shadow-2xs">
+                <span className="text-xs font-bold text-gray-600">🔌 Connection:</span>
+                <select
+                  value={selectedConnection}
+                  onChange={(e) => {
+                    setSelectedConnection(e.target.value);
+                    setSelectedDatabase('all');
+                  }}
+                  className="px-2 py-1 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg outline-none focus:border-teal-500 cursor-pointer"
+                >
+                  <option value="all">🌐 All Allowed Connections ({connectionsList.length})</option>
+                  {connectionsList.map(c => (
+                    <option key={c._id} value={c._id}>
+                      {c.type === 'mysql' ? '🐬' : c.type === 'postgresql' ? '🐘' : c.type === 'mongodb' ? '🍃' : '🔴'} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Database Selector Dropdown */}
+            {selectedConnection !== 'all' && (
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-250 rounded-xl px-3 py-1.5 shadow-2xs">
+                <span className="text-xs font-bold text-gray-600">🗄️ Database:</span>
+                <select
+                  value={selectedDatabase}
+                  onChange={(e) => setSelectedDatabase(e.target.value)}
+                  className="px-2 py-1 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg outline-none focus:border-teal-500 cursor-pointer"
+                >
+                  <option value="all">All Databases ({databasesList.length})</option>
+                  {databasesList.map(db => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Type-able ms Input Box */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-250 rounded-xl px-3 py-1.5 shadow-2xs">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Latency Limit:</span>
@@ -311,7 +387,7 @@ export default function SlowQueryPanel({ connectionId }) {
             {/* Refresh */}
             <button
               onClick={fetchData}
-              className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
             >
               <span>🔄</span> Refresh
             </button>
@@ -323,19 +399,17 @@ export default function SlowQueryPanel({ connectionId }) {
           
           {/* Mode Tabs */}
           <div className="flex items-center gap-2">
-            {connectionId && (
-              <button
-                onClick={() => setActiveTab('live')}
-                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
-                  activeTab === 'live'
-                    ? 'text-white shadow-2xs'
-                    : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
-                }`}
-                style={activeTab === 'live' ? { backgroundColor: '#0d9da4' } : {}}
-              >
-                <span>⚡</span> Live Processlist (SHOW PROCESSLIST)
-              </button>
-            )}
+            <button
+              onClick={() => setActiveTab('live')}
+              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+                activeTab === 'live'
+                  ? 'text-white shadow-2xs'
+                  : 'text-gray-600 bg-gray-100 hover:bg-gray-200'
+              }`}
+              style={activeTab === 'live' ? { backgroundColor: '#0d9da4' } : {}}
+            >
+              <span>⚡</span> Live Processlist (SHOW PROCESSLIST)
+            </button>
 
             <button
               onClick={() => setActiveTab('history')}
@@ -431,6 +505,7 @@ export default function SlowQueryPanel({ connectionId }) {
                 <thead className="bg-gray-100/70 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider text-[10px]">
                   <tr>
                     <th className="px-4 py-3">Id</th>
+                    <th className="px-4 py-3">Connection</th>
                     <th className="px-4 py-3">User</th>
                     <th className="px-4 py-3">Host</th>
                     <th className="px-4 py-3">db</th>
@@ -443,7 +518,8 @@ export default function SlowQueryPanel({ connectionId }) {
                 <tbody className="divide-y divide-gray-150 font-mono">
                   {filteredLiveProcesses.map(p => (
                     <tr key={p.Id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="px-4 py-3 font-bold text-gray-800">{p.Id}</td>
+                      <td className="px-4 py-3 font-bold text-gray-800">{p.rawId || p.Id}</td>
+                      <td className="px-4 py-3 font-bold text-teal-700 font-sans whitespace-nowrap">{p.connectionName || 'Server'}</td>
                       <td className="px-4 py-3 text-gray-700">{p.User}</td>
                       <td className="px-4 py-3 text-gray-500 text-[11px] truncate max-w-[150px]" title={p.Host}>{p.Host}</td>
                       <td className="px-4 py-3 font-semibold text-teal-700">{p.db || <span className="text-gray-400 italic">null</span>}</td>
