@@ -1731,23 +1731,22 @@ export default function ConnectionDashboard() {
                 {/* Query Tabs Header Bar */}
                 <div className="flex items-center justify-between gap-4 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
                   {/* Left Side: Tabs List & Add Button */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pb-1">
                     {queryTabs.map((tab) => {
                       const isActive = tab.id === activeQueryTabId;
-                      const targetDatabase = activeDb || stats?.database || 'default';
                       return (
                         <div
                           key={tab.id}
                           onClick={() => setActiveQueryTabId(tab.id)}
-                          className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
+                          className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs shrink-0 select-none ${
                             isActive
-                              ? 'bg-white text-gray-900 border-gray-200 border-b-white z-10'
-                              : 'bg-gray-100/70 text-gray-500 border-transparent hover:bg-gray-100 hover:text-gray-700'
+                              ? 'bg-white text-gray-900 border-gray-250 border-b-white z-10'
+                              : 'bg-gray-100/80 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700'
                           }`}
                         >
                           <span>📝</span>
                           <span
-                            className="truncate max-w-[110px] hover:text-teal-700 transition"
+                            className="hover:text-teal-700 transition whitespace-nowrap font-semibold"
                             title="Double-click to rename this tab"
                             onDoubleClick={() => handleRenameTab(tab.id, tab.name)}
                           >
@@ -1756,25 +1755,17 @@ export default function ConnectionDashboard() {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleRenameTab(tab.id, tab.name); }}
-                            className="text-[10px] text-gray-400 hover:text-gray-700 opacity-60 hover:opacity-100"
+                            className="text-[10px] text-gray-400 hover:text-gray-700 opacity-60 hover:opacity-100 cursor-pointer"
                             title="Rename Tab"
                           >
                             ✏️
                           </button>
 
-                          {/* Connected Database Badge */}
-                          <span
-                            className="text-[10px] bg-teal-50 dark:bg-teal-900/30 text-teal-800 dark:text-teal-300 font-mono px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800 font-bold shrink-0"
-                            title={`Connected Target DB: ${targetDatabase}`}
-                          >
-                            🗄️ {targetDatabase}
-                          </span>
-
                           {queryTabs.length > 1 && (
                             <button
                               type="button"
                               onClick={(e) => removeQueryTab(tab.id, e)}
-                              className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-250 hover:text-gray-950 text-gray-400 transition-colors text-[9px] ml-0.5"
+                              className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-gray-200 hover:text-gray-950 text-gray-400 transition-colors text-[9px] ml-0.5 cursor-pointer"
                             >
                               ✕
                             </button>
@@ -1788,10 +1779,10 @@ export default function ConnectionDashboard() {
                       type="button"
                       onClick={addQueryTab}
                       title="Open New Query Tab"
-                      className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1.5"
+                      className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 cursor-pointer shadow-3xs transition-all duration-150 text-sm font-bold ml-1 shrink-0"
                     >
                       ＋
-                  </button>
+                    </button>
                   </div>
 
                   {/* Right Side: Execution Controls */}
