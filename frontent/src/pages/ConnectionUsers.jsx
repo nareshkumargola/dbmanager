@@ -16,8 +16,8 @@ export default function ConnectionUsers() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user && user.role !== 'admin') {
-      navigate('/dashboard');
+    if (user && user.role !== 'admin' && !user.permissions?.userManagement) {
+      navigate('/connections');
       return;
     }
 

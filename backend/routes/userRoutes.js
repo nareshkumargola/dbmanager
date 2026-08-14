@@ -3,9 +3,9 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { protect, adminOnly, checkPermission } = require('../middlewares/authMiddleware');
 
-// Saare routes protected - Strictly Admin Only
-router.get('/', protect, adminOnly, userController.getAllUsers);
-router.get('/:id', protect, adminOnly, userController.getUserById);
+// Saare routes protected
+router.get('/', protect, checkPermission('userManagement'), userController.getAllUsers);
+router.get('/:id', protect, checkPermission('userManagement'), userController.getUserById);
 router.post('/', protect, adminOnly, userController.createUser);
 router.put('/:id', protect, adminOnly, userController.updateUser);
 router.put('/:id/role', protect, adminOnly, userController.updateUserRole);

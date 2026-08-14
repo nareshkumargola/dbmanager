@@ -54,6 +54,7 @@ export default function UserManagement() {
   const getActivePermsList = (u) => {
     if (u.role === 'admin') return ['Master Bypass'];
     const list = [];
+    if (u.permissions?.userManagement) list.push('👤 DB Users Manager');
     if (u.permissions?.query ?? true) list.push('⚡ Query');
     if (u.permissions?.history ?? true) list.push('📜 History');
     if (u.permissions?.slowQuery ?? true) list.push('🐢 Slow Query');
@@ -70,8 +71,8 @@ export default function UserManagement() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
-    // Strictly restrict to admin users only
-    if (currentUser && currentUser.role !== 'admin') {
+    // Allow admin or users with userManagement permission
+    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions?.userManagement) {
       navigate('/dashboard');
       return;
     }
@@ -575,6 +576,19 @@ export default function UserManagement() {
                         </div>
                       ) : (
                         <div className="mt-2 space-y-4">
+                          <label className="flex items-center gap-3 p-3.5 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                            <input
+                              type="checkbox"
+                              checked={!!perms.userManagement}
+                              onChange={e => setPerms(prev => ({ ...prev, userManagement: e.target.checked }))}
+                              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4.5 h-4.5 accent-teal-600 cursor-pointer"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
+                              <span className="text-[11px] text-gray-500 block">Allows developer/user to view and manage database instance users & application permissions</span>
+                            </div>
+                          </label>
+
                           <ConnectionSchemaSelector
                             value={userAllowedConnections}
                             onChange={setUserAllowedConnections}
