@@ -78,6 +78,79 @@ exports.createConnection = async (req, res) => {
   }
 };
 
+// ─── CONNECTION UPDATE KARO ───────────────────────
+exports.updateConnection = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name, type, host, port,
+      username, password, database,
+      connectionString, ssl
+    } = req.body;
+
+    const connection = await Connection.findById(id);
+    if (!connection) {
+      return res.status(404).json({ message: 'Connection not found!' });
+    }
+
+    if (connection.user.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Permission denied!' });
+    }
+
+    const connType = type || connection.type;
+    const connHost = host !== undefined ? host : connection.host;
+    const connPort = port !== undefined ? port : connection.port;
+    const connUsername = username !== undefined ? username : connection.username;
+    const connPassword = password ? password : connection.password;
+    const connDatabase = database !== undefined ? database : connection.database;
+    const connString = connectionString !== undefined ? connectionString : connection.connectionString;
+    const connSsl = ssl !== undefined ? ssl : connection.ssl;
+
+    const testResult = await testConnection({
+      type: connType,
+      host: connHost,
+      port: connPort,
+      username: connUsername,
+      password: connPassword,
+      database: connDatabase,
+      connectionString: connString,
+      ssl: connSsl
+    });
+
+    if (!testResult.success) {
+      return res.status(400).json({
+        message: 'Connection test failed!',
+        error: testResult.message
+      });
+    }
+
+    await closeConnection(id);
+
+    if (name) connection.name = name;
+    if (type) connection.type = type;
+    if (host !== undefined) connection.host = host;
+    if (port !== undefined) connection.port = port;
+    if (username !== undefined) connection.username = username;
+    if (password) connection.password = password;
+    if (database !== undefined) connection.database = database;
+    if (connectionString !== undefined) connection.connectionString = connectionString;
+    if (ssl !== undefined) connection.ssl = ssl;
+
+    await connection.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Connection updated successfully!',
+      connection: {
+        ...connection.toObject(),
+        password: undefined
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating connection', error: err.message });
+  }
+};
+
 // ─── CONNECTION TEST KARO ─────────────────────────
 exports.testConnectionRoute = async (req, res) => {
   try {

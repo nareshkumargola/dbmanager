@@ -68,6 +68,63 @@ export default function Dashboard() {
 
   const [editUserModalUser, setEditUserModalUser] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
+
+  // Edit Connection Modal States
+  const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
+  const [editConnForm, setEditConnForm] = useState({
+    name: '', type: 'mysql', host: 'localhost', port: '3306', username: 'root', password: '', database: '', connectionString: '', ssl: false
+  });
+  const [editConnLoading, setEditConnLoading] = useState(false);
+  const [editConnTestLoading, setEditConnTestLoading] = useState(false);
+  const [editConnError, setEditConnError] = useState('');
+  const [editConnTestResult, setEditConnTestResult] = useState(null);
+
+  const handleOpenEditConnModal = (conn) => {
+    setEditConnectionModalConn(conn);
+    setEditConnForm({
+      name: conn.name || '',
+      type: conn.type || 'mysql',
+      host: conn.host || '',
+      port: String(conn.port || (conn.type === 'mysql' ? 3306 : conn.type === 'postgresql' ? 5432 : '')),
+      username: conn.username || '',
+      password: '',
+      database: conn.database || '',
+      connectionString: conn.connectionString || '',
+      ssl: !!conn.ssl
+    });
+    setEditConnError('');
+    setEditConnTestResult(null);
+  };
+
+  const handleTestEditConnection = async () => {
+    setEditConnTestLoading(true);
+    setEditConnError('');
+    setEditConnTestResult(null);
+    try {
+      const res = await API.post('/connections/test', editConnForm);
+      setEditConnTestResult({ success: true, message: res.data.message || 'Connection successful!' });
+    } catch (err) {
+      setEditConnTestResult({ success: false, message: err.response?.data?.message || 'Connection test failed!' });
+    } finally {
+      setEditConnTestLoading(false);
+    }
+  };
+
+  const handleSaveEditConnection = async (e) => {
+    e.preventDefault();
+    setEditConnLoading(true);
+    setEditConnError('');
+    try {
+      await API.put(`/connections/${editConnectionModalConn._id}`, editConnForm);
+      showToast(`Connection '${editConnForm.name}' updated successfully!`);
+      setEditConnectionModalConn(null);
+      fetchConnections();
+    } catch (err) {
+      setEditConnError(err.response?.data?.error || err.response?.data?.message || 'Update failed!');
+    } finally {
+      setEditConnLoading(false);
+    }
+  };
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -651,6 +708,18 @@ export default function Dashboard() {
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
                             {conn.type}
                           </span>
+
+                          {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditConnModal(conn);
+                              }}
+                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold cursor-pointer"
+                            >
+                              ✏️ Edit
+                            </button>
+                          )}
 
                           <button
                             onClick={(e) => {
@@ -1265,6 +1334,191 @@ export default function Dashboard() {
                 >
                   {editLoading ? 'Saving...' : 'Save User Changes'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Connection Modal */}
+      {editConnectionModalConn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-xl w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <span>✏️</span> Edit Connection: {editConnectionModalConn.name}
+              </h3>
+              <button
+                onClick={() => setEditConnectionModalConn(null)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditConnection} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {editConnError && (
+                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {editConnError}
+                </div>
+              )}
+
+              {editConnTestResult && (
+                <div className={`text-xs px-4 py-2.5 rounded-lg border ${
+                  editConnTestResult.success ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'
+                }`}>
+                  {editConnTestResult.success ? '✅' : '❌'} {editConnTestResult.message}
+                </div>
+              )}
+
+              {/* Connection Name */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Connection Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editConnForm.name}
+                  onChange={e => setEditConnForm({ ...editConnForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              {/* Database Type */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Database Engine
+                </label>
+                <select
+                  value={editConnForm.type}
+                  onChange={e => setEditConnForm({
+                    ...editConnForm,
+                    type: e.target.value,
+                    port: e.target.value === 'mysql' ? '3306' : e.target.value === 'postgresql' ? '5432' : '27017'
+                  })}
+                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
+                >
+                  <option value="mysql">🐬 MySQL</option>
+                  <option value="postgresql">🐘 PostgreSQL</option>
+                  <option value="mongodb">🍃 MongoDB</option>
+                  <option value="oracle">🔴 Oracle</option>
+                </select>
+              </div>
+
+              {/* Host & Port */}
+              {editConnForm.type !== 'mongodb' && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Host / Server IP</label>
+                    <input
+                      type="text"
+                      required
+                      value={editConnForm.host}
+                      onChange={e => setEditConnForm({ ...editConnForm, host: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Port</label>
+                    <input
+                      type="number"
+                      required
+                      value={editConnForm.port}
+                      onChange={e => setEditConnForm({ ...editConnForm, port: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Username & Password */}
+              {editConnForm.type !== 'mongodb' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">DB Username</label>
+                    <input
+                      type="text"
+                      required
+                      value={editConnForm.username}
+                      onChange={e => setEditConnForm({ ...editConnForm, username: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                      DB Password <span className="text-[10px] text-gray-400 font-normal">(Blank = keep current)</span>
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Leave blank to keep existing"
+                      value={editConnForm.password}
+                      onChange={e => setEditConnForm({ ...editConnForm, password: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Database Name */}
+              {editConnForm.type !== 'mongodb' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Default Database Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. main_db"
+                    value={editConnForm.database}
+                    onChange={e => setEditConnForm({ ...editConnForm, database: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+              )}
+
+              {/* MongoDB Connection String */}
+              {editConnForm.type === 'mongodb' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">MongoDB Connection URI</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="mongodb://localhost:27017/dbname"
+                    value={editConnForm.connectionString}
+                    onChange={e => setEditConnForm({ ...editConnForm, connectionString: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                  />
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div className="pt-4 flex items-center justify-between border-t border-gray-150 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={handleTestEditConnection}
+                  disabled={editConnTestLoading}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-750 text-xs font-bold rounded-lg transition cursor-pointer"
+                >
+                  {editConnTestLoading ? 'Testing...' : '🧪 Test Connection'}
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditConnectionModalConn(null)}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editConnLoading}
+                    style={{ backgroundColor: '#0d9da4' }}
+                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {editConnLoading ? 'Saving...' : 'Save Connection Changes'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

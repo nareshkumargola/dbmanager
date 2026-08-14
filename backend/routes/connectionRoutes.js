@@ -57,6 +57,7 @@ router.get('/:id/audit-logs', protect, checkPermission('auditLogs'), connectionC
 
 // Connection detail and settings update
 router.get('/:id', protect, connectionController.getConnectionById);
+router.put('/:id', protect, checkPermission('connections'), connectionController.updateConnection);
 router.put('/:id/settings', protect, checkPermission('connections'), connectionController.updateConnectionSettings);
 
 module.exports = router;
