@@ -74,19 +74,28 @@ export default function AuditLogsPanel({ connectionId }) {
   return (
     <div className="space-y-4 text-left">
       
-      {/* Search Filter Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
-        <div>
-          <h3 className="text-sm font-bold text-gray-900">📜 Shared Connection Audit Logs</h3>
-          <p className="text-[10px] text-gray-400 mt-0.5">Chronological actions tracked for all shared users of this connection.</p>
+      {/* Compact Side-by-Side Header Bar */}
+      <div className="flex items-center justify-between gap-4 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-3xs select-none">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-xs font-extrabold text-gray-900 whitespace-nowrap flex items-center gap-1.5">
+            <span>📜</span> System Activity Audit Trail
+            <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200 font-sans">
+              Admin View
+            </span>
+          </h3>
+          <span className="text-gray-300 text-xs hidden md:inline">|</span>
+          <p className="text-[10px] text-gray-400 font-medium truncate hidden md:inline">
+            Chronological actions tracked for all shared connection users
+          </p>
         </div>
+
         <div className="relative shrink-0">
           <input
             type="text"
-            placeholder="Search by user, action, details..."
+            placeholder="Search by user, action, query..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="w-full sm:w-60 px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none focus:border-gray-400 bg-gray-50/50"
+            className="w-44 sm:w-60 px-3 py-1 border border-gray-250 rounded-lg text-xs outline-none focus:border-teal-500 bg-gray-50/60 focus:bg-white transition"
           />
         </div>
       </div>

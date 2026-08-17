@@ -746,11 +746,18 @@ export default function UserManagement() {
         {/* History Subtab */}
         {activeSubTab === 'history' && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Permissions Audit Trail</h3>
+            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between select-none">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                  📜 System Activity Audit Trail
+                  <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200 font-sans lowercase">
+                    Admin View
+                  </span>
+                </h3>
+              </div>
               <button
                 onClick={fetchHistory}
-                className="text-xs text-[#0d9da4] hover:underline font-bold"
+                className="text-xs text-[#0d9da4] hover:underline font-bold cursor-pointer"
               >
                 Refresh Logs
               </button>
