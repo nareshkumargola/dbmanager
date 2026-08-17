@@ -44,12 +44,52 @@ export default function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  // Filter Options Bar States
+  const [allConnections, setAllConnections] = useState([]);
+  const [connectionFilter, setConnectionFilter] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [selectedUserFilter, setSelectedUserFilter] = useState('all');
+
   const [historyPage, setHistoryPage] = useState(1);
   const historyItemsPerPage = 5;
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [userSearchQuery]);
+  }, [userSearchQuery, connectionFilter, roleFilter, selectedUserFilter]);
+
+  useEffect(() => {
+    const fetchSystemConnections = async () => {
+      try {
+        const res = await API.get('/connections/all').catch(() => API.get('/connections'));
+        setAllConnections(res.data.connections || []);
+      } catch (err) {
+        console.error('Failed to load system connections:', err);
+      }
+    };
+    fetchSystemConnections();
+  }, []);
+
+  const handleUserSelectFilter = (userId) => {
+    setSelectedUserFilter(userId);
+    if (userId !== 'all') {
+      const u = users.find(x => x._id === userId);
+      if (u) {
+        setSelectedUserId(u._id);
+        setPerms({
+          userManagement: u.permissions?.userManagement ?? false,
+          backup: u.permissions?.backup ?? true,
+          binlog: u.permissions?.binlog ?? true,
+          monitor: u.permissions?.monitor ?? true,
+          query: u.permissions?.query ?? true,
+          history: u.permissions?.history ?? true,
+          slowQuery: u.permissions?.slowQuery ?? true,
+          auditLogs: u.permissions?.auditLogs ?? true,
+          connections: u.permissions?.connections ?? true,
+        });
+        setUserAllowedConnections(Array.isArray(u.allowedConnections) ? u.allowedConnections : []);
+      }
+    }
+  };
 
   const getActivePermsList = (u) => {
     if (u.role === 'admin') return ['Master Bypass'];
@@ -208,10 +248,31 @@ export default function UserManagement() {
 
   const selectedUserObj = users.find(u => u._id === selectedUserId);
 
-  const filteredUsers = users.filter(u =>
-    u.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    u.email?.toLowerCase().includes(userSearchQuery.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = !userSearchQuery || (
+      u.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+      u.email?.toLowerCase().includes(userSearchQuery.toLowerCase())
+    );
+
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+
+    const matchesUser = selectedUserFilter === 'all' || u._id === selectedUserFilter;
+
+    let matchesConnection = true;
+    if (connectionFilter !== 'all') {
+      if (u.role === 'admin') {
+        matchesConnection = true;
+      } else if (Array.isArray(u.allowedConnections) && u.allowedConnections.length > 0) {
+        matchesConnection = u.allowedConnections.some(c => 
+          typeof c === 'string' ? c === connectionFilter : c.connectionId === connectionFilter
+        );
+      } else {
+        matchesConnection = false;
+      }
+    }
+
+    return matchesSearch && matchesRole && matchesUser && matchesConnection;
+  });
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
@@ -386,16 +447,104 @@ export default function UserManagement() {
         {activeSubTab === 'permissions' && (
           editingUser === null ? (
             <div>
-              {/* Search Box */}
-              <div className="mb-4 max-w-md relative text-left">
-                <input
-                  type="text"
-                  placeholder="Search users by name or email..."
-                  value={userSearchQuery}
-                  onChange={e => setUserSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-gray-250 rounded-xl text-xs bg-white focus:bg-white outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4]/35 transition"
-                />
-                <span className="absolute left-3 top-2.5 text-gray-400 text-xs">🔍</span>
+              {/* Sleek View Filter Options Bar */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-3xs mb-5 space-y-3 text-left">
+                <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🔍</span>
+                    <h3 className="text-xs font-extrabold text-gray-900 uppercase tracking-wider">
+                      View Filter Options
+                    </h3>
+                  </div>
+                  {(userSearchQuery || connectionFilter !== 'all' || roleFilter !== 'all' || selectedUserFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserSearchQuery('');
+                        setConnectionFilter('all');
+                        setRoleFilter('all');
+                        setSelectedUserFilter('all');
+                      }}
+                      className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      ✕ Reset Filters
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  {/* Search Input */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Search User</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Name or email..."
+                        value={userSearchQuery}
+                        onChange={e => setUserSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 border border-gray-250 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-[#0d9da4] transition"
+                      />
+                      <span className="absolute left-2.5 top-2 text-gray-400 text-xs">🔍</span>
+                    </div>
+                  </div>
+
+                  {/* Filter by Connection */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Filter by Connection Access</label>
+                    <select
+                      value={connectionFilter}
+                      onChange={e => {
+                        setConnectionFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full px-3 py-1.5 border border-gray-250 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-[#0d9da4] font-semibold text-gray-800 cursor-pointer transition"
+                    >
+                      <option value="all">🌐 All Connections ({allConnections.length})</option>
+                      {allConnections.map(conn => (
+                        <option key={conn._id} value={conn._id}>
+                          {conn.name} ({conn.type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Filter by Role */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Filter by User Role</label>
+                    <select
+                      value={roleFilter}
+                      onChange={e => {
+                        setRoleFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full px-3 py-1.5 border border-gray-250 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-[#0d9da4] font-semibold text-gray-800 cursor-pointer transition"
+                    >
+                      <option value="all">👑 All Roles</option>
+                      <option value="developer">⚡ Developer</option>
+                      <option value="admin">👑 Admin</option>
+                    </select>
+                  </div>
+
+                  {/* Select Specific User */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Select Specific User Profile</label>
+                    <select
+                      value={selectedUserFilter}
+                      onChange={e => {
+                        handleUserSelectFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      className="w-full px-3 py-1.5 border border-gray-250 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-[#0d9da4] font-semibold text-gray-800 cursor-pointer transition"
+                    >
+                      <option value="all">👤 All Users ({users.length})</option>
+                      {users.map(u => (
+                        <option key={u._id} value={u._id}>
+                          {u.name} ({u.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
 
               {/* Table of users */}
