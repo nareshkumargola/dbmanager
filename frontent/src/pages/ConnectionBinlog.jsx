@@ -32,6 +32,27 @@ export default function ConnectionBinlog() {
   const [selectedDb, setSelectedDb] = useState('');
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  const startResizingSidebar = (mouseDownEvent) => {
+    mouseDownEvent.preventDefault();
+    setIsResizingSidebar(true);
+
+    const onMouseMove = (moveEvent) => {
+      const newWidth = Math.min(Math.max(160, moveEvent.clientX), 550);
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingSidebar(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -96,16 +117,20 @@ export default function ConnectionBinlog() {
 
       <div className="flex-1 flex h-[calc(100vh-53px)] relative overflow-hidden">
         {/* Databases Sidebar */}
-        <div className={`${sidebarOpen ? 'w-64 border-r p-4' : 'w-0 border-r-0 p-0 overflow-hidden'} bg-white border-gray-250 flex flex-col gap-2 shrink-0 overflow-y-auto transition-all duration-300 relative`}>
-          <div className="px-2 mb-3">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Schemas / Databases</h3>
-            <p className="text-[10px] text-gray-400 mt-1 leading-normal">
-              Select a database to filter {connectionType === 'mongodb' ? 'oplogs' : (connectionType === 'postgresql' ? 'Write-Ahead logs (WAL)' : 'binary logs')}.
-            </p>
+        <div
+          style={{ width: sidebarOpen ? `${sidebarWidth}px` : '0px' }}
+          className="bg-white border-r border-gray-250 flex flex-col shrink-0 overflow-y-auto transition-none relative z-10 select-none"
+        >
+          <div className="p-3 border-b border-gray-150 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Schemas / Databases</h3>
+            <span className="text-[10px] text-gray-400 font-mono font-medium">{sidebarWidth}px</span>
           </div>
+          <p className="text-[10px] text-gray-400 px-3 pt-2 leading-normal">
+            Select a database to filter {connectionType === 'mongodb' ? 'oplogs' : (connectionType === 'postgresql' ? 'Write-Ahead logs (WAL)' : 'binary logs')}.
+          </p>
           
           {error && (
-            <div className="px-2 py-1.5 bg-red-50 text-red-600 rounded text-xs leading-normal">
+            <div className="mx-3 my-2 p-2 bg-red-50 text-red-600 rounded text-xs leading-normal">
               ⚠️ {error}
             </div>
           )}
@@ -115,7 +140,7 @@ export default function ConnectionBinlog() {
               No schemas found.
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-1 p-2">
               {databases.map(db => (
                 <button
                   key={db}
@@ -132,14 +157,30 @@ export default function ConnectionBinlog() {
               ))}
             </div>
           )}
+
+          {/* Mouse Drag Resize Handle Bar */}
+          {sidebarOpen && (
+            <div
+              onMouseDown={startResizingSidebar}
+              className={`absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize z-30 group flex items-center justify-center hover:bg-teal-500/20 ${
+                isResizingSidebar ? 'bg-teal-500/30' : ''
+              }`}
+              title="Drag right/left with cursor to resize sidebar width"
+            >
+              <div className={`w-1 h-8 bg-gray-300 rounded group-hover:bg-[#0d9da4] transition-colors ${
+                isResizingSidebar ? 'bg-[#0d9da4] h-12' : ''
+              }`} />
+            </div>
+          )}
         </div>
 
         {/* Sidebar Toggle Button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="absolute top-4 z-20 w-6 h-6 bg-white border border-gray-250 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-850 hover:bg-gray-50 transition-all duration-300 focus:outline-none"
+          className="absolute top-1/2 z-20 w-6 h-6 bg-white border border-gray-250 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-gray-850 hover:bg-gray-50 transition-all duration-200 focus:outline-none cursor-pointer"
           style={{
-            left: sidebarOpen ? '252px' : '4px',
+            left: !sidebarOpen ? '4px' : `${sidebarWidth - 12}px`,
+            transform: 'translateY(-50%)',
           }}
           title={sidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
         >
