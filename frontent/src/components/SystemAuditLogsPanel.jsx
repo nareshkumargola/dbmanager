@@ -32,8 +32,80 @@ export default function SystemAuditLogsPanel() {
   useEffect(() => {
     fetchUsers();
     fetchConnections();
-    fetchSystemLogs();
   }, []);
+
+  // Live auto-fetching when any filter changes
+  useEffect(() => {
+    fetchSystemLogs();
+  }, [selectedUser, selectedAction, startDate, endDate, queryType, selectedConnection, selectedRole]);
+
+  const handleUserChange = (userId) => {
+    setSelectedUser(userId);
+    if (userId) {
+      const userObj = users.find(u => u._id === userId);
+      if (userObj) {
+        // Auto-select User Role
+        if (userObj.role) {
+          setSelectedRole(userObj.role);
+        }
+        // Check if selected connection is allowed for this user
+        if (selectedConnection && selectedConnection !== 'global') {
+          if (userObj.role !== 'admin') {
+            const hasAccess = Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.some(c =>
+              typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
+            );
+            if (!hasAccess) {
+              setSelectedConnection('');
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const handleConnectionChange = (connId) => {
+    setSelectedConnection(connId);
+    if (connId && connId !== 'global') {
+      if (selectedUser) {
+        const userObj = users.find(u => u._id === selectedUser);
+        if (userObj && userObj.role !== 'admin') {
+          const hasAccess = Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.some(c =>
+            typeof c === 'string' ? c === connId : c.connectionId === connId
+          );
+          if (!hasAccess) {
+            setSelectedUser('');
+          }
+        }
+      }
+    }
+  };
+
+  const availableUsers = selectedConnection && selectedConnection !== 'global'
+    ? users.filter(u => {
+        if (u.role === 'admin') return true;
+        if (Array.isArray(u.allowedConnections) && u.allowedConnections.length > 0) {
+          return u.allowedConnections.some(c =>
+            typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
+          );
+        }
+        return false;
+      })
+    : users;
+
+  const availableConnections = selectedUser
+    ? (() => {
+        const userObj = users.find(u => u._id === selectedUser);
+        if (!userObj || userObj.role === 'admin') return connections;
+        if (Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.length > 0) {
+          return connections.filter(conn =>
+            userObj.allowedConnections.some(c =>
+              typeof c === 'string' ? c === conn._id : c.connectionId === conn._id
+            )
+          );
+        }
+        return [];
+      })()
+    : connections;
 
   const fetchUsers = async () => {
     try {
@@ -246,11 +318,11 @@ export default function SystemAuditLogsPanel() {
             <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Filter by User</label>
             <select
               value={selectedUser}
-              onChange={e => setSelectedUser(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
+              onChange={e => handleUserChange(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
             >
-              <option value="">All Users</option>
-              {users.map(u => (
+              <option value="">All Users ({availableUsers.length})</option>
+              {availableUsers.map(u => (
                 <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
               ))}
             </select>
@@ -262,7 +334,7 @@ export default function SystemAuditLogsPanel() {
             <select
               value={selectedRole}
               onChange={e => setSelectedRole(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
             >
               <option value="">All Roles</option>
               <option value="admin">Admin</option>
@@ -275,12 +347,12 @@ export default function SystemAuditLogsPanel() {
             <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Connection Target</label>
             <select
               value={selectedConnection}
-              onChange={e => setSelectedConnection(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
+              onChange={e => handleConnectionChange(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
             >
-              <option value="">All Connections</option>
+              <option value="">All Connections ({availableConnections.length})</option>
               <option value="global">Global System Logs</option>
-              {connections.map(c => (
+              {availableConnections.map(c => (
                 <option key={c._id} value={c._id}>{c.name} ({c.type.toUpperCase()})</option>
               ))}
             </select>
