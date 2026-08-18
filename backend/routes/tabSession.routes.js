@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/authMiddleware');
+const { protect } = require('../middlewares/authMiddleware');
 const { getTabSession, saveTabSession } = require('../controllers/userTabSessionController');
 
-router.get('/:connectionId', auth, getTabSession);
-router.post('/:connectionId', auth, saveTabSession);
+router.get('/:connectionId', protect, getTabSession);
+router.post('/:connectionId', protect, saveTabSession);
 
 module.exports = router;
