@@ -2101,20 +2101,6 @@ export default function ConnectionDashboard() {
                         </button>
                       );
                     })()}
-
-                    {/* Active Engine Badge */}
-                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border shadow-3xs flex items-center gap-1 shrink-0 ${
-                      dbType === 'mongodb'
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : dbType === 'mysql'
-                        ? 'bg-blue-50 text-blue-800 border-blue-200'
-                        : dbType === 'postgresql'
-                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                        : 'bg-red-50 text-red-800 border-red-200'
-                    }`}>
-                      <span>{getTypeIcon(dbType)}</span>
-                      <span>{dbType === 'mongodb' ? 'MongoDB MQL Mode' : `${dbType?.toUpperCase()} SQL Mode`}</span>
-                    </span>
                     <button
                       type="button"
                       onClick={formatSQLQuery}
