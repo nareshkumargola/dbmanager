@@ -219,16 +219,16 @@ exports.getDatabaseObjects = async (req, res) => {
       if (database) {
         // Fetch table names along with data size in MB and estimated rows
         const [rows] = await conn.execute(
-          `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as rows 
+          `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as tableRows 
            FROM information_schema.TABLES 
            WHERE TABLE_SCHEMA = ?`,
           [database]
         );
         tables = rows.map(r => ({
+          [`Tables_in_${database}`]: r.TABLE_NAME,
           name: r.TABLE_NAME,
           sizeMB: parseFloat(r.sizeMB || 0.01),
-          rows: r.rows || 0,
-          [`Tables_in_${database}`]: r.TABLE_NAME
+          rows: r.tableRows || 0
         }));
       } else {
         const [rows] = await conn.execute('SHOW TABLES');

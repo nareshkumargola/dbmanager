@@ -614,6 +614,7 @@ export default function ConnectionDashboard() {
     
     try {
       setDbLoading(true);
+      setError('');
       const [objRes, statsRes, tablesDetailsRes] = await Promise.all([
         API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`),
         API.get(`/connections/${id}/stats?database=${encodeURIComponent(dbName)}`),
@@ -1081,10 +1082,10 @@ export default function ConnectionDashboard() {
   const getTablesArray = () => {
     if (!objects) return [];
     const { type, result } = objects;
-    if (type === 'mysql') return result.tables?.map(t => Object.values(t)[0]) || [];
-    if (type === 'postgresql') return result.tables?.map(t => t.table_name) || [];
-    if (type === 'mongodb') return result.collections?.map(c => c.name) || [];
-    if (type === 'oracle') return result.tables?.map(t => t.table_name || t.TABLE_NAME) || [];
+    if (type === 'mysql') return result.tables?.map(t => typeof t === 'string' ? t : (t.name || t.table_name || Object.values(t)[0])) || [];
+    if (type === 'postgresql') return result.tables?.map(t => typeof t === 'string' ? t : (t.name || t.table_name)) || [];
+    if (type === 'mongodb') return result.collections?.map(c => typeof c === 'string' ? c : (c.name || c.collection_name)) || [];
+    if (type === 'oracle') return result.tables?.map(t => typeof t === 'string' ? t : (t.name || t.table_name || t.TABLE_NAME)) || [];
     return [];
   };
 
@@ -1115,12 +1116,14 @@ export default function ConnectionDashboard() {
   };
 
   const getTablesWithMetadata = () => {
+    const rawList = objects?.result?.tables || objects?.result?.collections || [];
     return tables.map(tableName => {
       const detail = tableDetails.find(d => d.table === tableName);
+      const rawObj = rawList.find(t => (typeof t === 'object' && (t.name === tableName || t.table_name === tableName || Object.values(t)[0] === tableName)));
       return {
         name: tableName,
-        rows: detail ? detail.rows : 0,
-        sizeMB: detail ? detail.sizeMB : 0.01
+        rows: detail ? detail.rows : (rawObj?.rows || rawObj?.count || 0),
+        sizeMB: detail ? detail.sizeMB : (rawObj?.sizeMB || 0.01)
       };
     });
   };
