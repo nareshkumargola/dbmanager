@@ -2014,7 +2014,11 @@ export default function ConnectionDashboard() {
                               : 'bg-gray-100/80 text-gray-500 border-gray-200 hover:bg-gray-100 hover:text-gray-700'
                           }`}
                         >
-                          <span>📝</span>
+                          {isActive ? (
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200/80 animate-pulse shrink-0" title="Active Query Tab"></span>
+                          ) : (
+                            <span>📝</span>
+                          )}
                           <span
                             className="hover:text-teal-700 transition whitespace-nowrap font-semibold"
                             title="Double-click to rename this tab"
