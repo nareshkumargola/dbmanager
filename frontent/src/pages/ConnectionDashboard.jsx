@@ -69,10 +69,14 @@ export default function ConnectionDashboard() {
   const [tablePage, setTablePage] = useState(1);
   const [tableRowsPerPage, setTableRowsPerPage] = useState(20);
 
-  // Query Editor Multi-Tab State with Persistent Storage across App Closes / Reloads
+  const userId = user?.id || user?._id || 'guest';
+  const storageKeyTabs = `dms_query_tabs_${userId}_${id}`;
+  const storageKeyActive = `dms_active_query_tab_${userId}_${id}`;
+
+  // Query Editor Multi-Tab State with Hybrid Storage (User LocalStorage + MongoDB Cloud Sync)
   const [queryTabs, setQueryTabs] = useState(() => {
     try {
-      const saved = localStorage.getItem(`dms_query_tabs_${id}`);
+      const saved = localStorage.getItem(storageKeyTabs);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -98,13 +102,44 @@ export default function ConnectionDashboard() {
 
   const [activeQueryTabId, setActiveQueryTabId] = useState(() => {
     try {
-      const savedId = localStorage.getItem(`dms_active_query_tab_${id}`);
+      const savedId = localStorage.getItem(storageKeyActive);
       if (savedId) return savedId;
     } catch (e) {}
     return 'tab-1';
   });
 
-  // Auto-save query tabs to localStorage whenever tabs or queries are modified
+  // 1. Restore tabs from MongoDB Cloud database on initial load per User & Connection
+  useEffect(() => {
+    const fetchCloudTabSession = async () => {
+      if (!id || !user) return;
+      try {
+        const res = await API.get(`/user-tabs/${id}`);
+        if (res.data?.success && res.data.session) {
+          const cloudSession = res.data.session;
+          if (Array.isArray(cloudSession.tabs) && cloudSession.tabs.length > 0) {
+            setQueryTabs(cloudSession.tabs.map(t => ({
+              id: t.id || `tab-${Date.now()}`,
+              name: t.name || 'Query 1',
+              query: t.query || '',
+              results: [],
+              columns: [],
+              error: '',
+              msg: '',
+              loading: false
+            })));
+            if (cloudSession.activeTabId) {
+              setActiveQueryTabId(cloudSession.activeTabId);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Cloud tab session fetch error:', err);
+      }
+    };
+    fetchCloudTabSession();
+  }, [id, user]);
+
+  // 2. Fast LocalStorage Save & Debounced Cloud DB Backup
   useEffect(() => {
     if (id && queryTabs.length > 0) {
       try {
@@ -115,13 +150,24 @@ export default function ConnectionDashboard() {
           results: t.results,
           columns: t.columns
         }));
-        localStorage.setItem(`dms_query_tabs_${id}`, JSON.stringify(tabsToSave));
-        localStorage.setItem(`dms_active_query_tab_${id}`, activeQueryTabId);
+        // Instant local device cache
+        localStorage.setItem(storageKeyTabs, JSON.stringify(tabsToSave));
+        localStorage.setItem(storageKeyActive, activeQueryTabId);
+
+        // Debounced Cloud MongoDB Backup (saves 1.5s after user stops typing)
+        const timer = setTimeout(() => {
+          API.post(`/user-tabs/${id}`, {
+            activeTabId: activeQueryTabId,
+            tabs: tabsToSave
+          }).catch(err => console.error('Cloud tab session save failed:', err));
+        }, 1500);
+
+        return () => clearTimeout(timer);
       } catch (e) {
         console.error('Failed to persist query tabs:', e);
       }
     }
-  }, [queryTabs, activeQueryTabId, id]);
+  }, [queryTabs, activeQueryTabId, id, storageKeyTabs, storageKeyActive]);
 
   const activeQueryTab = queryTabs.find(t => t.id === activeQueryTabId) || queryTabs[0];
   const query = activeQueryTab.query;

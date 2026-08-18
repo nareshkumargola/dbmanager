@@ -103,6 +103,7 @@ const backupRoutes = require("./routes/backupRoutes");
 const dbRoutes = require("./routes/dbRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
 const savedQueryRoutes = require("./routes/savedQueryRoutes");
+const tabSessionRoutes = require("./routes/tabSession.routes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/connections", connectionRoutes);
@@ -114,6 +115,7 @@ app.use("/api/monitor", monitorRoutes);
 app.use("/api/backup", backupRoutes);
 app.use("/api/db", dbRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/user-tabs", tabSessionRoutes);
 
 // Global error handler
 app.use((err, req, res, next) => {
