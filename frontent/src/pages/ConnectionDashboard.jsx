@@ -1009,6 +1009,21 @@ export default function ConnectionDashboard() {
     }
 
     if (!queryToRun.trim()) return;
+    const cleanQ = queryToRun.trim();
+    const isMongoCmd = /^db\.[a-zA-Z0-9_-]+|\{.*"find":/i.test(cleanQ);
+    const isStrictSQLCmd = /^\s*(SELECT|INSERT\s+INTO|UPDATE\s+[`"']?\w+[`"']?\s+SET|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i.test(cleanQ);
+
+    if (dbType === 'mongodb' && isStrictSQLCmd) {
+      setQueryError("❌ Engine Mismatch Error: MongoDB connection active! Standard SQL queries (SELECT/INSERT INTO/UPDATE/DELETE) cannot be run on MongoDB. Please write MongoDB MQL syntax (e.g., db.users.find({})).");
+      return;
+    }
+
+    if (dbType !== 'mongodb' && isMongoCmd) {
+      const engineName = dbType === 'mysql' ? 'MySQL' : dbType === 'postgresql' ? 'PostgreSQL' : dbType === 'oracle' ? 'Oracle' : 'SQL';
+      setQueryError(`❌ Engine Mismatch Error: ${engineName} connection active! MongoDB MQL commands (db.collection...) cannot be executed on ${engineName}. Please write valid ${engineName} SQL queries.`);
+      return;
+    }
+
     setQueryLoading(true);
     setQueryError('');
     setQueryMsg('');
@@ -2086,6 +2101,20 @@ export default function ConnectionDashboard() {
                         </button>
                       );
                     })()}
+
+                    {/* Active Engine Badge */}
+                    <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border shadow-3xs flex items-center gap-1 shrink-0 ${
+                      dbType === 'mongodb'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : dbType === 'mysql'
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : dbType === 'postgresql'
+                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                        : 'bg-red-50 text-red-800 border-red-200'
+                    }`}>
+                      <span>{getTypeIcon(dbType)}</span>
+                      <span>{dbType === 'mongodb' ? 'MongoDB MQL Mode' : `${dbType?.toUpperCase()} SQL Mode`}</span>
+                    </span>
                     <button
                       type="button"
                       onClick={formatSQLQuery}
@@ -2252,7 +2281,15 @@ export default function ConnectionDashboard() {
                       onChange={e => handleEditorChange(e, textareaRef)}
                       onKeyDown={e => handleEditorKeyDown(e, textareaRef)}
                       onScroll={handleScroll}
-                      placeholder="Write SQL query here — Press Ctrl+Enter to run, Ctrl+/ to comment/uncomment"
+                      placeholder={
+                        dbType === 'mongodb'
+                          ? 'Write MongoDB MQL query (e.g. db.users.find({})) — Press Ctrl+Enter to run'
+                          : dbType === 'postgresql'
+                          ? 'Write PostgreSQL query (e.g. SELECT * FROM users;) — Press Ctrl+Enter to run'
+                          : dbType === 'oracle'
+                          ? 'Write Oracle query (e.g. SELECT * FROM users WHERE ROWNUM <= 100;) — Press Ctrl+Enter to run'
+                          : 'Write MySQL query (e.g. SELECT * FROM users;) — Press Ctrl+Enter to run, Ctrl+/ to comment/uncomment'
+                      }
                       className="sql-editor-textarea"
                     />
                     <pre

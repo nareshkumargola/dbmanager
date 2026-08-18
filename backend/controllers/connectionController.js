@@ -386,6 +386,24 @@ exports.runQuery = async (req, res) => {
       return res.status(403).json({ message: validation.error });
     }
 
+    // Engine-level syntax validation
+    const cleanQ = query.trim();
+    const isMongoCmd = /^db\.[a-zA-Z0-9_-]+|\{.*"find":/i.test(cleanQ);
+    const isStrictSQLCmd = /^\s*(SELECT|INSERT\s+INTO|UPDATE\s+[`"']?\w+[`"']?\s+SET|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE\s+TABLE)\b/i.test(cleanQ);
+
+    if (connection.type === 'mongodb' && isStrictSQLCmd) {
+      return res.status(400).json({
+        message: "❌ Engine Mismatch Error: MongoDB connection active! Standard SQL queries (SELECT/INSERT INTO/UPDATE/DELETE) cannot be executed on MongoDB. Please write MongoDB MQL syntax (e.g., db.users.find({}))."
+      });
+    }
+
+    if (connection.type !== 'mongodb' && isMongoCmd) {
+      const engineName = connection.type === 'mysql' ? 'MySQL' : connection.type === 'postgresql' ? 'PostgreSQL' : connection.type === 'oracle' ? 'Oracle' : 'SQL';
+      return res.status(400).json({
+        message: `❌ Engine Mismatch Error: ${engineName} connection active! MongoDB MQL commands (db.collection...) cannot be executed on ${engineName}. Please write valid ${engineName} SQL queries.`
+      });
+    }
+
     const database = req.query.database || connection.database;
     const { conn, type } = await getConnection(connection);
     const startTime = Date.now();
