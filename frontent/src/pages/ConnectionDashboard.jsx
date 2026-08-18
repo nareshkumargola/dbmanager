@@ -69,20 +69,59 @@ export default function ConnectionDashboard() {
   const [tablePage, setTablePage] = useState(1);
   const [tableRowsPerPage, setTableRowsPerPage] = useState(20);
 
-  // Query Editor Multi-Tab State
-  const [queryTabs, setQueryTabs] = useState([
-    {
-      id: 'tab-1',
-      name: 'Query 1',
-      query: '',
-      results: [],
-      columns: [],
-      error: '',
-      msg: '',
-      loading: false
+  // Query Editor Multi-Tab State with Persistent Storage across App Closes / Reloads
+  const [queryTabs, setQueryTabs] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`dms_query_tabs_${id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(t => ({
+            id: t.id || `tab-${Date.now()}`,
+            name: t.name || 'Query 1',
+            query: t.query || '',
+            results: t.results || [],
+            columns: t.columns || [],
+            error: '',
+            msg: '',
+            loading: false
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse saved query tabs:', e);
     }
-  ]);
-  const [activeQueryTabId, setActiveQueryTabId] = useState('tab-1');
+    return [
+      { id: 'tab-1', name: 'Query 1', query: '', results: [], columns: [], error: '', msg: '', loading: false }
+    ];
+  });
+
+  const [activeQueryTabId, setActiveQueryTabId] = useState(() => {
+    try {
+      const savedId = localStorage.getItem(`dms_active_query_tab_${id}`);
+      if (savedId) return savedId;
+    } catch (e) {}
+    return 'tab-1';
+  });
+
+  // Auto-save query tabs to localStorage whenever tabs or queries are modified
+  useEffect(() => {
+    if (id && queryTabs.length > 0) {
+      try {
+        const tabsToSave = queryTabs.map(t => ({
+          id: t.id,
+          name: t.name,
+          query: t.query,
+          results: t.results,
+          columns: t.columns
+        }));
+        localStorage.setItem(`dms_query_tabs_${id}`, JSON.stringify(tabsToSave));
+        localStorage.setItem(`dms_active_query_tab_${id}`, activeQueryTabId);
+      } catch (e) {
+        console.error('Failed to persist query tabs:', e);
+      }
+    }
+  }, [queryTabs, activeQueryTabId, id]);
 
   const activeQueryTab = queryTabs.find(t => t.id === activeQueryTabId) || queryTabs[0];
   const query = activeQueryTab.query;
