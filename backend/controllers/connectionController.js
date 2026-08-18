@@ -217,13 +217,19 @@ exports.getDatabaseObjects = async (req, res) => {
     if (type === 'mysql') {
       let tables;
       if (database) {
-        // Pool se alag connection lo aur USE karo
+        // Fetch table names along with data size in MB and estimated rows
         const [rows] = await conn.execute(
-          `SELECT TABLE_NAME FROM information_schema.TABLES 
+          `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as rows 
+           FROM information_schema.TABLES 
            WHERE TABLE_SCHEMA = ?`,
           [database]
         );
-        tables = rows.map(r => ({ [`Tables_in_${database}`]: r.TABLE_NAME }));
+        tables = rows.map(r => ({
+          name: r.TABLE_NAME,
+          sizeMB: parseFloat(r.sizeMB || 0.01),
+          rows: r.rows || 0,
+          [`Tables_in_${database}`]: r.TABLE_NAME
+        }));
       } else {
         const [rows] = await conn.execute('SHOW TABLES');
         tables = rows;
@@ -233,25 +239,41 @@ exports.getDatabaseObjects = async (req, res) => {
 
     else if (type === 'postgresql') {
       const tables = await conn.query(`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-        ORDER BY table_name
+        SELECT 
+          t.table_name,
+          ROUND(pg_total_relation_size('"' || t.table_name || '"') / 1024.0 / 1024.0, 2) AS "sizeMB"
+        FROM information_schema.tables t
+        WHERE t.table_schema = 'public'
+        ORDER BY t.table_name
       `);
-      result = { tables: tables.rows };
+      result = { tables: tables.rows.map(r => ({ name: r.table_name, table_name: r.table_name, sizeMB: parseFloat(r.sizeMB || 0.01) })) };
     }
 
     else if (type === 'mongodb') {
       const db = conn.db(database || 'test');
       const collections = await db.listCollections().toArray();
-      result = { collections };
+      const collectionsWithStats = await Promise.all(
+        collections.map(async (col) => {
+          try {
+            const stats = await db.collection(col.name).stats();
+            return {
+              name: col.name,
+              sizeMB: parseFloat((stats.size / 1024 / 1024).toFixed(2)) || 0.01,
+              count: stats.count || 0
+            };
+          } catch (e) {
+            return { name: col.name, sizeMB: 0.01 };
+          }
+        })
+      );
+      result = { collections: collectionsWithStats };
     }
 
     else if (type === 'oracle') {
       const r = await conn.execute(
         `SELECT table_name FROM user_tables ORDER BY table_name`
       );
-      const tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0] }));
+      const tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: 0.01 }));
       result = { tables };
     }
 

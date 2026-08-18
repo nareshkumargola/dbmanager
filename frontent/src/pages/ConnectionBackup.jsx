@@ -71,6 +71,32 @@ export default function ConnectionBackup() {
     }
   }, [connection]);
 
+  const formatSizeMB = (sizeMB) => {
+    const val = parseFloat(sizeMB || 0);
+    if (val <= 0.001) return '0.01 MB';
+    if (val < 1) {
+      const kb = (val * 1024).toFixed(2);
+      return `${kb} KB`;
+    }
+    if (val >= 1024) {
+      const gb = (val / 1024).toFixed(2);
+      return `${gb} GB`;
+    }
+    return `${val.toFixed(2)} MB`;
+  };
+
+  const getTotalSelectedBackupSize = () => {
+    let totalSizeMB = 0;
+    Object.entries(selections).forEach(([dbName, selectedTables]) => {
+      const dbObj = databases.find(d => d.name === dbName);
+      const sizesMap = dbObj?.tableSizes || {};
+      selectedTables.forEach(tableName => {
+        totalSizeMB += (sizesMap[tableName] || 0.01);
+      });
+    });
+    return totalSizeMB;
+  };
+
   const fetchDatabases = async () => {
     setDbsLoading(true);
     setBackupError('');
@@ -80,6 +106,7 @@ export default function ConnectionBackup() {
         const dbList = res.data.databases.map(dbName => ({
           name: dbName,
           tables: [],
+          tableSizes: {},
           loaded: false,
           expanded: false
         }));
@@ -107,14 +134,22 @@ export default function ConnectionBackup() {
         if (res.data?.success) {
           const type = res.data.type;
           let tableNames = [];
-          if (type === 'mongodb') {
-            tableNames = (res.data.result?.collections || []).map(c => c.name);
-          } else {
-            tableNames = (res.data.result?.tables || []).map(t => Object.values(t)[0]);
-          }
+          let tableSizesMap = {};
+          const rawItems = type === 'mongodb'
+            ? (res.data.result?.collections || [])
+            : (res.data.result?.tables || []);
+
+          rawItems.forEach(item => {
+            const name = typeof item === 'string' ? item : (item.name || item.table_name || Object.values(item)[0]);
+            const sizeMB = typeof item === 'object' && item.sizeMB !== undefined ? parseFloat(item.sizeMB) : 0.01;
+            tableNames.push(name);
+            tableSizesMap[name] = sizeMB;
+          });
+
           newDbs[dbIndex] = {
             ...db,
             tables: tableNames,
+            tableSizes: tableSizesMap,
             loaded: true,
             expanded: !db.expanded,
           };
@@ -146,15 +181,25 @@ export default function ConnectionBackup() {
         const res = await API.get(`/connections/${id}/objects?database=${dbName}`);
         if (res.data?.success) {
           const type = res.data.type;
-          if (type === 'mongodb') {
-            tables = (res.data.result?.collections || []).map(c => c.name);
-          } else {
-            tables = (res.data.result?.tables || []).map(t => Object.values(t)[0]);
-          }
+          let tableNames = [];
+          let tableSizesMap = {};
+          const rawItems = type === 'mongodb'
+            ? (res.data.result?.collections || [])
+            : (res.data.result?.tables || []);
+
+          rawItems.forEach(item => {
+            const name = typeof item === 'string' ? item : (item.name || item.table_name || Object.values(item)[0]);
+            const sizeMB = typeof item === 'object' && item.sizeMB !== undefined ? parseFloat(item.sizeMB) : 0.01;
+            tableNames.push(name);
+            tableSizesMap[name] = sizeMB;
+          });
+
+          tables = tableNames;
           const newDbs = [...databases];
           newDbs[dbIndex] = {
             ...db,
             tables,
+            tableSizes: tableSizesMap,
             loaded: true,
           };
           setDatabases(newDbs);
@@ -498,18 +543,28 @@ export default function ConnectionBackup() {
                             ) : (
                               shownTables.map((table) => {
                                 const isTableChecked = selections[db.name]?.includes(table) || false;
+                                const tableSizeMB = db.tableSizes ? db.tableSizes[table] : 0.01;
                                 return (
-                                  <div key={table} className="flex items-center gap-2 py-1">
-                                    {renderCheckbox(
-                                      isTableChecked ? 'all' : 'none',
-                                      () => handleTableCheckboxChange(db.name, table)
-                                    )}
-                                    <div className="flex items-center gap-1.5 ml-1">
-                                      <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                      </svg>
-                                      <span className="text-[11px] font-medium text-gray-600">{table}</span>
+                                  <div key={table} className="flex items-center justify-between py-1 group hover:bg-gray-100/50 rounded px-1 transition">
+                                    <div className="flex items-center gap-2">
+                                      {renderCheckbox(
+                                        isTableChecked ? 'all' : 'none',
+                                        () => handleTableCheckboxChange(db.name, table)
+                                      )}
+                                      <div className="flex items-center gap-1.5 ml-1">
+                                        <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                        </svg>
+                                        <span className="text-[11px] font-medium text-gray-700 font-mono">{table}</span>
+                                      </div>
                                     </div>
+
+                                    {/* Individual Table Size Badge */}
+                                    {tableSizeMB !== undefined && (
+                                      <span className="text-[10px] font-mono font-bold text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded shadow-3xs">
+                                        {formatSizeMB(tableSizeMB)}
+                                      </span>
+                                    )}
                                   </div>
                                 );
                               })
@@ -522,10 +577,22 @@ export default function ConnectionBackup() {
                 )}
               </div>
 
-              {/* Selection Summary */}
-              <div className="flex items-center justify-between text-xs text-gray-500 bg-indigo-50/40 border border-indigo-100/50 rounded-lg p-3">
-                <span className="font-semibold text-indigo-700">Summary:</span>
-                <span className="font-medium text-gray-700">{getSelectedCountLabel()}</span>
+              {/* Selection Summary with Total Estimated Size */}
+              <div className="flex items-center justify-between text-xs text-gray-600 bg-indigo-50/50 border border-indigo-150 rounded-xl p-3.5 flex-wrap gap-2 shadow-3xs select-none">
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-indigo-800 uppercase tracking-wider text-[11px]">Summary:</span>
+                  <span className="font-semibold text-gray-700">{getSelectedCountLabel()}</span>
+                </div>
+
+                {Object.keys(selections).length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Total Estimated Size:</span>
+                    <span className="text-xs font-mono font-extrabold text-indigo-800 bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-full shadow-2xs flex items-center gap-1.5 animate-fadeIn">
+                      <span>📦</span>
+                      <span>{formatSizeMB(getTotalSelectedBackupSize())}</span>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Action Button */}
