@@ -57,7 +57,7 @@ exports.getMonitoringData = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
     let data = {};
 
     if (type === 'mysql') {
@@ -248,7 +248,7 @@ exports.getTableDetails = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
 
     let tableData = [];
 
@@ -274,24 +274,26 @@ exports.getTableDetails = async (req, res) => {
         indexSize: parseInt(t.INDEX_LENGTH || 0),
       }));
     } else if (type === 'postgresql' && database) {
-      // For PostgreSQL sorted by rows descending
+      // For PostgreSQL sorted by size / rows descending
       const tables = await conn.query(`
         SELECT 
-          t.tablename,
-          c.reltuples AS row_estimate,
-          pg_total_relation_size(t.schemaname||'.'||t.tablename) AS size_bytes,
-          pg_size_pretty(pg_total_relation_size(t.schemaname||'.'||t.tablename)) AS size
+          t.tablename AS table,
+          t.schemaname AS schema,
+          COALESCE(GREATEST(c.reltuples, 0), 0) AS rows,
+          ROUND(pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) / 1024.0 / 1024.0, 4) AS "sizeMB",
+          pg_size_pretty(pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename))) AS size
         FROM pg_tables t
-        JOIN pg_class c ON c.relname = t.tablename
-        WHERE t.schemaname = 'public'
-        ORDER BY c.reltuples DESC, pg_total_relation_size(t.schemaname||'.'||t.tablename) DESC
+        JOIN pg_namespace n ON n.nspname = t.schemaname
+        JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
+        WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
+        ORDER BY pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) DESC, c.reltuples DESC
       `);
 
       tableData = tables.rows.map(t => ({
-        table: t.tablename,
-        rows: parseInt(t.row_estimate || 0),
+        table: t.schema === 'public' ? t.table : `${t.schema}.${t.table}`,
+        rows: Math.max(0, Math.round(t.rows || 0)),
         size: t.size,
-        sizeMB: parseFloat((parseInt(t.size_bytes || 0) / 1024 / 1024).toFixed(4)),
+        sizeMB: parseFloat(t.sizeMB || 0.01),
       }));
     } else if (type === 'mongodb' && database) {
       // For MongoDB collections sorted by rows descending
@@ -346,7 +348,7 @@ exports.getMonitoringHistory = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
 
     // Get current data
     let currentData = {};
