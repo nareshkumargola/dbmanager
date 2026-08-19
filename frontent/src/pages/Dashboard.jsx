@@ -788,8 +788,6 @@ export default function Dashboard() {
                           <option value="postgresql">🐘 PostgreSQL</option>
                           <option value="mongodb">🍃 MongoDB</option>
                           <option value="oracle">🔴 Oracle</option>
-                          <option value="sqlite">📦 SQLite</option>
-                          <option value="sqlserver">💻 SQL Server</option>
                         </select>
                       </div>
 
@@ -809,22 +807,23 @@ export default function Dashboard() {
                           <option value="all">All Roles</option>
                           <option value="admin">👑 Admin</option>
                           <option value="developer">💻 Developer</option>
-                          <option value="editor">✏️ Editor</option>
-                          <option value="viewer">👁️ Viewer</option>
                         </select>
                       </div>
 
                       {/* 3. User Filter (Cascading) */}
                       <div>
-                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                          3. User:
+                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1 flex items-center justify-between">
+                          <span>3. User:</span>
+                          <span className="text-[10px] font-extrabold text-[#0d9da4]">
+                            ({userOptions.length} {filterRole !== 'all' ? `matching ${filterRole}` : 'total'})
+                          </span>
                         </label>
                         <select
                           value={filterUser}
                           onChange={(e) => setFilterUser(e.target.value)}
                           className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-teal-500 cursor-pointer"
                         >
-                          <option value="all">All Users</option>
+                          <option value="all">All Users ({userOptions.length} available)</option>
                           {userOptions.map((u) => (
                             <option key={u._id} value={u._id}>
                               👤 {u.name} ({u.role || 'user'})

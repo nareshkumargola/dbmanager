@@ -80,17 +80,33 @@ export default function SystemAuditLogsPanel() {
     }
   };
 
-  const availableUsers = selectedConnection && selectedConnection !== 'global'
-    ? users.filter(u => {
-        if (u.role === 'admin') return true;
-        if (Array.isArray(u.allowedConnections) && u.allowedConnections.length > 0) {
-          return u.allowedConnections.some(c =>
-            typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
-          );
-        }
-        return false;
-      })
-    : users;
+  const handleRoleChange = (role) => {
+    setSelectedRole(role);
+    if (role && selectedUser) {
+      const userObj = users.find(u => u._id === selectedUser);
+      if (userObj && (userObj.role || '').toLowerCase() !== role.toLowerCase()) {
+        setSelectedUser('');
+      }
+    }
+  };
+
+  const availableUsers = users.filter(u => {
+    // Role filter
+    if (selectedRole && (u.role || '').toLowerCase() !== selectedRole.toLowerCase()) {
+      return false;
+    }
+    // Connection filter
+    if (selectedConnection && selectedConnection !== 'global') {
+      if (u.role === 'admin') return true;
+      if (Array.isArray(u.allowedConnections) && u.allowedConnections.length > 0) {
+        return u.allowedConnections.some(c =>
+          typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
+        );
+      }
+      return false;
+    }
+    return true;
+  });
 
   const availableConnections = selectedUser
     ? (() => {
@@ -319,11 +335,13 @@ export default function SystemAuditLogsPanel() {
             <select
               value={selectedUser}
               onChange={e => handleUserChange(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold cursor-pointer"
             >
               <option value="">All Users ({availableUsers.length})</option>
               {availableUsers.map(u => (
-                <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                <option key={u._id} value={u._id}>
+                  👤 {u.name} ({u.role || 'user'}) - {u.email}
+                </option>
               ))}
             </select>
           </div>
@@ -333,12 +351,12 @@ export default function SystemAuditLogsPanel() {
             <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">User Role</label>
             <select
               value={selectedRole}
-              onChange={e => setSelectedRole(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
+              onChange={e => handleRoleChange(e.target.value)}
+              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold cursor-pointer"
             >
               <option value="">All Roles</option>
-              <option value="admin">Admin</option>
-              <option value="developer">Developer</option>
+              <option value="admin">👑 Admin</option>
+              <option value="developer">💻 Developer</option>
             </select>
           </div>
 
