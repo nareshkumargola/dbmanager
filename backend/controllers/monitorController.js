@@ -277,24 +277,45 @@ exports.getTableDetails = async (req, res) => {
       // For PostgreSQL sorted by size / rows descending
       const tables = await conn.query(`
         SELECT 
-          t.tablename AS table,
-          t.schemaname AS schema,
-          COALESCE(GREATEST(c.reltuples, 0), 0) AS rows,
-          ROUND(pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) / 1024.0 / 1024.0, 4) AS "sizeMB",
-          pg_size_pretty(pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename))) AS size
+          t.tablename AS table_name,
+          t.schemaname AS table_schema,
+          c.reltuples AS row_estimate,
+          pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) AS size_bytes,
+          pg_size_pretty(pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename))) AS size_pretty
         FROM pg_tables t
         JOIN pg_namespace n ON n.nspname = t.schemaname
         JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
         WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) DESC, c.reltuples DESC
+        ORDER BY pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) DESC
       `);
 
-      tableData = tables.rows.map(t => ({
-        table: t.schema === 'public' ? t.table : `${t.schema}.${t.table}`,
-        rows: Math.max(0, Math.round(t.rows || 0)),
-        size: t.size,
-        sizeMB: parseFloat(t.sizeMB || 0.01),
-      }));
+      tableData = await Promise.all(
+        tables.rows.map(async (t) => {
+          const schema = t.table_schema || 'public';
+          const tableName = t.table_name;
+          const displayName = schema === 'public' ? tableName : `${schema}.${tableName}`;
+          const formattedTable = `"${schema}"."${tableName}"`;
+          let rowCount = Math.max(0, Math.round(parseFloat(t.row_estimate || 0)));
+
+          try {
+            const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
+            rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
+          } catch (e) {
+            // fallback
+          }
+
+          const sizeBytes = parseInt(t.size_bytes || 0);
+          const sizeMB = parseFloat((sizeBytes / 1024 / 1024).toFixed(4));
+
+          return {
+            table: displayName,
+            rows: rowCount,
+            size: t.size_pretty,
+            sizeMB,
+            sizeBytes
+          };
+        })
+      );
     } else if (type === 'mongodb' && database) {
       // For MongoDB collections sorted by rows descending
       const db = conn.db(database);

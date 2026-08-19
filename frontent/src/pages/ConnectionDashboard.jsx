@@ -1206,11 +1206,16 @@ export default function ConnectionDashboard() {
       case 'Bytes':
         return `${Math.round(val * 1024 * 1024).toLocaleString()} Bytes`;
       case 'KB':
-        return `${(val * 1024).toFixed(2)} KB`;
+        return `${(val * 1024).toFixed(1)} KB`;
       case 'GB':
         return `${(val / 1024).toFixed(4)} GB`;
       case 'MB':
+        return `${val.toFixed(2)} MB`;
+      case 'Auto':
       default:
+        if (val === 0) return '0 KB';
+        if (val < 0.1) return `${(val * 1024).toFixed(1)} KB`;
+        if (val >= 1024) return `${(val / 1024).toFixed(2)} GB`;
         return `${val.toFixed(2)} MB`;
     }
   };
@@ -1661,9 +1666,10 @@ export default function ConnectionDashboard() {
                             onChange={e => setTableSizeUnit(e.target.value)}
                             className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white outline-none focus:border-teal-500 cursor-pointer font-semibold text-gray-755"
                           >
-                            <option value="Bytes">Bytes</option>
-                            <option value="KB">KB</option>
+                            <option value="Auto">Auto</option>
                             <option value="MB">MB</option>
+                            <option value="KB">KB</option>
+                            <option value="Bytes">Bytes</option>
                             <option value="GB">GB</option>
                           </select>
                         </div>
