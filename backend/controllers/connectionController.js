@@ -2,6 +2,7 @@ const Connection = require('../models/connectionModel');
 const { getConnection, testConnection, closeConnection } = require('../connections/connectionManager');
 const { saveHistory } = require('./queryHistoryController');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
+const { logAuditTrail } = require('../utils/auditLogger');
 
 const checkAccess = (connection, user) => {
   if (user.role === 'admin') return true;
@@ -64,6 +65,14 @@ exports.createConnection = async (req, res) => {
       username, password, database,
       connectionString, ssl
     });
+
+    // Log to Audit Trail
+    await logAuditTrail(
+      connection._id,
+      req.user.id,
+      'CREATE_CONNECTION',
+      `[${type.toUpperCase()}] Added new database connection: "${name}" (${host || 'localhost'}:${port || (type === 'mysql' ? 3306 : 5432)})`
+    );
 
     res.status(201).json({
       success: true,
@@ -138,6 +147,14 @@ exports.updateConnection = async (req, res) => {
 
     await connection.save();
 
+    // Log to Audit Trail
+    await logAuditTrail(
+      connection._id,
+      req.user.id,
+      'UPDATE_CONNECTION',
+      `[${connection.type.toUpperCase()}] Updated connection parameters for "${connection.name}" (${connection.host}:${connection.port})`
+    );
+
     res.status(200).json({
       success: true,
       message: 'Connection updated successfully!',
@@ -163,6 +180,15 @@ exports.testConnectionRoute = async (req, res) => {
       type, host, port, username,
       password, database, connectionString, ssl
     });
+
+    if (req.user?.id) {
+      await logAuditTrail(
+        null,
+        req.user.id,
+        'TEST_CONNECTION',
+        `[${(type || 'DB').toUpperCase()}] Tested connection configuration for ${host || 'localhost'} - Status: ${result.success ? 'Success' : 'Failed'}`
+      );
+    }
 
     if (result.success) {
       res.status(200).json({ success: true, message: result.message });
@@ -191,6 +217,14 @@ exports.deleteConnection = async (req, res) => {
     // Active connection close
     await closeConnection(req.params.id);
     await Connection.findByIdAndDelete(req.params.id);
+
+    // Log to Audit Trail
+    await logAuditTrail(
+      connection._id,
+      req.user.id,
+      'DELETE_CONNECTION',
+      `[${connection.type.toUpperCase()}] Removed/Deleted connection "${connection.name}"`
+    );
 
     res.status(200).json({ success: true, message: 'Connection deleted successfully!' });
   } catch (err) {
@@ -597,14 +631,38 @@ exports.runQuery = async (req, res) => {
       console.error('History save error:', e.message);
     }
 
-    // Save to System AuditLog
+    // Save to System AuditLog with specific Action classification
     try {
       const AuditLog = require('../models/auditLogModel');
       const targetDb = (database || connection.database || 'default').toUpperCase();
+      const cleanQ = query.replace(/\/\*.*?\*\//g, '').trim();
+      const upperQ = cleanQ.toUpperCase();
+      let auditAction = 'RUN_QUERY';
+
+      if (upperQ.startsWith('INSERT')) {
+        auditAction = 'INSERT_DATA';
+      } else if (upperQ.startsWith('UPDATE')) {
+        auditAction = 'UPDATE_DATA';
+      } else if (upperQ.startsWith('DELETE') || upperQ.startsWith('TRUNCATE')) {
+        auditAction = 'DELETE_DATA';
+      } else if (upperQ.startsWith('CREATE TABLE')) {
+        auditAction = 'CREATE_TABLE';
+      } else if (upperQ.startsWith('ALTER TABLE')) {
+        auditAction = 'ALTER_TABLE';
+      } else if (upperQ.startsWith('DROP TABLE')) {
+        auditAction = 'DROP_TABLE';
+      } else if (upperQ.startsWith('CREATE DATABASE') || upperQ.startsWith('CREATE SCHEMA')) {
+        auditAction = 'CREATE_DATABASE';
+      } else if (upperQ.startsWith('ALTER DATABASE') || upperQ.startsWith('ALTER SCHEMA')) {
+        auditAction = 'ALTER_DATABASE';
+      } else if (upperQ.startsWith('DROP DATABASE') || upperQ.startsWith('DROP SCHEMA')) {
+        auditAction = 'DROP_DATABASE';
+      }
+
       await AuditLog.create({
         connection: id,
         user: req.user.id,
-        action: 'RUN_QUERY',
+        action: auditAction,
         details: `[${targetDb}] (${executionTime}ms, ${rowsAffected} rows): ${query.substring(0, 400)}`
       });
     } catch (auditErr) {

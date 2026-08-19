@@ -36,6 +36,30 @@ export default function AuditLogsPanel({ connectionId, databases = [] }) {
 
   const getActionBadge = (action) => {
     switch (action) {
+      case 'CREATE_CONNECTION':
+        return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">CREATE CONNECTION</span>;
+      case 'UPDATE_CONNECTION':
+        return <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE CONNECTION</span>;
+      case 'DELETE_CONNECTION':
+        return <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">DELETE CONNECTION</span>;
+      case 'TEST_CONNECTION':
+        return <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">TEST CONNECTION</span>;
+      case 'INSERT_DATA':
+        return <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-[10px] font-bold">INSERT DATA</span>;
+      case 'UPDATE_DATA':
+        return <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE DATA</span>;
+      case 'DELETE_DATA':
+        return <span className="bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded text-[10px] font-bold">DELETE DATA</span>;
+      case 'CREATE_TABLE':
+        return <span className="bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded text-[10px] font-bold">CREATE TABLE</span>;
+      case 'ALTER_TABLE':
+        return <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold">ALTER TABLE</span>;
+      case 'DROP_TABLE':
+        return <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">DROP TABLE</span>;
+      case 'CREATE_DATABASE':
+        return <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 px-2 py-0.5 rounded text-[10px] font-bold">CREATE DB</span>;
+      case 'DROP_DATABASE':
+        return <span className="bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded text-[10px] font-bold">DROP DB</span>;
       case 'RUN_QUERY':
         return <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded text-[10px] font-bold">RUN QUERY</span>;
       case 'SLOW_QUERY':
@@ -51,13 +75,23 @@ export default function AuditLogsPanel({ connectionId, databases = [] }) {
       case 'UPDATE_DB_USER':
         return <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE DB USER</span>;
       default:
-        return <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold">{action}</span>;
+        return <span className="bg-gray-100 text-gray-700 border border-gray-200 px-2 py-0.5 rounded text-[10px] font-bold">{action ? action.replace(/_/g, ' ') : 'ACTION'}</span>;
     }
   };
 
   // Collect unique action types for the dropdown
   const availableActions = useMemo(() => {
     const defaultActions = [
+      'CREATE_CONNECTION',
+      'UPDATE_CONNECTION',
+      'DELETE_CONNECTION',
+      'TEST_CONNECTION',
+      'INSERT_DATA',
+      'UPDATE_DATA',
+      'DELETE_DATA',
+      'CREATE_TABLE',
+      'ALTER_TABLE',
+      'DROP_TABLE',
       'RUN_QUERY',
       'SLOW_QUERY',
       'EXPORT_BACKUP',
@@ -231,13 +265,13 @@ export default function AuditLogsPanel({ connectionId, databases = [] }) {
           
           {/* Target DB Dropdown */}
           <div className="flex items-center gap-1">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider hidden sm:inline">DB:</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider hidden sm:inline">🗄️Database:</label>
             <select
               value={selectedTargetDb}
               onChange={e => setSelectedTargetDb(e.target.value)}
               className="px-2.5 py-1 border border-gray-250 rounded-lg text-xs outline-none focus:border-teal-500 bg-gray-50/80 focus:bg-white text-gray-700 font-medium transition cursor-pointer"
             >
-              <option value="">📁 All Databases</option>
+              <option value=""> All Databases</option>
               {databases.map((db, idx) => (
                 <option key={typeof db === 'string' ? db : db.name || idx} value={typeof db === 'string' ? db : db.name}>
                   {typeof db === 'string' ? db : db.name}
