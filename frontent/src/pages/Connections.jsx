@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,76 @@ export default function Connections() {
   const [testLoading, setTestLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [testResult, setTestResult] = useState(null);
+
+  // Filter States (Database Type, Role, User, Search)
+  const [filterType, setFilterType] = useState('all');
+  const [filterRole, setFilterRole] = useState('all');
+  const [filterUser, setFilterUser] = useState('all');
+  const [searchConnText, setSearchConnText] = useState('');
+
+  // Collect all unique users involved in connections
+  const allUsersInConnections = useMemo(() => {
+    const userMap = new Map();
+    connections.forEach(conn => {
+      if (conn.user && conn.user._id) {
+        userMap.set(conn.user._id, conn.user);
+      }
+      if (Array.isArray(conn.allowedUsers)) {
+        conn.allowedUsers.forEach(u => {
+          if (u && u._id) userMap.set(u._id, u);
+        });
+      }
+    });
+    return Array.from(userMap.values());
+  }, [connections]);
+
+  // Cascading user options based on selected role
+  const userOptions = useMemo(() => {
+    if (filterRole === 'all') return allUsersInConnections;
+    return allUsersInConnections.filter(u => (u.role || '').toLowerCase() === filterRole.toLowerCase());
+  }, [allUsersInConnections, filterRole]);
+
+  // Filtered connections list
+  const filteredConnections = useMemo(() => {
+    return connections.filter(conn => {
+      // 1. Database Type Filter
+      if (filterType !== 'all') {
+        if ((conn.type || '').toLowerCase() !== filterType.toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 2. Role Filter
+      if (filterRole !== 'all') {
+        const ownerRole = (conn.user?.role || '').toLowerCase();
+        const allowedRoles = (conn.allowedUsers || []).map(u => (u.role || '').toLowerCase());
+        const matchesRole = ownerRole === filterRole.toLowerCase() || allowedRoles.includes(filterRole.toLowerCase());
+        if (!matchesRole) return false;
+      }
+
+      // 3. User Filter
+      if (filterUser !== 'all') {
+        const ownerId = conn.user?._id || conn.user;
+        const allowedIds = (conn.allowedUsers || []).map(u => u._id || u);
+        const matchesUser = ownerId === filterUser || allowedIds.includes(filterUser);
+        if (!matchesUser) return false;
+      }
+
+      // Search text
+      if (searchConnText.trim()) {
+        const term = searchConnText.toLowerCase().trim();
+        const connName = (conn.name || '').toLowerCase();
+        const connHost = (conn.host || '').toLowerCase();
+        const connDb = (conn.database || '').toLowerCase();
+        const connType = (conn.type || '').toLowerCase();
+        const ownerName = (conn.user?.name || '').toLowerCase();
+        const matchesText = connName.includes(term) || connHost.includes(term) || connDb.includes(term) || connType.includes(term) || ownerName.includes(term);
+        if (!matchesText) return false;
+      }
+
+      return true;
+    });
+  }, [connections, filterType, filterRole, filterUser, searchConnText]);
 
   // Edit Connection Modal States
   const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
@@ -529,6 +599,113 @@ export default function Connections() {
           </div>
         )}
 
+        {/* Connection Filters Bar */}
+        {connections.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 shadow-sm">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-3 pb-2 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🔍</span>
+                <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                  Filter Connections
+                </h3>
+                <span className="text-[11px] bg-teal-50 text-[#0d9da4] px-2.5 py-0.5 rounded-full font-bold">
+                  Showing {filteredConnections.length} of {connections.length} connections
+                </span>
+              </div>
+
+              {(filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText) && (
+                <button
+                  onClick={() => {
+                    setFilterType('all');
+                    setFilterRole('all');
+                    setFilterUser('all');
+                    setSearchConnText('');
+                  }}
+                  className="text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer flex items-center gap-1 bg-red-50 px-2.5 py-1 rounded-lg border border-red-100 transition-all"
+                >
+                  ✕ Reset Filters
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {/* 1. Database Type Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  1. Database Type:
+                </label>
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
+                >
+                  <option value="all">All Database Types</option>
+                  <option value="mysql">🐬 MySQL</option>
+                  <option value="postgresql">🐘 PostgreSQL</option>
+                  <option value="mongodb">🍃 MongoDB</option>
+                  <option value="oracle">🔴 Oracle</option>
+                  <option value="sqlite">📦 SQLite</option>
+                  <option value="sqlserver">💻 SQL Server</option>
+                </select>
+              </div>
+
+              {/* 2. Role Filter */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  2. Role:
+                </label>
+                <select
+                  value={filterRole}
+                  onChange={(e) => {
+                    setFilterRole(e.target.value);
+                    setFilterUser('all'); // Reset user when role changes
+                  }}
+                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="admin">👑 Admin</option>
+                  <option value="developer">💻 Developer</option>
+                  <option value="editor">✏️ Editor</option>
+                  <option value="viewer">👁️ Viewer</option>
+                </select>
+              </div>
+
+              {/* 3. User Filter (Cascading) */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  3. User:
+                </label>
+                <select
+                  value={filterUser}
+                  onChange={(e) => setFilterUser(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
+                >
+                  <option value="all">All Users</option>
+                  {userOptions.map((u) => (
+                    <option key={u._id} value={u._id}>
+                      👤 {u.name} ({u.role || 'user'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Search text */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-600 mb-1">
+                  Search Connection:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Name, host, DB..."
+                  value={searchConnText}
+                  onChange={(e) => setSearchConnText(e.target.value)}
+                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 outline-none focus:border-teal-500 focus:bg-white text-gray-800"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Connections List */}
         {connections.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -546,9 +723,30 @@ export default function Connections() {
               + Add Connection
             </button>
           </div>
+        ) : filteredConnections.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+            <p className="text-3xl mb-2">🔍</p>
+            <p className="text-gray-800 font-bold mb-1">
+              No matching connections found
+            </p>
+            <p className="text-gray-500 text-xs mb-4">
+              No connections match your selected Database Type ({filterType}), Role ({filterRole}), or User filter.
+            </p>
+            <button
+              onClick={() => {
+                setFilterType('all');
+                setFilterRole('all');
+                setFilterUser('all');
+                setSearchConnText('');
+              }}
+              className="px-4 py-2 bg-teal-50 text-[#0d9da4] border border-teal-200 font-bold text-xs rounded-lg hover:bg-teal-100 transition-all cursor-pointer"
+            >
+              Clear All Filters
+            </button>
+          </div>
         ) : (
           <div className="space-y-3">
-            {connections.map(conn => (
+            {filteredConnections.map(conn => (
               <div key={conn._id} className="flex items-stretch gap-3">
                 <div
                   onClick={() => navigate(`/connections/${conn._id}`)}
