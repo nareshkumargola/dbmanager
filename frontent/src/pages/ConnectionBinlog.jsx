@@ -119,28 +119,28 @@ export default function ConnectionBinlog() {
         {/* Databases Sidebar */}
         <div
           style={{ width: sidebarOpen ? `${sidebarWidth}px` : '0px' }}
-          className="bg-white border-r border-gray-250 flex flex-col shrink-0 overflow-y-auto transition-none relative z-10 select-none"
+          className="bg-white border-r border-gray-250 flex flex-col shrink-0 overflow-hidden transition-none relative z-10 select-none"
         >
-          <div className="p-3 border-b border-gray-150 flex items-center justify-between">
+          <div className="p-3 border-b border-gray-150 flex items-center justify-between shrink-0">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Schemas / Databases</h3>
             <span className="text-[10px] text-gray-400 font-mono font-medium">{sidebarWidth}px</span>
           </div>
-          <p className="text-[10px] text-gray-400 px-3 pt-2 leading-normal">
+          <p className="text-[10px] text-gray-400 px-3 pt-2 leading-normal shrink-0">
             Select a database to filter {connectionType === 'mongodb' ? 'oplogs' : (connectionType === 'postgresql' ? 'Write-Ahead logs (WAL)' : 'binary logs')}.
           </p>
           
           {error && (
-            <div className="mx-3 my-2 p-2 bg-red-50 text-red-600 rounded text-xs leading-normal">
+            <div className="mx-3 my-2 p-2 bg-red-50 text-red-600 rounded text-xs leading-normal shrink-0">
               ⚠️ {error}
             </div>
           )}
 
           {databases.length === 0 ? (
-            <div className="text-center text-xs text-gray-400 py-6">
+            <div className="text-center text-xs text-gray-400 py-6 shrink-0">
               No schemas found.
             </div>
           ) : (
-            <div className="space-y-1 p-2">
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-1 p-2">
               {databases.map(db => (
                 <button
                   key={db}

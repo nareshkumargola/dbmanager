@@ -1315,78 +1315,135 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
     const events = [];
     let nextPos = startPos;
     
-    // 20% probability of generating simulated writes
-    if (Math.random() < 0.20) {
+    // Generate simulated writes on most ticks (75% probability)
+    if (Math.random() < 0.75) {
       const rand = Math.floor(Math.random() * 1000) + 1;
-      const mockTemplates = [
-        { 
-          type: 'INSERT', 
-          statement: `INSERT INTO users (name, email, role) VALUES ('Developer_${rand}', 'dev_${rand}@coinfinity.io', 'developer')`,
-          diff: {
-            table: 'users',
-            newData: { id: rand, name: `Developer_${rand}`, email: `dev_${rand}@coinfinity.io`, role: 'developer' },
-            oldData: null
+      const isMongo = connection.type === 'mongodb';
+      const isPg = connection.type === 'postgresql';
+
+      let mockTemplates = [];
+
+      if (isMongo) {
+        mockTemplates = [
+          {
+            type: 'INSERT',
+            statement: `db.users.insertOne({ name: "User_${rand}", email: "user_${rand}@allatone.io", role: "developer", createdAt: new Date() })`,
+            diff: {
+              table: 'users',
+              newData: { _id: `65a1b2c3d4e5f${rand}`, name: `User_${rand}`, email: `user_${rand}@allatone.io`, role: 'developer' },
+              oldData: null
+            }
+          },
+          {
+            type: 'UPDATE',
+            statement: `db.orders.updateOne({ orderId: "ORD_${rand}" }, { $set: { status: "completed", amount: ${rand * 10} } })`,
+            diff: {
+              table: 'orders',
+              newData: { orderId: `ORD_${rand}`, status: 'completed', amount: rand * 10 },
+              oldData: { orderId: `ORD_${rand}`, status: 'pending', amount: rand * 10 }
+            }
+          },
+          {
+            type: 'DELETE',
+            statement: `db.sessions.deleteOne({ userId: "USER_${rand}", expired: true })`,
+            diff: {
+              table: 'sessions',
+              oldData: { userId: `USER_${rand}`, expired: true },
+              newData: null
+            }
+          },
+          {
+            type: 'DDL',
+            statement: `db.createCollection("audit_logs_${rand}")`,
+            diff: {
+              table: `audit_logs_${rand}`,
+              newData: null,
+              oldData: null
+            }
+          },
+          {
+            type: 'OTHER',
+            statement: `db.users.find({ role: "developer" }).limit(10)`,
+            diff: {
+              table: 'users',
+              newData: null,
+              oldData: null
+            }
           }
-        },
-        { 
-          type: 'UPDATE', 
-          statement: `UPDATE orders SET status = 'completed', amount = 1250, updated_at = NOW() WHERE id = ${rand}`,
-          diff: {
-            table: 'orders',
-            newData: { id: rand, status: 'completed', amount: 1250 },
-            oldData: { id: rand, status: 'pending', amount: 1250 }
-          }
-        },
-        { 
-          type: 'DELETE', 
-          statement: `DELETE FROM sessions WHERE expired = 1 AND user_id = ${rand}`,
-          diff: {
-            table: 'sessions',
-            oldData: { expired: 1, user_id: rand },
-            newData: null
-          }
-        },
-        { 
-          type: 'DDL', 
-          statement: `CREATE TABLE IF NOT EXISTS audit_logs_${rand} (id INT AUTO_INCREMENT PRIMARY KEY, event VARCHAR(255))`,
-          diff: {
-            table: `audit_logs_${rand}`,
-            newData: null,
-            oldData: null
-          }
-        },
-        { 
-          type: 'SP', 
-          statement: `CALL calculate_monthly_revenue(${rand}, '2026-07-01')`,
-          diff: {
-            table: 'orders',
-            newData: { procedure: 'calculate_monthly_revenue', args: [rand, '2026-07-01'] },
-            oldData: null
-          }
-        },
-        { 
-          type: 'OTHER', 
-          statement: `SELECT * FROM users WHERE role = 'developer' AND status = 'active' LIMIT 10`,
-          diff: {
-            table: 'users',
-            newData: null,
-            oldData: null
-          }
-        },
-      ];
+        ];
+      } else {
+        mockTemplates = [
+          { 
+            type: 'INSERT', 
+            statement: `INSERT INTO users (name, email, role) VALUES ('Developer_${rand}', 'dev_${rand}@coinfinity.io', 'developer')`,
+            diff: {
+              table: 'users',
+              newData: { id: rand, name: `Developer_${rand}`, email: `dev_${rand}@coinfinity.io`, role: 'developer' },
+              oldData: null
+            }
+          },
+          { 
+            type: 'UPDATE', 
+            statement: `UPDATE orders SET status = 'completed', amount = 1250, updated_at = NOW() WHERE id = ${rand}`,
+            diff: {
+              table: 'orders',
+              newData: { id: rand, status: 'completed', amount: 1250 },
+              oldData: { id: rand, status: 'pending', amount: 1250 }
+            }
+          },
+          { 
+            type: 'DELETE', 
+            statement: `DELETE FROM sessions WHERE expired = 1 AND user_id = ${rand}`,
+            diff: {
+              table: 'sessions',
+              oldData: { expired: 1, user_id: rand },
+              newData: null
+            }
+          },
+          { 
+            type: 'DDL', 
+            statement: `CREATE TABLE IF NOT EXISTS audit_logs_${rand} (id INT AUTO_INCREMENT PRIMARY KEY, event VARCHAR(255))`,
+            diff: {
+              table: `audit_logs_${rand}`,
+              newData: null,
+              oldData: null
+            }
+          },
+          { 
+            type: 'SP', 
+            statement: `CALL calculate_monthly_revenue(${rand}, '2026-07-01')`,
+            diff: {
+              table: 'orders',
+              newData: { procedure: 'calculate_monthly_revenue', args: [rand, '2026-07-01'] },
+              oldData: null
+            }
+          },
+          { 
+            type: 'OTHER', 
+            statement: `SELECT * FROM users WHERE role = 'developer' AND status = 'active' LIMIT 10`,
+            diff: {
+              table: 'users',
+              newData: null,
+              oldData: null
+            }
+          },
+        ];
+      }
+
       const selected = mockTemplates[Math.floor(Math.random() * mockTemplates.length)];
       nextPos = startPos + 150;
 
       const mockUsers = [
         'root@localhost',
+        'admin_user@mongodb',
         'webapp_backend@192.168.1.15',
-        'repl_client@10.0.0.4',
         'developer_worker@127.0.0.1'
       ];
       const dbUser = mockUsers[Math.floor(Math.random() * mockUsers.length)];
 
+      const activeDbName = connection.database || 'test';
       if (selected.diff) {
-        selected.diff.database = connection.database || 'test';
+        selected.diff.database = activeDbName;
       }
 
       const filterSettings = connection.binlogFilterSettings || { INSERT: true, UPDATE: true, DELETE: true, DDL: true, SP: true, OTHER: true };
@@ -1394,12 +1451,12 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
 
       let auditRecord = null;
       if (filterSettings[auditCheckKey]) {
-        const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
+        const BinlogAuditTable = getBinlogAuditModel(connection, activeDbName, 'INSERT');
         auditRecord = await BinlogAuditTable.create({
           connectionId,
           eventType: selected.type,
           statement: selected.statement,
-          originalType: 'Query (Simulated)',
+          originalType: isMongo ? 'Oplog (Simulated)' : (isPg ? 'WAL (Simulated)' : 'Query (Simulated)'),
           pos: startPos,
           logName: activeFile,
           user: userId || null,
@@ -1409,12 +1466,12 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
       }
 
       if (selected.type === 'SP' && filterSettings['SP']) {
-        const BinlogAuditSP = getBinlogAuditModel(connection, connection.database || 'test', 'SP');
+        const BinlogAuditSP = getBinlogAuditModel(connection, activeDbName, 'SP');
         await BinlogAuditSP.create({
           connectionId,
           eventType: selected.type,
           statement: selected.statement,
-          originalType: 'Query (Simulated)',
+          originalType: isMongo ? 'Oplog (Simulated)' : (isPg ? 'WAL (Simulated)' : 'Query (Simulated)'),
           pos: startPos,
           logName: activeFile,
           user: userId || null,
@@ -1424,7 +1481,7 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
       }
 
       if (auditRecord) {
-        const BinlogAuditTable = getBinlogAuditModel(connection, connection.database || 'test', 'INSERT');
+        const BinlogAuditTable = getBinlogAuditModel(connection, activeDbName, 'INSERT');
         const populatedRecord = await BinlogAuditTable.findById(auditRecord._id).populate('user', 'name email');
         events.push({
           _id: populatedRecord._id,
@@ -1755,15 +1812,6 @@ exports.getBinlogHistory = async (req, res) => {
       }
     }
 
-    // Database schema filter with loose match fallback
-    if (reqDatabase) {
-      query.$or = [
-        { 'diff.database': reqDatabase },
-        { 'diff.database': { $exists: false } },
-        { 'diff.database': null }
-      ];
-    }
-
     // Event Type Filter
     if (filterType && filterType !== 'ALL') {
       query.eventType = filterType;
@@ -1772,41 +1820,40 @@ exports.getBinlogHistory = async (req, res) => {
     // Text Search Query Filter
     if (searchQuery) {
       const searchRegex = new RegExp(searchQuery.trim(), 'i');
-      const searchOr = [
+      query.$or = [
         { statement: searchRegex },
         { dbUser: searchRegex },
         { originalType: searchRegex },
         { 'diff.table': searchRegex }
       ];
+    }
 
-      if (query.$or) {
-        const dbOr = query.$or;
-        delete query.$or;
-        query.$and = [
-          { $or: dbOr },
-          { $or: searchOr }
-        ];
-      } else {
-        query.$or = searchOr;
+    const defaultDb = connection.database || 'test';
+    const databasesToSearch = new Set([defaultDb]);
+    if (reqDatabase) databasesToSearch.add(reqDatabase);
+
+    const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
+    const historyMap = new Map();
+
+    for (const dbName of databasesToSearch) {
+      const eventCategory = filterType === 'SP' ? 'SP' : 'INSERT';
+      const BinlogAudit = getBinlogAuditModel(connection, dbName, eventCategory);
+      const records = await BinlogAudit.find(query)
+        .populate('user', 'name email')
+        .sort({ timestamp: -1 })
+        .limit(limitVal);
+
+      for (const rec of records) {
+        if (!historyMap.has(rec._id.toString())) {
+          historyMap.set(rec._id.toString(), rec);
+        }
       }
     }
 
-    const targetDbName = reqDatabase || connection.database || 'test';
-    const limitVal = timeFilter && timeFilter !== 'ALL' ? 500 : 150;
-
-    let history = [];
-    if (filterType === 'SP') {
-      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, 'SP');
-      history = await BinlogAudit.find(query)
-        .populate('user', 'name email')
-        .sort({ timestamp: -1 })
-        .limit(limitVal);
-    } else {
-      const BinlogAudit = getBinlogAuditModel(connection, targetDbName, 'INSERT');
-      history = await BinlogAudit.find(query)
-        .populate('user', 'name email')
-        .sort({ timestamp: -1 })
-        .limit(limitVal);
+    let history = Array.from(historyMap.values());
+    history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    if (history.length > limitVal) {
+      history = history.slice(0, limitVal);
     }
 
     res.status(200).json({ success: true, history });

@@ -350,8 +350,15 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     // 0. Database filter
     if (database) {
       const itemDb = item.diff && item.diff.database;
-      if (itemDb && itemDb.toLowerCase() !== database.toLowerCase()) {
-        return false;
+      if (itemDb) {
+        const d1 = itemDb.toLowerCase();
+        const d2 = database.toLowerCase();
+        if (d1 !== d2 && d1 !== 'test' && d1 !== 'default' && d1 !== 'admin') {
+          const stmtLower = (item.statement || '').toLowerCase();
+          if (!stmtLower.includes(d2)) {
+            return false;
+          }
+        }
       }
     }
 
