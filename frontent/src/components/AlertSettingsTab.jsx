@@ -78,7 +78,7 @@ export default function AlertSettingsTab({ connectionId }) {
       <div className="mb-6">
         <h3 className="text-base font-bold text-gray-900">🔔 Notification & Alert Configurations</h3>
         <p className="text-xs text-gray-400 mt-1 leading-normal">
-          Apne database servers ke status par nazar rakhne ke liye email notification alerts aur utilization warning thresholds setup karein.
+          Configure email notifications and warning threshold limits to monitor your database server health status.
         </p>
       </div>
 
@@ -99,7 +99,7 @@ export default function AlertSettingsTab({ connectionId }) {
         <div className="flex items-center justify-between pb-4 border-b border-gray-100">
           <div>
             <label className="block text-xs font-bold text-gray-800">Enable Server Health Monitoring</label>
-            <p className="text-[10px] text-gray-400 leading-normal">Agar database unreachable hota hai ya limits cross karta hai toh alert notify karein.</p>
+            <p className="text-[10px] text-gray-400 leading-normal">Receive instant notifications if the database becomes unreachable or exceeds threshold limits.</p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer select-none">
             <input
@@ -187,7 +187,7 @@ export default function AlertSettingsTab({ connectionId }) {
                 <span className="text-[10px] text-gray-400 font-medium font-mono min-w-[20px]">50-98%</span>
               </div>
               <p className="text-[9px] text-gray-400 mt-1 leading-normal">
-                Active connection counts max connections limit ka ye percentage cross karte hi warning trigger hogi.
+                Triggers a warning when active connection counts exceed this percentage of the maximum allowed connections limit.
               </p>
             </div>
 
@@ -214,7 +214,7 @@ export default function AlertSettingsTab({ connectionId }) {
                 <span className="text-[10px] text-gray-400 font-medium font-mono min-w-[20px]">50-2000ms</span>
               </div>
               <p className="text-[9px] text-gray-400 mt-1 leading-normal">
-                Koi bhi database query execution agar is milliseconds limits se zyada time legi, to warning dispatch ki jayegi.
+                Dispatches a warning alert whenever database query execution exceeds this millisecond threshold.
               </p>
             </div>
           </div>
