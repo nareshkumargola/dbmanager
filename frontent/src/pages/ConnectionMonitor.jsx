@@ -249,21 +249,10 @@ export default function ConnectionMonitor() {
             <tr style="background: #f1f5f9;">
               <th style="border: 1px solid #ddd; padding: 6px; text-align: left;">Time / Date</th>
               <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Connections</th>
-              ${dbType === 'mysql' ? `
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Queries / Sec</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Slow Queries</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Size (MB)</th>
-              ` : ''}
-              ${dbType === 'postgresql' ? `
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Commits</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Rollbacks</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Blocks Hit</th>
-              ` : ''}
-              ${dbType === 'mongodb' ? `
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Collections</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Documents</th>
-                <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Size (MB)</th>
-              ` : ''}
+              <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Queries / Sec</th>
+              <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Slow Queries</th>
+              <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Tables / Collections</th>
+              <th style="border: 1px solid #ddd; padding: 6px; text-align: right;">Size (MB)</th>
             </tr>
           </thead>
           <tbody>
@@ -271,21 +260,10 @@ export default function ConnectionMonitor() {
               <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
                 <td style="border: 1px solid #ddd; padding: 6px; font-weight: 500;">${hour.hour}</td>
                 <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.activeConnections}</td>
-                ${dbType === 'mysql' ? `
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.queriesPerSecond}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.slowQueries}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.sizeMB}</td>
-                ` : ''}
-                ${dbType === 'postgresql' ? `
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.commits}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.rollbacks}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.blocksHit}</td>
-                ` : ''}
-                ${dbType === 'mongodb' ? `
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.totalCollections}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.totalDocuments}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.sizeMB}</td>
-                ` : ''}
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.queriesPerSecond || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.slowQueries || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.totalTables || hour.totalCollections || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.sizeMB || 0}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -308,111 +286,49 @@ export default function ConnectionMonitor() {
         <strong>Generated:</strong> ${new Date().toLocaleString('en-IN')}<br/>
       </div>
 
-      ${dbType === 'mysql' ? `
-        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">MySQL Current Metrics</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Connection Usage %</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Queries Per Second</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.queriesPerSecond}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Slow Queries</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.slowQueries}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.sizeMB} MB</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total Tables</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalTables}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Uptime</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${Math.floor(monitorData.uptime / 3600)}h ${Math.floor((monitorData.uptime % 3600) / 60)}m</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Bytes Sent</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${(monitorData.bytesSent / 1024 / 1024).toFixed(2)} MB</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Bytes Received</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${(monitorData.bytesReceived / 1024 / 1024).toFixed(2)} MB</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Cache Hit Rate</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.cacheHitRate}%</td>
-          </tr>
-        </table>
-      ` : ''}
-
-      ${dbType === 'postgresql' ? `
-        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">PostgreSQL Current Metrics</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.size}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total Tables</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalTables}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Commits</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.commits.toLocaleString()}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Rollbacks</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.rollbacks.toLocaleString()}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Blocks Read</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksRead.toLocaleString()}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Blocks Hit</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksHit.toLocaleString()}</td>
-          </tr>
-        </table>
-      ` : ''}
-
-      ${dbType === 'mongodb' ? `
-        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">MongoDB Current Metrics</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total Collections</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalCollections}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total Documents</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalDocuments.toLocaleString()}</td>
-          </tr>
-          <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.sizeMB} MB</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Uptime</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${Math.round(monitorData.uptime / 60)} minutes</td>
-          </tr>
-        </table>
-      ` : ''}
+      <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">${dbType?.toUpperCase()} Server Performance Metrics</h2>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Connection Usage %</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Queries / Ops Per Second</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.queriesPerSecond || 0}</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Slow Queries</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.slowQueries || 0}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.sizeMB} MB</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total ${dbType === 'mongodb' ? 'Collections' : 'Tables'}</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalTables || monitorData.totalCollections || 0}</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Server Uptime</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${Math.floor((monitorData.uptime || 0) / 3600)}h ${Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Sent</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Received</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Cache / Buffer Pool Hit Rate</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.cacheHitRate || 99}%</td>
+        </tr>
+      </table>
 
       ${historyTableHTML}
 
@@ -601,149 +517,91 @@ export default function ConnectionMonitor() {
         ) : (
           <div className="space-y-6">
             
-            {/* MySQL Grid */}
-            {dbType === 'mysql' && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Connections</p>
-                    <div className="mb-2">
-                      <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
-                      <p className="text-xs text-gray-400">max: {monitorData.maxConnections}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>Usage</span>
-                        <span className={`font-bold ${
-                          (monitorData.activeConnections / monitorData.maxConnections) * 100 > 80 ? 'text-red-600' : 'text-green-600'
-                        }`}>
-                          {Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full ${
-                            (monitorData.activeConnections / monitorData.maxConnections) * 100 > 80 ? 'bg-red-500' : 'bg-green-500'
-                          }`}
-                          style={{ width: `${Math.min((monitorData.activeConnections / monitorData.maxConnections) * 100, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">QPS</p>
-                    <p className="text-2xl font-bold text-gray-900">{monitorData.queriesPerSecond}</p>
-                    <p className="text-xs text-gray-400 mt-1">Queries / Second</p>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Slow Queries</p>
-                    <p className={`text-2xl font-bold ${monitorData.slowQueries > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
-                      {monitorData.slowQueries}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">Total recorded</p>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Size</p>
-                    <p className="text-2xl font-bold text-gray-900">{monitorData.sizeMB}</p>
-                    <p className="text-xs text-gray-400 mt-1">MB (All databases)</p>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Total Tables</p>
-                    <p className="text-2xl font-bold text-gray-900">{monitorData.totalTables}</p>
-                    <p className="text-xs text-gray-400 mt-1">Across all databases</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Uptime</p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {Math.floor(monitorData.uptime / 86400)}d {Math.floor((monitorData.uptime % 86400) / 3600)}h {Math.floor((monitorData.uptime % 3600) / 60)}m
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Sent</p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {(monitorData.bytesSent / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                    <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Received</p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {(monitorData.bytesReceived / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs flex justify-between items-center">
-                  <div>
-                    <h3 className="text-xs text-gray-500 font-bold uppercase">InnoDB Buffer Pool Cache Hit Rate</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Higher is better. Measures database reading efficiency from memory vs disk.</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-2xl font-bold text-gray-900">{monitorData.cacheHitRate}%</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* PostgreSQL Grid */}
-            {dbType === 'postgresql' && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Active Connections</p>
+            {/* Universal Server Metric Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Connections</p>
+                <div className="mb-2">
                   <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
                   <p className="text-xs text-gray-400">max: {monitorData.maxConnections}</p>
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Database Size</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.size}</p>
-                  <p className="text-xs text-gray-400">Disk space used</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Total Tables</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.totalTables}</p>
-                  <p className="text-xs text-gray-400">Public schema</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Commits / Rollbacks</p>
-                  <p className="text-xl font-bold text-gray-900">
-                    {monitorData.commits.toLocaleString()} / {monitorData.rollbacks.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-400">Transaction counts</p>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Usage</span>
+                    <span className={`font-bold ${
+                      (monitorData.activeConnections / Math.max(monitorData.maxConnections, 1)) * 100 > 80 ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {Math.round((monitorData.activeConnections / Math.max(monitorData.maxConnections, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className={`h-1.5 rounded-full ${
+                        (monitorData.activeConnections / Math.max(monitorData.maxConnections, 1)) * 100 > 80 ? 'bg-red-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min((monitorData.activeConnections / Math.max(monitorData.maxConnections, 1)) * 100, 100)}%` }}
+                    />
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* MongoDB Grid */}
-            {dbType === 'mongodb' && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Connections</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
-                  <p className="text-xs text-gray-400">available: {monitorData.maxConnections}</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Collections</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.totalCollections}</p>
-                  <p className="text-xs text-gray-400">collections</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Total Documents</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.totalDocuments.toLocaleString()}</p>
-                  <p className="text-xs text-gray-400">records</p>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">Database Size</p>
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.sizeMB} MB</p>
-                  <p className="text-xs text-gray-400">Total data size</p>
-                </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">QPS / Ops</p>
+                <p className="text-2xl font-bold text-gray-900">{monitorData.queriesPerSecond || 0}</p>
+                <p className="text-xs text-gray-400 mt-1">Queries / Second</p>
               </div>
-            )}
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Slow Queries</p>
+                <p className={`text-2xl font-bold ${monitorData.slowQueries > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                  {monitorData.slowQueries || 0}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Total recorded</p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Size</p>
+                <p className="text-2xl font-bold text-gray-900">{monitorData.sizeMB}</p>
+                <p className="text-xs text-gray-400 mt-1">MB (All databases)</p>
+              </div>
+
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">{dbType === 'mongodb' ? 'Total Collections' : 'Total Tables'}</p>
+                <p className="text-2xl font-bold text-gray-900">{monitorData.totalTables || monitorData.totalCollections || 0}</p>
+                <p className="text-xs text-gray-400 mt-1">Across all schemas</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Uptime</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {Math.floor((monitorData.uptime || 0) / 86400)}d {Math.floor(((monitorData.uptime || 0) % 86400) / 3600)}h {Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m
+                </p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Sent</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Received</p>
+                <p className="text-lg font-bold text-gray-900">
+                  {((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs flex justify-between items-center">
+              <div>
+                <h3 className="text-xs text-gray-500 font-bold uppercase">Memory / Buffer Cache Hit Rate</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Higher is better. Measures database reading efficiency from memory vs disk.</p>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-bold text-gray-900">{monitorData.cacheHitRate || 99}%</span>
+              </div>
+            </div>
 
             {/* Hourly Trend charts */}
             {monitorHistory && monitorHistory.length > 1 && (
@@ -783,40 +641,38 @@ export default function ConnectionMonitor() {
                 </div>
 
                 {/* 2. Queries Per Second */}
-                {dbType === 'mysql' && (
-                  <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
-                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                      ⚡ Queries Per Second Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
-                    </h3>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <AreaChart data={displayedHistory}>
-                        <defs>
-                          <linearGradient id="colorQPS" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                        <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                          labelStyle={{ fontWeight: 'bold', fontSize: '10px', color: '#111827' }}
-                          itemStyle={{ fontSize: '11px' }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="queriesPerSecond"
-                          stroke="#10b981"
-                          strokeWidth={2}
-                          fillOpacity={1}
-                          fill="url(#colorQPS)"
-                          name="Queries / Sec"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
+                <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
+                    ⚡ Queries Per Second Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
+                  </h3>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <AreaChart data={displayedHistory}>
+                      <defs>
+                        <linearGradient id="colorQPS" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="hour" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        labelStyle={{ fontWeight: 'bold', fontSize: '10px', color: '#111827' }}
+                        itemStyle={{ fontSize: '11px' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="queriesPerSecond"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorQPS)"
+                        name="Queries / Sec"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
 
                 {/* 3. Slow Queries */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
@@ -1008,29 +864,12 @@ export default function ConnectionMonitor() {
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="px-4 py-3 text-gray-600 font-semibold">Hour</th>
+                        <th className="px-4 py-3 text-gray-600 font-semibold">Time / Hour</th>
                         <th className="px-4 py-3 text-right text-gray-600 font-semibold">Connections</th>
-                        {dbType === 'mysql' && (
-                          <>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">QPS</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Slow Queries</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Size (MB)</th>
-                          </>
-                        )}
-                        {dbType === 'postgresql' && (
-                          <>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Commits</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Rollbacks</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Blocks Hit</th>
-                          </>
-                        )}
-                        {dbType === 'mongodb' && (
-                          <>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Collections</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Documents</th>
-                            <th className="px-4 py-3 text-right text-gray-600 font-semibold">Size (MB)</th>
-                          </>
-                        )}
+                        <th className="px-4 py-3 text-right text-gray-600 font-semibold">QPS / Ops</th>
+                        <th className="px-4 py-3 text-right text-gray-600 font-semibold">Slow Queries</th>
+                        <th className="px-4 py-3 text-right text-gray-600 font-semibold">{dbType === 'mongodb' ? 'Collections' : 'Tables'}</th>
+                        <th className="px-4 py-3 text-right text-gray-600 font-semibold">Size (MB)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1038,27 +877,10 @@ export default function ConnectionMonitor() {
                         <tr key={i} className="hover:bg-gray-50 align-middle">
                           <td className="px-4 py-2.5 text-gray-700 font-medium">{hour.hour}</td>
                           <td className="px-4 py-2.5 text-right text-gray-700">{hour.activeConnections}</td>
-                          {dbType === 'mysql' && (
-                            <>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.queriesPerSecond}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.slowQueries}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.sizeMB}</td>
-                            </>
-                          )}
-                          {dbType === 'postgresql' && (
-                            <>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.commits}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.rollbacks}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.blocksHit}</td>
-                            </>
-                          )}
-                          {dbType === 'mongodb' && (
-                            <>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.totalCollections}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.totalDocuments}</td>
-                              <td className="px-4 py-2.5 text-right text-gray-700">{hour.sizeMB}</td>
-                            </>
-                          )}
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.queriesPerSecond || 0}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.slowQueries || 0}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.totalTables || hour.totalCollections || 0}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.sizeMB || 0}</td>
                         </tr>
                       ))}
                     </tbody>
