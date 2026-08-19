@@ -972,12 +972,24 @@ export default function ConnectionDashboard() {
   const refreshDatabaseObjects = async () => {
     if (!activeDb) return;
     try {
-      const [objRes, statsRes] = await Promise.all([
+      const [objRes, statsRes, tablesDetailsRes] = await Promise.all([
         API.get(`/connections/${id}/objects?database=${encodeURIComponent(activeDb)}`),
         API.get(`/connections/${id}/stats?database=${encodeURIComponent(activeDb)}`),
+        API.get(`/monitor/${id}/tables?database=${encodeURIComponent(activeDb)}`).catch(() => ({ data: { tables: [] } }))
       ]);
       setObjects(objRes.data);
       setStats(statsRes.data.stats);
+      if (tablesDetailsRes.data?.tables) {
+        setTableDetails(tablesDetailsRes.data.tables);
+      }
+      if (selectedTable) {
+        API.get(`/connections/${id}/table/${selectedTable}?database=${encodeURIComponent(activeDb)}`)
+          .then(res => {
+            if (res.data?.rows) setTableData(res.data.rows);
+            if (res.data?.columns) setTableColumns(res.data.columns);
+          })
+          .catch(() => {});
+      }
     } catch (err) {
       console.error('Failed to refresh database objects:', err);
     }
