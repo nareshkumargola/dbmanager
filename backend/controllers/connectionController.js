@@ -211,7 +211,7 @@ exports.getDatabaseObjects = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
     let result = {};
 
     if (type === 'mysql') {
@@ -241,12 +241,24 @@ exports.getDatabaseObjects = async (req, res) => {
       const tables = await conn.query(`
         SELECT 
           t.table_name,
-          ROUND(pg_total_relation_size('"' || t.table_name || '"') / 1024.0 / 1024.0, 2) AS "sizeMB"
+          t.table_schema,
+          ROUND(pg_total_relation_size('"' || t.table_schema || '"."' || t.table_name || '"') / 1024.0 / 1024.0, 2) AS "sizeMB"
         FROM information_schema.tables t
-        WHERE t.table_schema = 'public'
+        WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
+          AND t.table_type IN ('BASE TABLE', 'VIEW')
         ORDER BY t.table_name
       `);
-      result = { tables: tables.rows.map(r => ({ name: r.table_name, table_name: r.table_name, sizeMB: parseFloat(r.sizeMB || 0.01) })) };
+      result = { 
+        tables: tables.rows.map(r => {
+          const displayName = r.table_schema === 'public' ? r.table_name : `${r.table_schema}.${r.table_name}`;
+          return { 
+            name: displayName, 
+            table_name: displayName, 
+            schema: r.table_schema,
+            sizeMB: parseFloat(r.sizeMB || 0.01) 
+          };
+        }) 
+      };
     }
 
     else if (type === 'mongodb') {
@@ -298,7 +310,7 @@ exports.getTableData = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
     let rows = [], columns = [];
 
     if (type === 'mysql') {
@@ -317,8 +329,12 @@ exports.getTableData = async (req, res) => {
     }
 
     else if (type === 'postgresql') {
+      const formattedTable = tableName.includes('.') 
+        ? tableName.split('.').map(part => `"${part.replace(/"/g, '')}"`).join('.') 
+        : `"${tableName.replace(/"/g, '')}"`;
+
       const result = await conn.query(
-        `SELECT * FROM "${tableName}" LIMIT 100`
+        `SELECT * FROM ${formattedTable} LIMIT 100`
       );
       rows = result.rows;
       columns = result.fields.map(f => ({ Field: f.name, Type: f.dataTypeID }));
@@ -404,8 +420,8 @@ exports.runQuery = async (req, res) => {
       });
     }
 
-    const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const database = req.body?.database || req.query?.database || connection.database;
+    const { conn, type } = await getConnection(connection, database);
     const startTime = Date.now();
     let results = [];
 
@@ -737,7 +753,7 @@ exports.getDatabaseStats = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
-    const { conn, type } = await getConnection(connection);
+    const { conn, type } = await getConnection(connection, database);
     let stats = {};
 
     if (type === 'mysql') {
@@ -772,13 +788,14 @@ exports.getDatabaseStats = async (req, res) => {
       );
       const tables = await conn.query(`
         SELECT COUNT(*) FROM information_schema.tables
-        WHERE table_schema = 'public'
+        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+          AND table_type IN ('BASE TABLE', 'VIEW')
       `);
       stats = {
         type: 'postgresql',
         database: database,
-        size: size.rows[0]?.size,
-        totalTables: tables.rows[0]?.count,
+        size: size.rows[0]?.size || '0 MB',
+        totalTables: parseInt(tables.rows[0]?.count || 0),
       };
     }
 

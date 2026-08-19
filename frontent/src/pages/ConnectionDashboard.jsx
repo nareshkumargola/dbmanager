@@ -1424,8 +1424,8 @@ export default function ConnectionDashboard() {
               ))}
             </div>
 
-            {/* Active Database Badge on the Right Side */}
-            {activeDb && (
+            {/* Active Database Badge on the Right Side (Only on Query Editor & Slow Query tabs) */}
+            {activeDb && (activeTab === 'query' || activeTab === 'slow-queries') && (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-100 border border-gray-200 rounded-full text-xs font-bold text-gray-700 shrink-0 select-none shadow-2xs">
                 <span>Active DB:</span>
                 <span className="font-mono text-gray-900 bg-white px-1.5 py-0.5 rounded border border-gray-150">
@@ -2890,7 +2890,7 @@ export default function ConnectionDashboard() {
             {/* AUDIT LOGS */}
             {activeTab === 'audit-logs' && isOwner && (
               <div>
-                <AuditLogsPanel connectionId={id} />
+                <AuditLogsPanel connectionId={id} databases={databases} />
               </div>
             )}
               </>

@@ -35,13 +35,13 @@ const connectMySQL = async (config) => {
 const connectPostgreSQL = async (config) => {
   const poolConfig = {
     host: config.host,
-    port: config.port || 5432,
+    port: parseInt(config.port) || 5432,
     user: config.username,
     password: config.password,
-    database: config.database,
+    database: config.database || 'postgres',
     max: 5,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+    connectionTimeoutMillis: 3000,
   };
 
   if (config.ssl) {
@@ -80,36 +80,43 @@ const connectOracle = async (config) => {
 };
 
 // ─── CONNECTION GET OR CREATE ─────────────────────
-const getConnection = async (connectionDoc) => {
-  const key = connectionDoc._id.toString();
+const getConnection = async (connectionDoc, targetDatabase = null) => {
+  const targetDb = targetDatabase || connectionDoc.database;
+  const key = `${connectionDoc._id.toString()}${targetDb ? `_${targetDb}` : ''}`;
 
   // Pehle se connected hai?
   if (activeConnections.has(key)) {
     return activeConnections.get(key);
   }
 
+  // Connection config prepare karo
+  const configToUse = connectionDoc.toObject ? connectionDoc.toObject() : { ...connectionDoc };
+  if (targetDb) {
+    configToUse.database = targetDb;
+  }
+
   // Naya connection banao
   let conn;
-  switch (connectionDoc.type) {
+  switch (configToUse.type) {
     case 'mysql':
-      conn = await connectMySQL(connectionDoc);
+      conn = await connectMySQL(configToUse);
       break;
     case 'postgresql':
-      conn = await connectPostgreSQL(connectionDoc);
+      conn = await connectPostgreSQL(configToUse);
       break;
     case 'mongodb':
-      conn = await connectMongoDB(connectionDoc);
+      conn = await connectMongoDB(configToUse);
       break;
     case 'oracle':
-      conn = await connectOracle(connectionDoc);
+      conn = await connectOracle(configToUse);
       break;
     default:
       throw new Error('Unsupported database type!');
   }
 
   // Save karo memory mein
-  activeConnections.set(key, { conn, type: connectionDoc.type });
-  return { conn, type: connectionDoc.type };
+  activeConnections.set(key, { conn, type: configToUse.type });
+  return { conn, type: configToUse.type };
 };
 
 // ─── CONNECTION TEST ──────────────────────────────
@@ -122,8 +129,8 @@ const testConnection = async (config) => {
         break;
       }
       case 'postgresql': {
-        const client = await connectPostgreSQL(config);
-        await client.end();
+        const pool = await connectPostgreSQL(config);
+        await pool.end();
         break;
       }
       case 'mongodb': {
@@ -147,18 +154,20 @@ const testConnection = async (config) => {
 
 // ─── CONNECTION CLOSE ─────────────────────────────
 const closeConnection = async (connectionId) => {
-  const key = connectionId.toString();
-  if (activeConnections.has(key)) {
-    const { conn, type } = activeConnections.get(key);
-    try {
-      if (type === 'mysql') await conn.end();
-      if (type === 'postgresql') await conn.end();
-      if (type === 'mongodb') await conn.close();
-      if (type === 'oracle') await conn.close();
-    } catch (err) {
-      console.error('Close error:', err.message);
+  const prefix = connectionId.toString();
+  for (const [key, item] of activeConnections.entries()) {
+    if (key === prefix || key.startsWith(`${prefix}_`)) {
+      const { conn, type } = item;
+      try {
+        if (type === 'mysql') await conn.end();
+        if (type === 'postgresql') await conn.end();
+        if (type === 'mongodb') await conn.close();
+        if (type === 'oracle') await conn.close();
+      } catch (err) {
+        console.error('Close error:', err.message);
+      }
+      activeConnections.delete(key);
     }
-    activeConnections.delete(key);
   }
 };
 
