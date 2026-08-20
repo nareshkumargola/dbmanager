@@ -104,7 +104,7 @@ export default function ConnectionBinlog() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-56px)] overflow-hidden bg-gray-50 text-left">
+    <div className="flex-1 flex flex-col min-h-screen bg-gray-50 text-left">
       <Navbar
         backTo="/connections"
         backText="Connections"
@@ -115,11 +115,11 @@ export default function ConnectionBinlog() {
         }
       />
 
-      <div className="flex-1 flex h-full relative overflow-hidden">
+      <div className="flex-1 flex relative items-start">
         {/* Databases Sidebar */}
         <div
           style={{ width: sidebarOpen ? `${sidebarWidth}px` : '0px' }}
-          className="bg-white border-r border-gray-250 flex flex-col shrink-0 h-full overflow-hidden transition-none relative z-10 select-none"
+          className="bg-white border-r border-gray-250 flex flex-col shrink-0 sticky top-0 h-screen overflow-hidden transition-none z-10 select-none"
         >
           <div className="p-3 border-b border-gray-150 flex items-center justify-between shrink-0">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Schemas / Databases</h3>
@@ -196,7 +196,7 @@ export default function ConnectionBinlog() {
         </button>
 
         {/* Binlog Monitoring Log Grid on the Right */}
-        <div className="flex-1 p-6 overflow-y-auto h-full bg-gray-50/30">
+        <div className="flex-1 p-6 bg-gray-50/30 min-h-screen">
           {selectedDb ? (
             <div className="max-w-6xl mx-auto space-y-4">
               <BinlogMonitorPanel connectionId={id} database={selectedDb} connectionType={connectionType} />

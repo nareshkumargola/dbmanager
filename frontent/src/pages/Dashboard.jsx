@@ -128,7 +128,7 @@ export default function Dashboard() {
     accessMode: 'read',
     permissions: {
       userManagement: false,
-      backup: true, binlog: true, monitor: true, query: true,
+      backup: false, binlog: true, monitor: true, query: true,
       history: true, slowQuery: true, auditLogs: true, connections: true
     }
   });
@@ -208,7 +208,7 @@ export default function Dashboard() {
       allowedConnections: Array.isArray(u.allowedConnections) ? u.allowedConnections : [],
       permissions: u.permissions ? {
         userManagement: !!u.permissions.userManagement,
-        backup: u.permissions.backup !== undefined ? u.permissions.backup : true,
+        backup: u.permissions.backup !== undefined ? u.permissions.backup : false,
         binlog: u.permissions.binlog !== undefined ? u.permissions.binlog : true,
         monitor: u.permissions.monitor !== undefined ? u.permissions.monitor : true,
         query: u.permissions.query !== undefined ? u.permissions.query : true,
@@ -218,7 +218,7 @@ export default function Dashboard() {
         connections: u.permissions.connections !== undefined ? u.permissions.connections : true
       } : {
         userManagement: false,
-        backup: true, binlog: true, monitor: true, query: true,
+        backup: false, binlog: true, monitor: true, query: true,
         history: true, slowQuery: true, auditLogs: true, connections: true
       }
     });
@@ -982,7 +982,7 @@ export default function Dashboard() {
                             accessMode: 'read',
                             permissions: {
                               userManagement: false,
-                              backup: true, binlog: true, monitor: true, query: true,
+                              backup: false, binlog: true, monitor: true, query: true,
                               history: true, slowQuery: true, auditLogs: true, connections: true
                             }
                           });

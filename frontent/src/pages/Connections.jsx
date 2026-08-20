@@ -771,11 +771,9 @@ export default function Connections() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-teal-light mt-0.5 text-left font-mono">
-                          {conn.type === 'mongodb'
-                            ? conn.connectionString?.substring(0, 40) + '...'
-                            : `${conn.host}:${conn.port} / ${conn.database}`
-                          }
+                        <p className="text-xs text-teal-light mt-0.5 text-left font-mono flex items-center gap-1.5 flex-wrap">
+                          <span>📍 Host IP: <strong className="text-gray-900 font-bold">{conn.host || 'localhost'}:{conn.port || (conn.type === 'postgresql' ? 5432 : 3306)}</strong></span>
+                          {conn.database && <span>| DB: <strong className="text-gray-800">{conn.database}</strong></span>}
                         </p>
                       </div>
                     </div>

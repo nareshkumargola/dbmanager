@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema({
   permissions: {
     type: {
       userManagement: { type: Boolean, default: false },
-      backup: { type: Boolean, default: true },
+      backup: { type: Boolean, default: false },
       binlog: { type: Boolean, default: true },
       monitor: { type: Boolean, default: true },
       query: { type: Boolean, default: true },
@@ -40,7 +40,7 @@ const userSchema = new mongoose.Schema({
     },
     default: {
       userManagement: false,
-      backup: true,
+      backup: false,
       binlog: true,
       monitor: true,
       query: true,

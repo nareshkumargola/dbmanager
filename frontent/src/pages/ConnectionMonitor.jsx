@@ -34,6 +34,8 @@ export default function ConnectionMonitor() {
 
   const [connectionName, setConnectionName] = useState('');
   const [dbType, setDbType] = useState('');
+  const [connectionHost, setConnectionHost] = useState('localhost');
+  const [connectionPort, setConnectionPort] = useState('5432');
   const [loadingConn, setLoadingConn] = useState(true);
 
   // Monitoring States
@@ -63,6 +65,8 @@ export default function ConnectionMonitor() {
         if (conn) {
           setConnectionName(conn.name);
           setDbType(conn.type);
+          setConnectionHost(conn.host || 'localhost');
+          setConnectionPort(conn.port || (conn.type === 'postgresql' ? 5432 : 3306));
         } else {
           setError('Connection details not found.');
         }
@@ -276,55 +280,70 @@ export default function ConnectionMonitor() {
     element.style.fontFamily = 'Arial, sans-serif';
     element.style.fontSize = '12px';
     element.innerHTML = `
-      <h1 style="text-align: center; margin-bottom: 30px;">📊 Database Monitoring Report</h1>
+      <h1 style="text-align: center; margin-bottom: 24px; font-size: 20px; font-weight: bold; color: #0f172a;">
+        ${getTypeIcon(dbType)} Database Monitoring Report
+      </h1>
       
-      <div style="margin-bottom: 20px;">
-        <strong>Database Connection:</strong> ${connectionName || 'N/A'}<br/>
-        <strong>Type:</strong> ${dbType?.toUpperCase() || 'N/A'}<br/>
+      <div style="margin-bottom: 24px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 10px; font-size: 13px; line-height: 1.6;">
+        <div style="font-size: 17px; font-weight: bold; margin-bottom: 10px; color: #0f172a;">
+          ${getTypeIcon(dbType)} ${connectionName || 'Database Connection'}
+        </div>
+        <strong>Database Engine:</strong> ${getTypeIcon(dbType)} ${dbType?.toUpperCase() || 'N/A'}<br/>
+        <strong>Host IP / Port:</strong> 📍 ${connectionHost}:${connectionPort}<br/>
         <strong>Database Scope:</strong> Whole Connection (All databases)<br/>
         <strong>Monitoring Range:</strong> ${range === 'current' ? `Live (Filters: ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''})` : range}<br/>
-        <strong>Generated:</strong> ${new Date().toLocaleString('en-IN')}<br/>
+        <strong>Report Generated:</strong> 📅 ${new Date().toLocaleString('en-IN')}<br/>
       </div>
 
-      <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">${dbType?.toUpperCase()} Server Performance Metrics</h2>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+      <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px; font-size: 15px; margin-top: 20px;">
+        ${getTypeIcon(dbType)} ${dbType?.toUpperCase()} Server Performance Metrics
+      </h2>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+        <tr style="background: #eef2ff;">
+          <td style="border: 1px solid #c7d2fe; padding: 9px; font-weight: bold; color: #3730a3;">Database Engine &amp; Logo</td>
+          <td style="border: 1px solid #c7d2fe; padding: 9px; font-weight: bold; color: #3730a3;">${getTypeIcon(dbType)} ${dbType?.toUpperCase()} Database Engine</td>
+        </tr>
         <tr>
+          <td style="border: 1px solid #ddd; padding: 9px;"><strong>Server Host / IP Address</strong></td>
+          <td style="border: 1px solid #ddd; padding: 9px; font-family: monospace; font-weight: bold; color: #1e293b;">📍 ${connectionHost}:${connectionPort}</td>
+        </tr>
+        <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
         </tr>
-        <tr style="background: #f9f9f9;">
+        <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Connection Usage %</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%</td>
         </tr>
-        <tr>
+        <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Queries / Ops Per Second</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.queriesPerSecond || 0}</td>
         </tr>
-        <tr style="background: #f9f9f9;">
+        <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Slow Queries</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.slowQueries || 0}</td>
         </tr>
-        <tr>
-          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.sizeMB} MB</td>
-        </tr>
         <tr style="background: #f9f9f9;">
+          <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.sizeMB || monitorData.size} MB</td>
+        </tr>
+        <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total ${dbType === 'mongodb' ? 'Collections' : 'Tables'}</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalTables || monitorData.totalCollections || 0}</td>
         </tr>
-        <tr>
+        <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Server Uptime</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${Math.floor((monitorData.uptime || 0) / 3600)}h ${Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m</td>
         </tr>
-        <tr style="background: #f9f9f9;">
+        <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Sent</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB</td>
         </tr>
-        <tr>
+        <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Received</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB</td>
         </tr>
-        <tr style="background: #f9f9f9;">
+        <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Cache / Buffer Pool Hit Rate</strong></td>
           <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.cacheHitRate || 99}%</td>
         </tr>

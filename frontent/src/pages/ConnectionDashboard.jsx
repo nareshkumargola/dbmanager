@@ -27,6 +27,7 @@ export default function ConnectionDashboard() {
   
   const [objects, setObjects] = useState(null);
   const [stats, setStats] = useState(null);
+  const [connectionName, setConnectionName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -621,6 +622,7 @@ export default function ConnectionDashboard() {
         const configuredDefault = conn ? conn.database : null;
 
         if (conn) {
+          setConnectionName(conn.name);
           const ownerCheck = conn.user?._id === user?._id || user?.role === 'admin';
           setIsOwner(ownerCheck);
         }
@@ -811,17 +813,24 @@ export default function ConnectionDashboard() {
     element.innerHTML = `
       <h1 style="text-align: center; margin-bottom: 30px;">📊 Database Monitoring Report</h1>
       
-      <div style="margin-bottom: 20px;">
-        <strong>Database Connection:</strong> ${objects?.name || 'N/A'}<br/>
-        <strong>Type:</strong> ${dbType?.toUpperCase() || 'N/A'}<br/>
-        <strong>Database:</strong> ${activeDb || 'All'}<br/>
-        <strong>Generated:</strong> ${new Date().toLocaleString('en-IN')}<br/>
+      <div style="margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 8px; font-size: 13px;">
+        <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; color: #0f172a; display: flex; items-center; gap: 8px;">
+          ${getTypeIcon(dbType)} ${objects?.name || 'Database Connection'}
+        </div>
+        <strong>Engine / Type:</strong> ${getTypeIcon(dbType)} ${dbType?.toUpperCase() || 'N/A'}<br/>
+        <strong>Host IP / Port:</strong> 📍 ${objects?.host || 'localhost'}:${objects?.port || (dbType === 'postgresql' ? 5432 : 3306)}<br/>
+        <strong>Database / Schema:</strong> ${activeDb || stats?.database || 'All'}<br/>
+        <strong>Report Generated:</strong> 📅 ${new Date().toLocaleString('en-IN')}<br/>
       </div>
 
       ${dbType === 'mysql' ? `
-        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">MySQL Metrics</h2>
+        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">🐬 MySQL Metrics</h2>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
           <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Server IP / Host</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px;">📍 ${objects?.host || 'localhost'}:${objects?.port || 3306}</td>
+          </tr>
+          <tr style="background: #f9f9f9;">
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
             <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
           </tr>
@@ -887,35 +896,43 @@ export default function ConnectionDashboard() {
       ` : ''}
 
       ${dbType === 'postgresql' ? `
-        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">PostgreSQL Metrics</h2>
+        <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">🐘 PostgreSQL Metrics</h2>
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <tr style="background: #eef2ff;">
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Logo &amp; Engine</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold; color: #4338ca;">🐘 PostgreSQL Database Engine</td>
+          </tr>
           <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Server Host / IP Address</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px; font-family: monospace; font-weight: bold; color: #1e293b;">📍 ${objects?.host || 'localhost'}:${objects?.port || 5432}</td>
+          </tr>
+          <tr style="background: #f9f9f9;">
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
             <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
           </tr>
-          <tr style="background: #f9f9f9;">
+          <tr>
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
             <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.size}</td>
           </tr>
-          <tr>
+          <tr style="background: #f9f9f9;">
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Total Tables</strong></td>
             <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.totalTables}</td>
           </tr>
-          <tr style="background: #f9f9f9;">
+          <tr>
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Commits</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.commits.toLocaleString()}</td>
-          </tr>
-          <tr>
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Rollbacks</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.rollbacks.toLocaleString()}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.commits ? monitorData.commits.toLocaleString() : '0'}</td>
           </tr>
           <tr style="background: #f9f9f9;">
-            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Blocks Read</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksRead.toLocaleString()}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Rollbacks</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.rollbacks ? monitorData.rollbacks.toLocaleString() : '0'}</td>
           </tr>
           <tr>
+            <td style="border: 1px solid #ddd; padding: 8px;"><strong>Blocks Read</strong></td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksRead ? monitorData.blocksRead.toLocaleString() : '0'}</td>
+          </tr>
+          <tr style="background: #f9f9f9;">
             <td style="border: 1px solid #ddd; padding: 8px;"><strong>Blocks Hit</strong></td>
-            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksHit.toLocaleString()}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.blocksHit ? monitorData.blocksHit.toLocaleString() : '0'}</td>
           </tr>
         </table>
       ` : ''}
@@ -1327,17 +1344,38 @@ export default function ConnectionDashboard() {
         backTo="/connections"
         backText="Connections"
         extraLeft={
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900">
-              {getTypeIcon(dbType)} {activeDb || stats?.database || 'Select Database'}
+          <div className="flex items-center gap-2.5">
+            {/* Server / Connection Name */}
+            <span className="text-sm font-bold text-white flex items-center gap-1.5 drop-shadow-xs">
+              <span className="text-base">{getTypeIcon(dbType)}</span>
+              <span>{connectionName || objects?.name || 'Server'}</span>
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              dbType === 'mysql' ? 'bg-blue-100 text-blue-700' :
-              dbType === 'postgresql' ? 'bg-indigo-100 text-indigo-700' :
-              'bg-green-100 text-green-700'
+
+            {/* DB Engine Badge */}
+            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+              dbType === 'mysql' ? 'bg-blue-900/50 text-blue-100 ring-1 ring-blue-300/40' :
+              dbType === 'postgresql' ? 'bg-indigo-900/50 text-indigo-100 ring-1 ring-indigo-300/40' :
+              'bg-emerald-900/50 text-emerald-100 ring-1 ring-emerald-300/40'
             }`}>
               {dbType}
             </span>
+
+            {/* Separator */}
+            <span className="text-white/40 font-light text-sm">/</span>
+
+            {/* HIGH VISIBILITY LIGHT HIGHLIGHTED ACTIVE DATABASE BADGE */}
+            {activeDb ? (
+              <div className="flex items-center gap-2 bg-white/95 text-[#0c7f85] border border-white/60 px-3 py-1 rounded-lg shadow-xs font-bold text-xs tracking-wide">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-gray-500 font-medium text-[11px] uppercase tracking-wider">DB:</span>
+                <span className="text-[#096065] font-extrabold text-sm">{activeDb}</span>
+              </div>
+            ) : (
+              <span className="text-xs italic text-white/70">Select Database</span>
+            )}
           </div>
         }
       />

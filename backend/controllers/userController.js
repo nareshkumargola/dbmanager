@@ -146,7 +146,7 @@ exports.createUser = async (req, res) => {
     const userAccessMode = accessMode || 'read';
     const userPermissions = (req.body.permissions && userRole !== 'admin') ? {
       userManagement: !!req.body.permissions.userManagement,
-      backup: req.body.permissions.backup !== undefined ? !!req.body.permissions.backup : true,
+      backup: req.body.permissions.backup !== undefined ? !!req.body.permissions.backup : false,
       binlog: req.body.permissions.binlog !== undefined ? !!req.body.permissions.binlog : true,
       monitor: req.body.permissions.monitor !== undefined ? !!req.body.permissions.monitor : true,
       query: req.body.permissions.query !== undefined ? !!req.body.permissions.query : true,
@@ -156,7 +156,7 @@ exports.createUser = async (req, res) => {
       connections: req.body.permissions.connections !== undefined ? !!req.body.permissions.connections : true
     } : {
       userManagement: false,
-      backup: true, binlog: true, monitor: true, query: true, history: true, slowQuery: true, auditLogs: true, connections: true
+      backup: false, binlog: true, monitor: true, query: true, history: true, slowQuery: true, auditLogs: true, connections: true
     };
 
     const user = await User.create({
