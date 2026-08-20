@@ -265,7 +265,7 @@ export default function AuditLogsPanel({ connectionId, databases = [] }) {
           
           {/* Target DB Dropdown */}
           <div className="flex items-center gap-1">
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider hidden sm:inline">🗄️Database:</label>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider hidden sm:inline">🗄️ ACTIVE DB:</label>
             <select
               value={selectedTargetDb}
               onChange={e => setSelectedTargetDb(e.target.value)}
