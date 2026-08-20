@@ -52,6 +52,14 @@ exports.updateUserRole = async (req, res) => {
       return res.status(404).json({ message: 'User not found!' });
     }
 
+    // Log to system audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(null, req.user.id, 'UPDATE_USER_PERMISSIONS', `Updated role to ${role} for user: ${user.name} (${user.email})`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
+
     res.status(200).json({ 
       success: true, 
       message: 'User role updated successfully!',
@@ -244,6 +252,14 @@ exports.updateUserPermissions = async (req, res) => {
     }
 
     await targetUser.save();
+
+    // Log to system audit trail
+    try {
+      const { logAuditTrail } = require('../utils/auditLogger');
+      await logAuditTrail(null, req.user.id, 'UPDATE_USER_PERMISSIONS', `Updated permissions/access mode (${targetUser.accessMode}) for user: ${targetUser.name} (${targetUser.email})`);
+    } catch (auditErr) {
+      console.error('Audit trail logging failed:', auditErr.message);
+    }
 
     res.status(200).json({
       success: true,

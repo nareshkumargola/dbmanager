@@ -202,12 +202,20 @@ export default function SystemAuditLogsPanel() {
         return <span className="bg-rose-50 text-rose-700 border border-rose-150 px-2 py-0.5 rounded text-[10px] font-bold">DELETE DB USER</span>;
       case 'UPDATE_DB_USER':
         return <span className="bg-orange-50 text-orange-700 border border-orange-150 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE DB USER</span>;
+      case 'CREATE_CONNECTION':
+        return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">CREATE CONNECTION</span>;
+      case 'UPDATE_CONNECTION':
+        return <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE CONNECTION</span>;
+      case 'DELETE_CONNECTION':
+        return <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">DELETE CONNECTION</span>;
+      case 'TEST_CONNECTION':
+        return <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 px-2 py-0.5 rounded text-[10px] font-bold">TEST CONNECTION</span>;
       case 'LOGIN':
         return <span className="bg-emerald-50 text-emerald-700 border border-emerald-150 px-2 py-0.5 rounded text-[10px] font-bold">LOGIN</span>;
       case 'LOGOUT':
         return <span className="bg-gray-100 text-gray-700 border border-gray-250 px-2 py-0.5 rounded text-[10px] font-bold">LOGOUT</span>;
       default:
-        return <span className="bg-gray-50 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold">{action}</span>;
+        return <span className="bg-gray-50 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold">{action ? action.replace(/_/g, ' ') : 'ACTION'}</span>;
     }
   };
 
@@ -257,8 +265,19 @@ export default function SystemAuditLogsPanel() {
     element.style.fontFamily = 'system-ui, sans-serif';
     element.style.fontSize = '10px';
     element.innerHTML = `
-      <h2 style="text-align: center; color: #111827; margin-bottom: 5px;">📜 System Activity Audit Trail</h2>
-      <p style="text-align: center; color: #6b7280; font-size: 8px; margin-bottom: 20px;">Report Generated: ${new Date().toLocaleString()}</p>
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0d9da4; padding-bottom: 12px; margin-bottom: 18px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <img src="/allatone_logo.jpg" style="height: 44px; width: auto; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; padding: 2px; background: #ffffff;" alt="Allatone Logo" />
+          <div>
+            <div style="font-size: 16px; font-weight: 800; color: #0d9da4; letter-spacing: 0.5px;">ALLATONE DMS</div>
+            <div style="font-size: 8px; color: #64748b; font-weight: 700; text-transform: uppercase;">Enterprise Audit &amp; Compliance Trail</div>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 14px; font-weight: bold; color: #111827;">📜 System Activity Audit Trail</div>
+          <div style="font-size: 8px; color: #6b7280; margin-top: 2px;">Report Generated: ${new Date().toLocaleString()}</div>
+        </div>
+      </div>
       
       <table style="width: 100%; border-collapse: collapse; text-align: left;">
         <thead>
