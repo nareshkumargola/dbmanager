@@ -39,6 +39,7 @@ const queryHistorySchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+    expires: '10d', // Automatically expire and delete records after 10 days (864,000 seconds)
   },
 });
 

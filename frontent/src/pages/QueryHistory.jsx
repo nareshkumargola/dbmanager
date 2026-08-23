@@ -43,25 +43,6 @@ export default function QueryHistory() {
     }
   };
 
-  const deleteOne = async (id) => {
-    try {
-      await API.delete(`/history/${id}`);
-      setHistory(history.filter(h => h._id !== id));
-    } catch (err) {
-      setError('Failed to delete history record');
-    }
-  };
-
-  const clearAll = async () => {
-    if (!window.confirm('Are you sure you want to clear all query history?')) return;
-    try {
-      await API.delete('/history');
-      setHistory([]);
-    } catch (err) {
-      setError('Failed to clear history');
-    }
-  };
-
   // Query Editor mein bhejo
   const useQuery = (query) => {
     navigate('/query', { state: { query } });
@@ -135,7 +116,7 @@ export default function QueryHistory() {
       <div className="max-w-4xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-2xl font-semibold text-gray-900">
               Query History
@@ -152,14 +133,17 @@ export default function QueryHistory() {
               >
                 <span>📊</span> Export Excel (CSV)
               </button>
-              <button
-                onClick={clearAll}
-                className="px-4 py-2 border border-red-200 text-red-500 text-sm rounded-lg hover:bg-red-50 transition"
-              >
-                Clear All
-              </button>
             </div>
           )}
+        </div>
+
+        {/* 10-Day Retention Notice Banner */}
+        <div className="mb-5 bg-teal-50 border border-teal-200 p-3.5 rounded-xl flex items-center justify-between text-xs text-teal-800 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span>⏱️</span>
+            <span className="font-bold">Auto-Retention Policy:</span>
+            <span>Query history entries are automatically retained for <strong>10 days</strong> across all database types and auto-purged by backend system.</span>
+          </div>
         </div>
 
         {/* Error */}
@@ -236,15 +220,9 @@ export default function QueryHistory() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => useQuery(item.query)}
-                    className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition"
+                    className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition font-bold"
                   >
                     Use this query
-                  </button>
-                  <button
-                    onClick={() => deleteOne(item._id)}
-                    className="text-xs px-3 py-1.5 border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50 transition"
-                  >
-                    Delete
                   </button>
                 </div>
 

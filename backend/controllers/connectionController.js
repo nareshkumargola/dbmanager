@@ -246,104 +246,324 @@ exports.getDatabaseObjects = async (req, res) => {
 
     const database = req.query.database || connection.database;
     const { conn, type } = await getConnection(connection, database);
-    let result = {};
+
+    let result = {
+      tables: [],
+      views: [],
+      procedures: [],
+      functions: [],
+      triggers: [],
+      indexes: [],
+      constraints: [],
+      collections: []
+    };
 
     if (type === 'mysql') {
-      let tables;
+      let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
       if (database) {
-        // Fetch table names along with data size in MB and estimated rows
-        const [rows] = await conn.execute(
-          `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as tableRows 
-           FROM information_schema.TABLES 
-           WHERE TABLE_SCHEMA = ?`,
-          [database]
-        );
-        tables = rows.map(r => ({
-          [`Tables_in_${database}`]: r.TABLE_NAME,
-          name: r.TABLE_NAME,
-          sizeMB: parseFloat(r.sizeMB || 0.01),
-          rows: r.tableRows || 0
-        }));
+        // 1. Base Tables
+        try {
+          const [tableRows] = await conn.execute(
+            `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as tableRows 
+             FROM information_schema.TABLES 
+             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`,
+            [database]
+          );
+          tables = tableRows.map(r => ({
+            [`Tables_in_${database}`]: r.TABLE_NAME,
+            name: r.TABLE_NAME,
+            sizeMB: parseFloat(r.sizeMB || 0.01),
+            rows: r.tableRows || 0
+          }));
+        } catch (e) {
+          const [rows] = await conn.execute('SHOW TABLES');
+          tables = rows.map(r => ({ name: Object.values(r)[0] }));
+        }
+
+        // 2. Views
+        try {
+          const [viewRows] = await conn.execute(
+            `SELECT TABLE_NAME AS name, VIEW_DEFINITION AS definition 
+             FROM information_schema.VIEWS 
+             WHERE TABLE_SCHEMA = ?`,
+            [database]
+          );
+          views = viewRows.map(v => ({ name: v.name, definition: v.definition }));
+        } catch (e) { views = []; }
+
+        // 3. Stored Procedures
+        try {
+          const [procRows] = await conn.execute(
+            `SELECT ROUTINE_NAME AS name, ROUTINE_DEFINITION AS definition, DATA_TYPE AS returnType, CREATED AS createdAt 
+             FROM information_schema.ROUTINES 
+             WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'`,
+            [database]
+          );
+          procedures = procRows.map(p => ({ name: p.name, definition: p.definition, returnType: p.returnType, createdAt: p.createdAt }));
+        } catch (e) { procedures = []; }
+
+        // 4. Functions
+        try {
+          const [funcRows] = await conn.execute(
+            `SELECT ROUTINE_NAME AS name, ROUTINE_DEFINITION AS definition, DATA_TYPE AS returnType, CREATED AS createdAt 
+             FROM information_schema.ROUTINES 
+             WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION'`,
+            [database]
+          );
+          functions = funcRows.map(f => ({ name: f.name, definition: f.definition, returnType: f.returnType, createdAt: f.createdAt }));
+        } catch (e) { functions = []; }
+
+        // 5. Triggers
+        try {
+          const [trigRows] = await conn.execute(
+            `SELECT TRIGGER_NAME AS name, EVENT_MANIPULATION AS event, EVENT_OBJECT_TABLE AS tableName, ACTION_STATEMENT AS statement 
+             FROM information_schema.TRIGGERS 
+             WHERE TRIGGER_SCHEMA = ?`,
+            [database]
+          );
+          triggers = trigRows.map(t => ({ name: t.name, event: t.event, tableName: t.tableName, statement: t.statement }));
+        } catch (e) { triggers = []; }
+
+        // 6. Indexes
+        try {
+          const [idxRows] = await conn.execute(
+            `SELECT TABLE_NAME AS tableName, INDEX_NAME AS name, COLUMN_NAME AS columnName, NON_UNIQUE AS nonUnique, INDEX_TYPE AS indexType 
+             FROM information_schema.STATISTICS 
+             WHERE TABLE_SCHEMA = ? 
+             ORDER BY TABLE_NAME, INDEX_NAME`,
+            [database]
+          );
+          indexes = idxRows.map(i => ({ name: i.name, tableName: i.tableName, columnName: i.columnName, unique: i.nonUnique === 0, indexType: i.indexType }));
+        } catch (e) { indexes = []; }
+
+        // 7. Constraints
+        try {
+          const [constRows] = await conn.execute(
+            `SELECT CONSTRAINT_NAME AS name, TABLE_NAME AS tableName, CONSTRAINT_TYPE AS constraintType 
+             FROM information_schema.TABLE_CONSTRAINTS 
+             WHERE TABLE_SCHEMA = ? 
+             ORDER BY TABLE_NAME, CONSTRAINT_NAME`,
+            [database]
+          );
+          constraints = constRows.map(c => ({ name: c.name, tableName: c.tableName, constraintType: c.constraintType }));
+        } catch (e) { constraints = []; }
       } else {
         const [rows] = await conn.execute('SHOW TABLES');
-        tables = rows;
+        tables = rows.map(r => ({ name: Object.values(r)[0] }));
       }
-      result = { tables };
+      result = { tables, views, procedures, functions, triggers, indexes, constraints };
     }
 
     else if (type === 'postgresql') {
-      const tables = await conn.query(`
-        SELECT 
-          t.tablename AS table_name,
-          t.schemaname AS table_schema,
-          c.reltuples AS row_estimate,
-          pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) AS size_bytes
-        FROM pg_tables t
-        JOIN pg_namespace n ON n.nspname = t.schemaname
-        JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
-        WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
-        ORDER BY t.tablename
-      `);
+      let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
+      try {
+        const tablesRes = await conn.query(`
+          SELECT 
+            t.tablename AS table_name,
+            t.schemaname AS table_schema,
+            c.reltuples AS row_estimate,
+            pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) AS size_bytes
+          FROM pg_tables t
+          JOIN pg_namespace n ON n.nspname = t.schemaname
+          JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
+          WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY t.tablename
+        `);
 
-      const tablesWithDetails = await Promise.all(
-        tables.rows.map(async (r) => {
-          const schema = r.table_schema || 'public';
-          const tableName = r.table_name;
-          const displayName = schema === 'public' ? tableName : `${schema}.${tableName}`;
-          const formattedTable = `"${schema}"."${tableName}"`;
-          let rowCount = Math.max(0, Math.round(parseFloat(r.row_estimate || 0)));
+        tables = await Promise.all(
+          tablesRes.rows.map(async (r) => {
+            const schema = r.table_schema || 'public';
+            const tableName = r.table_name;
+            const displayName = schema === 'public' ? tableName : `${schema}.${tableName}`;
+            const formattedTable = `"${schema}"."${tableName}"`;
+            let rowCount = Math.max(0, Math.round(parseFloat(r.row_estimate || 0)));
 
-          try {
-            const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
-            rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
-          } catch (e) {
-            // fallback
-          }
+            try {
+              const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
+              rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
+            } catch (e) {}
 
-          const sizeBytes = parseInt(r.size_bytes || 0);
-          const sizeMB = parseFloat((sizeBytes / 1024 / 1024).toFixed(4));
+            const sizeBytes = parseInt(r.size_bytes || 0);
+            const sizeMB = parseFloat((sizeBytes / 1024 / 1024).toFixed(4));
 
-          return {
-            name: displayName,
-            table_name: displayName,
-            table: displayName,
-            schema,
-            rows: rowCount,
-            sizeMB,
-            sizeBytes
-          };
-        })
-      );
+            return {
+              name: displayName,
+              table_name: displayName,
+              table: displayName,
+              schema,
+              rows: rowCount,
+              sizeMB,
+              sizeBytes
+            };
+          })
+        );
+      } catch (e) { tables = []; }
 
-      result = { tables: tablesWithDetails };
+      // Views
+      try {
+        const viewsRes = await conn.query(`
+          SELECT viewname AS name, schemaname AS schema, definition
+          FROM pg_views
+          WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY viewname
+        `);
+        views = viewsRes.rows.map(v => ({ name: v.schema === 'public' ? v.name : `${v.schema}.${v.name}`, schema: v.schema, definition: v.definition }));
+      } catch (e) { views = []; }
+
+      // Procedures
+      try {
+        const procRes = await conn.query(`
+          SELECT p.proname AS name, n.nspname AS schema, pg_get_functiondef(p.oid) AS definition
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.prokind = 'p' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY p.proname
+        `);
+        procedures = procRes.rows.map(p => ({ name: p.schema === 'public' ? p.name : `${p.schema}.${p.name}`, schema: p.schema, definition: p.definition }));
+      } catch (e) { procedures = []; }
+
+      // Functions
+      try {
+        const funcRes = await conn.query(`
+          SELECT p.proname AS name, n.nspname AS schema, pg_get_function_result(p.oid) AS return_type, pg_get_functiondef(p.oid) AS definition
+          FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE p.prokind = 'f' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY p.proname
+        `);
+        functions = funcRes.rows.map(f => ({ name: f.schema === 'public' ? f.name : `${f.schema}.${f.name}`, schema: f.schema, returnType: f.return_type, definition: f.definition }));
+      } catch (e) { functions = []; }
+
+      // Triggers
+      try {
+        const trigRes = await conn.query(`
+          SELECT trigger_name AS name, event_manipulation AS event, event_object_table AS table_name, action_statement AS statement
+          FROM information_schema.triggers
+          WHERE trigger_schema NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY trigger_name
+        `);
+        triggers = trigRes.rows.map(t => ({ name: t.name, event: t.event, tableName: t.table_name, statement: t.statement }));
+      } catch (e) { triggers = []; }
+
+      // Indexes
+      try {
+        const idxRes = await conn.query(`
+          SELECT indexname AS name, tablename AS table_name, schemaname AS schema, indexdef AS definition
+          FROM pg_indexes
+          WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY tablename, indexname
+        `);
+        indexes = idxRes.rows.map(i => ({ name: i.name, tableName: i.schema === 'public' ? i.table_name : `${i.schema}.${i.table_name}`, definition: i.definition }));
+      } catch (e) { indexes = []; }
+
+      // Constraints
+      try {
+        const constRes = await conn.query(`
+          SELECT constraint_name AS name, table_name AS table_name, constraint_type AS constraint_type, table_schema AS schema
+          FROM information_schema.table_constraints
+          WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY table_name, constraint_name
+        `);
+        constraints = constRes.rows.map(c => ({ name: c.name, tableName: c.schema === 'public' ? c.table_name : `${c.schema}.${c.table_name}`, constraintType: c.constraint_type }));
+      } catch (e) { constraints = []; }
+
+      result = { tables, views, procedures, functions, triggers, indexes, constraints };
     }
 
     else if (type === 'mongodb') {
       const db = conn.db(database || 'test');
-      const collections = await db.listCollections().toArray();
-      const collectionsWithStats = await Promise.all(
-        collections.map(async (col) => {
+      const collectionsRaw = await db.listCollections().toArray();
+      
+      const collections = [];
+      const views = [];
+      const indexes = [];
+      const constraints = [];
+
+      for (const col of collectionsRaw) {
+        const isView = col.type === 'view' || !!col.options?.viewOn;
+        if (isView) {
+          views.push({
+            name: col.name,
+            viewOn: col.options?.viewOn || '',
+            pipeline: col.options?.pipeline ? JSON.stringify(col.options.pipeline, null, 2) : ''
+          });
+        } else {
           try {
             const stats = await db.collection(col.name).stats();
-            return {
+            collections.push({
               name: col.name,
               sizeMB: parseFloat((stats.size / 1024 / 1024).toFixed(2)) || 0.01,
               count: stats.count || 0
-            };
+            });
           } catch (e) {
-            return { name: col.name, sizeMB: 0.01 };
+            collections.push({ name: col.name, sizeMB: 0.01 });
           }
-        })
-      );
-      result = { collections: collectionsWithStats };
+
+          // Fetch MongoDB Collection Indexes
+          try {
+            const colIdxs = await db.collection(col.name).indexes();
+            colIdxs.forEach(idx => {
+              indexes.push({
+                name: idx.name,
+                tableName: col.name,
+                key: JSON.stringify(idx.key),
+                unique: !!idx.unique
+              });
+            });
+          } catch (e) {}
+
+          // Fetch MongoDB $jsonSchema Validator Constraints
+          if (col.options?.validator) {
+            constraints.push({
+              name: `${col.name}_validator`,
+              tableName: col.name,
+              constraintType: '$jsonSchema Validation Rule',
+              rule: JSON.stringify(col.options.validator, null, 2)
+            });
+          }
+        }
+      }
+      result = { collections, tables: collections, views, procedures: [], functions: [], triggers: [], indexes, constraints };
     }
 
     else if (type === 'oracle') {
-      const r = await conn.execute(
-        `SELECT table_name FROM user_tables ORDER BY table_name`
-      );
-      const tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: 0.01 }));
-      result = { tables };
+      let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
+      try {
+        const r = await conn.execute(`SELECT table_name FROM user_tables ORDER BY table_name`);
+        tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: 0.01 }));
+      } catch (e) {}
+
+      try {
+        const v = await conn.execute(`SELECT view_name FROM user_views ORDER BY view_name`);
+        views = v.rows.map(row => ({ name: row.VIEW_NAME || row.view_name || Object.values(row)[0] }));
+      } catch (e) {}
+
+      try {
+        const p = await conn.execute(`SELECT object_name FROM user_objects WHERE object_type = 'PROCEDURE' ORDER BY object_name`);
+        procedures = p.rows.map(row => ({ name: row.OBJECT_NAME || row.object_name || Object.values(row)[0] }));
+      } catch (e) {}
+
+      try {
+        const f = await conn.execute(`SELECT object_name FROM user_objects WHERE object_type = 'FUNCTION' ORDER BY object_name`);
+        functions = f.rows.map(row => ({ name: row.OBJECT_NAME || row.object_name || Object.values(row)[0] }));
+      } catch (e) {}
+
+      try {
+        const t = await conn.execute(`SELECT trigger_name, table_name, triggering_event FROM user_triggers ORDER BY trigger_name`);
+        triggers = t.rows.map(row => ({ name: row.TRIGGER_NAME || row.trigger_name || Object.values(row)[0], tableName: row.TABLE_NAME || row.table_name, event: row.TRIGGERING_EVENT || row.triggering_event }));
+      } catch (e) {}
+
+      try {
+        const i = await conn.execute(`SELECT index_name, table_name, index_type FROM user_indexes ORDER BY table_name, index_name`);
+        indexes = i.rows.map(row => ({ name: row.INDEX_NAME || row.index_name || Object.values(row)[0], tableName: row.TABLE_NAME || row.table_name }));
+      } catch (e) {}
+
+      try {
+        const c = await conn.execute(`SELECT constraint_name, table_name, constraint_type FROM user_constraints ORDER BY table_name, constraint_name`);
+        constraints = c.rows.map(row => ({ name: row.CONSTRAINT_NAME || row.constraint_name || Object.values(row)[0], tableName: row.TABLE_NAME || row.table_name, constraintType: row.CONSTRAINT_TYPE || row.constraint_type }));
+      } catch (e) {}
+
+      result = { tables, views, procedures, functions, triggers, indexes, constraints };
     }
 
     res.status(200).json({ success: true, type, result, database });
