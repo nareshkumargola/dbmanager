@@ -613,7 +613,8 @@ export default function ConnectionDashboard() {
   const [tablesListRowsPerPage, setTablesListRowsPerPage] = useState(10);
 
   // Database Object Categories (MySQL Workbench Style)
-  const [dbObjectType, setDbObjectType] = useState('tables'); // 'tables', 'views', 'procedures', 'functions', 'triggers'
+  const [dbObjectType, setDbObjectType] = useState('tables'); // 'tables', 'views', 'procedures', 'functions', 'triggers', 'indexes', 'constraints'
+  const [objectSearch, setObjectSearch] = useState('');
   const [expandedDbs, setExpandedDbs] = useState({});
   const [definitionModal, setDefinitionModal] = useState({ open: false, title: '', type: '', code: '' });
 
@@ -1877,18 +1878,43 @@ export default function ConnectionDashboard() {
                   <div className="bg-white rounded-xl border border-gray-200 p-6 text-left">
                     {/* Database Object Category Filter Pills Bar */}
                     <div className="flex flex-col gap-3 mb-6 pb-4 border-b border-gray-100">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <h3 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
                             <span>🗄️</span> Database Objects — <span className="font-mono text-[#0d9da4]">{activeDb || 'Selected Schema'}</span>
                           </h3>
                         </div>
+
+                        {/* Search Box for Non-Table Objects */}
+                        {dbObjectType !== 'tables' && (
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder={`Search ${dbObjectType}...`}
+                              value={objectSearch}
+                              onChange={e => setObjectSearch(e.target.value)}
+                              className="pl-8 pr-8 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-gray-50 focus:bg-white focus:border-teal-500 transition w-full sm:w-64 font-medium text-gray-800"
+                            />
+                            <svg className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            {objectSearch && (
+                              <button
+                                type="button"
+                                onClick={() => setObjectSearch('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 overflow-x-auto pt-1">
                         <button
                           type="button"
-                          onClick={() => setDbObjectType('tables')}
+                          onClick={() => { setDbObjectType('tables'); setObjectSearch(''); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'tables'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1900,7 +1926,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => setDbObjectType('views')}
+                          onClick={() => { setDbObjectType('views'); setObjectSearch(''); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'views'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1913,7 +1939,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => setDbObjectType('procedures')}
+                            onClick={() => { setDbObjectType('procedures'); setObjectSearch(''); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'procedures'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1927,7 +1953,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => setDbObjectType('functions')}
+                            onClick={() => { setDbObjectType('functions'); setObjectSearch(''); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'functions'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1941,7 +1967,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => setDbObjectType('triggers')}
+                            onClick={() => { setDbObjectType('triggers'); setObjectSearch(''); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'triggers'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1954,7 +1980,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => setDbObjectType('indexes')}
+                          onClick={() => { setDbObjectType('indexes'); setObjectSearch(''); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'indexes'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1966,7 +1992,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => setDbObjectType('constraints')}
+                          onClick={() => { setDbObjectType('constraints'); setObjectSearch(''); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'constraints'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2200,310 +2226,364 @@ export default function ConnectionDashboard() {
                 )}
 
                 {/* 2. VIEWS */}
-                {dbObjectType === 'views' && (
-                  <div>
-                    {(!objects?.result?.views || objects.result.views.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">👁️</p>
-                        <p className="font-semibold text-gray-700">No Views found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.views.map((v, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={v.name}>
-                                  <span>👁️</span> {v.name}
-                                </h4>
-                                <span className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
-                                  VIEW
-                                </span>
-                              </div>
-                              {v.viewOn && (
-                                <p className="text-xs text-gray-500 font-mono mb-2">Base Collection: {v.viewOn}</p>
-                              )}
-                            </div>
+                {dbObjectType === 'views' && (() => {
+                  const rawViews = objects?.result?.views || [];
+                  const filteredViews = objectSearch.trim()
+                    ? rawViews.filter(v => (v.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (v.viewOn || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawViews;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `View DDL: ${v.name}`, type: 'view', code: v.definition || v.pipeline || `CREATE VIEW \`${v.name}\` AS ...` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View DDL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const runViewSql = dbType === 'mongodb' ? `db.${v.name}.find()` : `SELECT * FROM \`${v.name}\` LIMIT 100;`;
-                                  setQuery(runViewSql);
-                                  setActiveTab('query');
-                                }}
-                                className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                ⚡ Query View
-                              </button>
+                  return (
+                    <div>
+                      {filteredViews.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">👁️</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Views matching "${objectSearch}"` : `No Views found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredViews.map((v, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={v.name}>
+                                    <span>👁️</span> {v.name}
+                                  </h4>
+                                  <span className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
+                                    VIEW
+                                  </span>
+                                </div>
+                                {v.viewOn && (
+                                  <p className="text-xs text-gray-500 font-mono mb-2">Base Collection: {v.viewOn}</p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `View DDL: ${v.name}`, type: 'view', code: v.definition || v.pipeline || `CREATE VIEW \`${v.name}\` AS ...` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View DDL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const runViewSql = dbType === 'mongodb' ? `db.${v.name}.find()` : `SELECT * FROM \`${v.name}\` LIMIT 100;`;
+                                    setQuery(runViewSql);
+                                    setActiveTab('query');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ⚡ Query View
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 3. STORED PROCEDURES */}
-                {dbObjectType === 'procedures' && (
-                  <div>
-                    {(!objects?.result?.procedures || objects.result.procedures.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">⚙️</p>
-                        <p className="font-semibold text-gray-700">No Stored Procedures found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.procedures.map((p, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={p.name}>
-                                  <span>⚙️</span> {p.name}
-                                </h4>
-                                <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
-                                  PROCEDURE
-                                </span>
-                              </div>
-                              {p.returnType && <p className="text-xs text-gray-500 font-mono mb-2">Return Type: {p.returnType}</p>}
-                            </div>
+                {dbObjectType === 'procedures' && (() => {
+                  const rawProcs = objects?.result?.procedures || [];
+                  const filteredProcs = objectSearch.trim()
+                    ? rawProcs.filter(p => (p.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawProcs;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `Stored Procedure: ${p.name}`, type: 'procedure', code: p.definition || `CREATE PROCEDURE \`${p.name}\` ...` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View DDL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const execCall = `CALL \`${p.name}\`();`;
-                                  setQuery(execCall);
-                                  setActiveTab('query');
-                                }}
-                                className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                ⚡ Open in Editor
-                              </button>
+                  return (
+                    <div>
+                      {filteredProcs.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">⚙️</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Procedures matching "${objectSearch}"` : `No Stored Procedures found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredProcs.map((p, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={p.name}>
+                                    <span>⚙️</span> {p.name}
+                                  </h4>
+                                  <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
+                                    PROCEDURE
+                                  </span>
+                                </div>
+                                {p.returnType && <p className="text-xs text-gray-500 font-mono mb-2">Return Type: {p.returnType}</p>}
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `Stored Procedure: ${p.name}`, type: 'procedure', code: p.definition || `CREATE PROCEDURE \`${p.name}\` ...` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View DDL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const execCall = `CALL \`${p.name}\`();`;
+                                    setQuery(execCall);
+                                    setActiveTab('query');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ⚡ Open in Editor
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 4. FUNCTIONS */}
-                {dbObjectType === 'functions' && (
-                  <div>
-                    {(!objects?.result?.functions || objects.result.functions.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">🧮</p>
-                        <p className="font-semibold text-gray-700">No Functions found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.functions.map((f, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={f.name}>
-                                  <span>🧮</span> {f.name}
-                                </h4>
-                                <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
-                                  FUNCTION
-                                </span>
-                              </div>
-                              {f.returnType && <p className="text-xs text-gray-500 font-mono mb-2">Returns: {f.returnType}</p>}
-                            </div>
+                {dbObjectType === 'functions' && (() => {
+                  const rawFuncs = objects?.result?.functions || [];
+                  const filteredFuncs = objectSearch.trim()
+                    ? rawFuncs.filter(f => (f.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawFuncs;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `Function: ${f.name}`, type: 'function', code: f.definition || `CREATE FUNCTION \`${f.name}\` ...` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View DDL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const execCall = `SELECT \`${f.name}\`();`;
-                                  setQuery(execCall);
-                                  setActiveTab('query');
-                                }}
-                                className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                ⚡ Open in Editor
-                              </button>
+                  return (
+                    <div>
+                      {filteredFuncs.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">🧮</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Functions matching "${objectSearch}"` : `No Functions found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredFuncs.map((f, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={f.name}>
+                                    <span>🧮</span> {f.name}
+                                  </h4>
+                                  <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
+                                    FUNCTION
+                                  </span>
+                                </div>
+                                {f.returnType && <p className="text-xs text-gray-500 font-mono mb-2">Returns: {f.returnType}</p>}
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `Function: ${f.name}`, type: 'function', code: f.definition || `CREATE FUNCTION \`${f.name}\` ...` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View DDL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const execCall = `SELECT \`${f.name}\`();`;
+                                    setQuery(execCall);
+                                    setActiveTab('query');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ⚡ Open in Editor
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 5. TRIGGERS */}
-                {dbObjectType === 'triggers' && (
-                  <div>
-                    {(!objects?.result?.triggers || objects.result.triggers.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">⚡</p>
-                        <p className="font-semibold text-gray-700">No Triggers found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.triggers.map((t, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={t.name}>
-                                  <span>⚡</span> {t.name}
-                                </h4>
-                                <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
-                                  TRIGGER
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {t.tableName || 'N/A'}</p>
-                              <p className="text-xs text-gray-500 font-mono mb-2">Event: {t.event || 'N/A'}</p>
-                            </div>
+                {dbObjectType === 'triggers' && (() => {
+                  const rawTrigs = objects?.result?.triggers || [];
+                  const filteredTrigs = objectSearch.trim()
+                    ? rawTrigs.filter(t => (t.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.event || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawTrigs;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `Trigger: ${t.name}`, type: 'trigger', code: t.statement || `CREATE TRIGGER \`${t.name}\` ...` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View DDL
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setQuery(t.statement || `-- Trigger: ${t.name}`);
-                                  setActiveTab('query');
-                                }}
-                                className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                ⚡ Open in Editor
-                              </button>
+                  return (
+                    <div>
+                      {filteredTrigs.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">⚡</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Triggers matching "${objectSearch}"` : `No Triggers found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredTrigs.map((t, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={t.name}>
+                                    <span>⚡</span> {t.name}
+                                  </h4>
+                                  <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
+                                    TRIGGER
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {t.tableName || 'N/A'}</p>
+                                <p className="text-xs text-gray-500 font-mono mb-2">Event: {t.event || 'N/A'}</p>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `Trigger: ${t.name}`, type: 'trigger', code: t.statement || `CREATE TRIGGER \`${t.name}\` ...` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View DDL
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setQuery(t.statement || `-- Trigger: ${t.name}`);
+                                    setActiveTab('query');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ⚡ Open in Editor
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 6. INDEXES */}
-                {dbObjectType === 'indexes' && (
-                  <div>
-                    {(!objects?.result?.indexes || objects.result.indexes.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">🔍</p>
-                        <p className="font-semibold text-gray-700">No Indexes found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.indexes.map((idxItem, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={idxItem.name}>
-                                  <span>🔍</span> {idxItem.name}
-                                </h4>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
-                                  idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                }`}>
-                                  {idxItem.unique ? 'UNIQUE' : 'INDEX'}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {idxItem.tableName || 'N/A'}</p>
-                              {idxItem.columnName && <p className="text-xs text-gray-500 font-mono mb-1">Column: {idxItem.columnName}</p>}
-                              {idxItem.key && <p className="text-xs text-gray-500 font-mono mb-1">Key Pattern: {idxItem.key}</p>}
-                              {idxItem.indexType && <p className="text-xs text-gray-400 font-mono mb-2">Type: {idxItem.indexType}</p>}
-                            </div>
+                {dbObjectType === 'indexes' && (() => {
+                  const rawIdxs = objects?.result?.indexes || [];
+                  const filteredIdxs = objectSearch.trim()
+                    ? rawIdxs.filter(i => (i.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (i.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (i.columnName || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawIdxs;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name}`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${idxItem.tableName}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View Info
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const explainSql = dbType === 'mongodb' ? `db.${idxItem.tableName}.getIndexes()` : `EXPLAIN SELECT * FROM \`${idxItem.tableName}\`;`;
-                                  setQuery(explainSql);
-                                  setActiveTab('query');
-                                }}
-                                className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                ⚡ Explain / Test
-                              </button>
+                  return (
+                    <div>
+                      {filteredIdxs.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">🔍</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Indexes matching "${objectSearch}"` : `No Indexes found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredIdxs.map((idxItem, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={idxItem.name}>
+                                    <span>🔍</span> {idxItem.name}
+                                  </h4>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
+                                    idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  }`}>
+                                    {idxItem.unique ? 'UNIQUE' : 'INDEX'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {idxItem.tableName || 'N/A'}</p>
+                                {idxItem.columnName && <p className="text-xs text-gray-500 font-mono mb-1">Column: {idxItem.columnName}</p>}
+                                {idxItem.key && <p className="text-xs text-gray-500 font-mono mb-1">Key Pattern: {idxItem.key}</p>}
+                                {idxItem.indexType && <p className="text-xs text-gray-400 font-mono mb-2">Type: {idxItem.indexType}</p>}
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name}`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${idxItem.tableName}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View Info
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const explainSql = dbType === 'mongodb' ? `db.${idxItem.tableName}.getIndexes()` : `EXPLAIN SELECT * FROM \`${idxItem.tableName}\`;`;
+                                    setQuery(explainSql);
+                                    setActiveTab('query');
+                                  }}
+                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ⚡ Explain / Test
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* 7. CONSTRAINTS */}
-                {dbObjectType === 'constraints' && (
-                  <div>
-                    {(!objects?.result?.constraints || objects.result.constraints.length === 0) ? (
-                      <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
-                        <p className="text-2xl mb-2">🔒</p>
-                        <p className="font-semibold text-gray-700">No Constraints found in database schema <span className="font-mono text-[#0d9da4]">{activeDb}</span>.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {objects.result.constraints.map((cItem, idx) => (
-                          <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={cItem.name}>
-                                  <span>🔒</span> {cItem.name}
-                                </h4>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
-                                  cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                                  cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
-                                  'bg-rose-50 text-rose-800 border border-rose-200'
-                                }`}>
-                                  {cItem.constraintType || 'CONSTRAINT'}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {cItem.tableName || 'N/A'}</p>
-                            </div>
+                {dbObjectType === 'constraints' && (() => {
+                  const rawConsts = objects?.result?.constraints || [];
+                  const filteredConsts = objectSearch.trim()
+                    ? rawConsts.filter(c => (c.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (c.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (c.constraintType || '').toLowerCase().includes(objectSearch.toLowerCase()))
+                    : rawConsts;
 
-                            <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                              <button
-                                type="button"
-                                onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name}`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${cItem.tableName}\n-- Type: ${cItem.constraintType}` })}
-                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                              >
-                                📜 View Rule Details
-                              </button>
+                  return (
+                    <div>
+                      {filteredConsts.length === 0 ? (
+                        <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
+                          <p className="text-2xl mb-2">🔒</p>
+                          <p className="font-semibold text-gray-700">
+                            {objectSearch.trim() ? `No Constraints matching "${objectSearch}"` : `No Constraints found in database schema ${activeDb}.`}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {filteredConsts.map((cItem, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={cItem.name}>
+                                    <span>🔒</span> {cItem.name}
+                                  </h4>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
+                                    cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                                    cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
+                                    'bg-rose-50 text-rose-800 border border-rose-200'
+                                  }`}>
+                                    {cItem.constraintType || 'CONSTRAINT'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {cItem.tableName || 'N/A'}</p>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name}`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${cItem.tableName}\n-- Type: ${cItem.constraintType}` })}
+                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                >
+                                  📜 View Rule Details
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ) : tableLoading ? (
                   <div className="text-center py-12">
