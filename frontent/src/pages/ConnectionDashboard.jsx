@@ -646,8 +646,70 @@ export default function ConnectionDashboard() {
   const [objectSearch, setObjectSearch] = useState('');
   const [indexTableFilter, setIndexTableFilter] = useState('');
   const [constraintTableFilter, setConstraintTableFilter] = useState('');
+  const [objectsPage, setObjectsPage] = useState(1);
+  const [objectsPerPage, setObjectsPerPage] = useState(10);
   const [expandedDbs, setExpandedDbs] = useState({});
   const [definitionModal, setDefinitionModal] = useState({ open: false, title: '', type: '', code: '' });
+
+  const renderObjectPaginationControls = (totalCount, itemLabel = 'items') => {
+    if (totalCount === 0) return null;
+
+    const totalPages = Math.ceil(totalCount / objectsPerPage) || 1;
+    const startIdx = (objectsPage - 1) * objectsPerPage + 1;
+    const endIdx = Math.min(objectsPage * objectsPerPage, totalCount);
+
+    return (
+      <div className="flex items-center justify-between flex-wrap gap-3 py-2.5 px-4 bg-gray-50/90 rounded-xl border border-gray-200 text-xs select-none shadow-3xs my-3">
+        <div className="flex items-center gap-3">
+          <span className="text-gray-600 font-medium">
+            Showing <span className="font-bold text-gray-900">{startIdx}</span> to <span className="font-bold text-gray-900">{endIdx}</span> of <span className="font-bold text-gray-900">{totalCount}</span> {itemLabel}
+          </span>
+
+          <div className="flex items-center gap-1.5 text-gray-600 font-medium border-l border-gray-250 pl-3">
+            <span>Per page:</span>
+            <select
+              value={objectsPerPage}
+              onChange={(e) => {
+                setObjectsPerPage(Number(e.target.value));
+                setObjectsPage(1);
+              }}
+              className="px-2 py-1 border border-gray-300 rounded-lg bg-white text-xs font-bold text-gray-800 outline-none focus:border-teal-500 cursor-pointer shadow-3xs"
+            >
+              <option value={6}>6 per page</option>
+              <option value={10}>10 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
+              <option value={100}>100 per page</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setObjectsPage(prev => Math.max(prev - 1, 1))}
+            disabled={objectsPage === 1}
+            className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+          >
+            ← Previous
+          </button>
+
+          <span className="text-xs font-bold text-gray-700 font-mono px-1">
+            Page {objectsPage} of {totalPages}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setObjectsPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={objectsPage >= totalPages}
+            className="px-3 py-1 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer bg-white shadow-3xs"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
     const initializeConnection = async () => {
@@ -718,6 +780,7 @@ export default function ConnectionDashboard() {
     setTableColumns([]);
     setIndexTableFilter('');
     setConstraintTableFilter('');
+    setObjectsPage(1);
     
     try {
       setDbLoading(true);
@@ -1906,7 +1969,7 @@ export default function ConnectionDashboard() {
                               type="text"
                               placeholder={`Search ${dbObjectType}...`}
                               value={objectSearch}
-                              onChange={e => setObjectSearch(e.target.value)}
+                              onChange={e => { setObjectSearch(e.target.value); setObjectsPage(1); }}
                               className="pl-8 pr-8 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-gray-50 focus:bg-white focus:border-teal-500 transition w-full sm:w-64 font-medium text-gray-800"
                             />
                             <svg className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1915,7 +1978,7 @@ export default function ConnectionDashboard() {
                             {objectSearch && (
                               <button
                                 type="button"
-                                onClick={() => setObjectSearch('')}
+                                onClick={() => { setObjectSearch(''); setObjectsPage(1); }}
                                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold cursor-pointer"
                               >
                                 ✕
@@ -1928,7 +1991,7 @@ export default function ConnectionDashboard() {
                       <div className="flex items-center gap-2 overflow-x-auto pt-1">
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('tables'); setObjectSearch(''); }}
+                          onClick={() => { setDbObjectType('tables'); setObjectSearch(''); setObjectsPage(1); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'tables'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1940,7 +2003,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('views'); setObjectSearch(''); }}
+                          onClick={() => { setDbObjectType('views'); setObjectSearch(''); setObjectsPage(1); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'views'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1953,7 +2016,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('procedures'); setObjectSearch(''); }}
+                            onClick={() => { setDbObjectType('procedures'); setObjectSearch(''); setObjectsPage(1); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'procedures'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1967,7 +2030,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('functions'); setObjectSearch(''); }}
+                            onClick={() => { setDbObjectType('functions'); setObjectSearch(''); setObjectsPage(1); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'functions'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1981,7 +2044,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('triggers'); setObjectSearch(''); }}
+                            onClick={() => { setDbObjectType('triggers'); setObjectSearch(''); setObjectsPage(1); }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'triggers'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -1994,7 +2057,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('indexes'); setObjectSearch(''); }}
+                          onClick={() => { setDbObjectType('indexes'); setObjectSearch(''); setObjectsPage(1); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'indexes'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2006,7 +2069,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('constraints'); setObjectSearch(''); }}
+                          onClick={() => { setDbObjectType('constraints'); setObjectSearch(''); setObjectsPage(1); }}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'constraints'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2246,8 +2309,11 @@ export default function ConnectionDashboard() {
                     ? rawViews.filter(v => (v.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (v.viewOn || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawViews;
 
+                  const paginatedViews = filteredViews.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
+                      {filteredViews.length > 0 && renderObjectPaginationControls(filteredViews.length, 'views')}
                       {filteredViews.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">👁️</p>
@@ -2257,7 +2323,7 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredViews.map((v, idx) => (
+                          {paginatedViews.map((v, idx) => (
                             <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -2296,6 +2362,7 @@ export default function ConnectionDashboard() {
                           ))}
                         </div>
                       )}
+                      {filteredViews.length > 0 && renderObjectPaginationControls(filteredViews.length, 'views')}
                     </div>
                   );
                 })()}
@@ -2307,8 +2374,11 @@ export default function ConnectionDashboard() {
                     ? rawProcs.filter(p => (p.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawProcs;
 
+                  const paginatedProcs = filteredProcs.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
+                      {filteredProcs.length > 0 && renderObjectPaginationControls(filteredProcs.length, 'stored procedures')}
                       {filteredProcs.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">⚙️</p>
@@ -2318,7 +2388,7 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredProcs.map((p, idx) => (
+                          {paginatedProcs.map((p, idx) => (
                             <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -2355,6 +2425,7 @@ export default function ConnectionDashboard() {
                           ))}
                         </div>
                       )}
+                      {filteredProcs.length > 0 && renderObjectPaginationControls(filteredProcs.length, 'stored procedures')}
                     </div>
                   );
                 })()}
@@ -2366,8 +2437,11 @@ export default function ConnectionDashboard() {
                     ? rawFuncs.filter(f => (f.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawFuncs;
 
+                  const paginatedFuncs = filteredFuncs.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
+                      {filteredFuncs.length > 0 && renderObjectPaginationControls(filteredFuncs.length, 'functions')}
                       {filteredFuncs.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">🧮</p>
@@ -2377,7 +2451,7 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredFuncs.map((f, idx) => (
+                          {paginatedFuncs.map((f, idx) => (
                             <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -2414,6 +2488,7 @@ export default function ConnectionDashboard() {
                           ))}
                         </div>
                       )}
+                      {filteredFuncs.length > 0 && renderObjectPaginationControls(filteredFuncs.length, 'functions')}
                     </div>
                   );
                 })()}
@@ -2425,8 +2500,11 @@ export default function ConnectionDashboard() {
                     ? rawTrigs.filter(t => (t.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.event || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawTrigs;
 
+                  const paginatedTrigs = filteredTrigs.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
+                      {filteredTrigs.length > 0 && renderObjectPaginationControls(filteredTrigs.length, 'triggers')}
                       {filteredTrigs.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">⚡</p>
@@ -2436,7 +2514,7 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredTrigs.map((t, idx) => (
+                          {paginatedTrigs.map((t, idx) => (
                             <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -2473,6 +2551,7 @@ export default function ConnectionDashboard() {
                           ))}
                         </div>
                       )}
+                      {filteredTrigs.length > 0 && renderObjectPaginationControls(filteredTrigs.length, 'triggers')}
                     </div>
                   );
                 })()}
@@ -2497,8 +2576,18 @@ export default function ConnectionDashboard() {
                     return matchesSearch && matchesTable;
                   });
 
+                  const groupedByTable = filteredIdxs.reduce((acc, idxItem) => {
+                    const tName = idxItem.tableName || 'General / Schema';
+                    if (!acc[tName]) acc[tName] = [];
+                    acc[tName].push(idxItem);
+                    return acc;
+                  }, {});
+
+                  const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
+                  const paginatedTableEntries = tableEntries.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
                       {/* Table Dropdown Filter Bar */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-white p-3.5 rounded-xl border border-gray-200 shadow-3xs">
                         <div className="flex items-center gap-2.5 flex-wrap">
@@ -2507,7 +2596,7 @@ export default function ConnectionDashboard() {
                           </label>
                           <select
                             value={indexTableFilter}
-                            onChange={e => setIndexTableFilter(e.target.value)}
+                            onChange={e => { setIndexTableFilter(e.target.value); setObjectsPage(1); }}
                             className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50/80 font-semibold text-gray-800 outline-none focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition cursor-pointer"
                           >
                             <option value="">All Tables ({availableTables.length})</option>
@@ -2521,7 +2610,7 @@ export default function ConnectionDashboard() {
                           {indexTableFilter && (
                             <button
                               type="button"
-                              onClick={() => setIndexTableFilter('')}
+                              onClick={() => { setIndexTableFilter(''); setObjectsPage(1); }}
                               className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                               title="Clear table filter"
                             >
@@ -2531,9 +2620,11 @@ export default function ConnectionDashboard() {
                         </div>
 
                         <div className="text-xs text-gray-500 font-medium">
-                          Showing <span className="font-bold text-gray-900">{filteredIdxs.length}</span> of <span className="font-bold text-gray-900">{rawIdxs.length}</span> indexes
+                          Showing <span className="font-bold text-gray-900">{filteredIdxs.length}</span> of <span className="font-bold text-gray-900">{rawIdxs.length}</span> indexes ({tableEntries.length} tables)
                         </div>
                       </div>
+
+                      {tableEntries.length > 0 && renderObjectPaginationControls(tableEntries.length, 'table index boxes')}
 
                       {filteredIdxs.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
@@ -2548,7 +2639,7 @@ export default function ConnectionDashboard() {
                           {indexTableFilter && (
                             <button
                               type="button"
-                              onClick={() => setIndexTableFilter('')}
+                              onClick={() => { setIndexTableFilter(''); setObjectsPage(1); }}
                               className="mt-3 px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
                             >
                               Show All Tables
@@ -2557,101 +2648,91 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="flex flex-col gap-6">
-                          {(() => {
-                            const groupedByTable = filteredIdxs.reduce((acc, idxItem) => {
-                              const tName = idxItem.tableName || 'General / Schema';
-                              if (!acc[tName]) acc[tName] = [];
-                              acc[tName].push(idxItem);
-                              return acc;
-                            }, {});
-
-                            const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
-
-                            return tableEntries.map(([tableNameGroup, tableIdxs], tableGroupIdx) => (
-                              <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
-                                {/* Box Header for Table */}
-                                <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
-                                    <h4 className="text-sm font-extrabold text-gray-900 font-mono">
-                                      {tableNameGroup}
-                                    </h4>
-                                    <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
-                                      {tableIdxs.length} {tableIdxs.length === 1 ? 'Index' : 'Indexes'}
-                                    </span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => fetchTableData(tableNameGroup)}
-                                    className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                                  >
-                                    View Table Data →
-                                  </button>
+                          {paginatedTableEntries.map(([tableNameGroup, tableIdxs], tableGroupIdx) => (
+                            <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
+                              {/* Box Header for Table */}
+                              <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
+                                  <h4 className="text-sm font-extrabold text-gray-900 font-mono">
+                                    {tableNameGroup}
+                                  </h4>
+                                  <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
+                                    {tableIdxs.length} {tableIdxs.length === 1 ? 'Index' : 'Indexes'}
+                                  </span>
                                 </div>
 
-                                {/* Table Indexes List inside 1 Box */}
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-xs">
-                                    <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
-                                      <tr>
-                                        <th className="px-4 py-2.5">Index Name</th>
-                                        <th className="px-4 py-2.5">Type</th>
-                                        <th className="px-4 py-2.5">Columns / Pattern</th>
-                                        <th className="px-4 py-2.5">Index Spec</th>
-                                        <th className="px-4 py-2.5 text-right">Actions</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 font-mono">
-                                      {tableIdxs.map((idxItem, idx) => (
-                                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
-                                          <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
-                                            <span className="text-gray-400">🔍</span> {idxItem.name}
-                                          </td>
-                                          <td className="px-4 py-3 whitespace-nowrap">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                              idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                            }`}>
-                                              {idxItem.unique ? 'UNIQUE' : 'INDEX'}
-                                            </span>
-                                          </td>
-                                          <td className="px-4 py-3 text-gray-700">
-                                            {idxItem.columnName || idxItem.key || 'N/A'}
-                                          </td>
-                                          <td className="px-4 py-3 text-gray-500 text-[11px]">
-                                            {idxItem.indexType || (idxItem.unique ? 'UNIQUE KEY' : 'BTREE')}
-                                          </td>
-                                          <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <div className="flex items-center justify-end gap-2 font-sans">
-                                              <button
-                                                type="button"
-                                                onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name} (${tableNameGroup})`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${tableNameGroup}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
-                                                className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
-                                              >
-                                                📜 Info
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  const explainSql = dbType === 'mongodb' ? `db.${tableNameGroup}.getIndexes()` : `EXPLAIN SELECT * FROM \`${tableNameGroup}\`;`;
-                                                  openInNewQueryTab(explainSql, `Idx: ${tableNameGroup}`);
-                                                }}
-                                                className="px-2.5 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
-                                              >
-                                                ⚡ Explain
-                                              </button>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => fetchTableData(tableNameGroup)}
+                                  className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                                >
+                                  View Table Data →
+                                </button>
                               </div>
-                            ));
-                          })()}
+
+                              {/* Table Indexes List inside 1 Box */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                  <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
+                                    <tr>
+                                      <th className="px-4 py-2.5">Index Name</th>
+                                      <th className="px-4 py-2.5">Type</th>
+                                      <th className="px-4 py-2.5">Columns / Pattern</th>
+                                      <th className="px-4 py-2.5">Index Spec</th>
+                                      <th className="px-4 py-2.5 text-right">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100 font-mono">
+                                    {tableIdxs.map((idxItem, idx) => (
+                                      <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
+                                          <span className="text-gray-400">🔍</span> {idxItem.name}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                            idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                          }`}>
+                                            {idxItem.unique ? 'UNIQUE' : 'INDEX'}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-700">
+                                          {idxItem.columnName || idxItem.key || 'N/A'}
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-500 text-[11px]">
+                                          {idxItem.indexType || (idxItem.unique ? 'UNIQUE KEY' : 'BTREE')}
+                                        </td>
+                                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                                          <div className="flex items-center justify-end gap-2 font-sans">
+                                            <button
+                                              type="button"
+                                              onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name} (${tableNameGroup})`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${tableNameGroup}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
+                                              className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                            >
+                                              📜 Info
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const explainSql = dbType === 'mongodb' ? `db.${tableNameGroup}.getIndexes()` : `EXPLAIN SELECT * FROM \`${tableNameGroup}\`;`;
+                                                openInNewQueryTab(explainSql, `Idx: ${tableNameGroup}`);
+                                              }}
+                                              className="px-2.5 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                            >
+                                              ⚡ Explain
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
+                      {tableEntries.length > 0 && renderObjectPaginationControls(tableEntries.length, 'table index boxes')}
                     </div>
                   );
                 })()}
@@ -2676,8 +2757,18 @@ export default function ConnectionDashboard() {
                     return matchesSearch && matchesTable;
                   });
 
+                  const groupedByTable = filteredConsts.reduce((acc, cItem) => {
+                    const tName = cItem.tableName || 'General / Schema';
+                    if (!acc[tName]) acc[tName] = [];
+                    acc[tName].push(cItem);
+                    return acc;
+                  }, {});
+
+                  const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
+                  const paginatedTableEntries = tableEntries.slice((objectsPage - 1) * objectsPerPage, objectsPage * objectsPerPage);
+
                   return (
-                    <div>
+                    <div className="space-y-4">
                       {/* Table Dropdown Filter Bar */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-white p-3.5 rounded-xl border border-gray-200 shadow-3xs">
                         <div className="flex items-center gap-2.5 flex-wrap">
@@ -2686,7 +2777,7 @@ export default function ConnectionDashboard() {
                           </label>
                           <select
                             value={constraintTableFilter}
-                            onChange={e => setConstraintTableFilter(e.target.value)}
+                            onChange={e => { setConstraintTableFilter(e.target.value); setObjectsPage(1); }}
                             className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50/80 font-semibold text-gray-800 outline-none focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition cursor-pointer"
                           >
                             <option value="">All Tables ({availableTables.length})</option>
@@ -2700,7 +2791,7 @@ export default function ConnectionDashboard() {
                           {constraintTableFilter && (
                             <button
                               type="button"
-                              onClick={() => setConstraintTableFilter('')}
+                              onClick={() => { setConstraintTableFilter(''); setObjectsPage(1); }}
                               className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                               title="Clear table filter"
                             >
@@ -2710,9 +2801,11 @@ export default function ConnectionDashboard() {
                         </div>
 
                         <div className="text-xs text-gray-500 font-medium">
-                          Showing <span className="font-bold text-gray-900">{filteredConsts.length}</span> of <span className="font-bold text-gray-900">{rawConsts.length}</span> constraints
+                          Showing <span className="font-bold text-gray-900">{filteredConsts.length}</span> of <span className="font-bold text-gray-900">{rawConsts.length}</span> constraints ({tableEntries.length} tables)
                         </div>
                       </div>
+
+                      {tableEntries.length > 0 && renderObjectPaginationControls(tableEntries.length, 'table constraint boxes')}
 
                       {filteredConsts.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
@@ -2727,7 +2820,7 @@ export default function ConnectionDashboard() {
                           {constraintTableFilter && (
                             <button
                               type="button"
-                              onClick={() => setConstraintTableFilter('')}
+                              onClick={() => { setConstraintTableFilter(''); setObjectsPage(1); }}
                               className="mt-3 px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
                             >
                               Show All Tables
@@ -2736,89 +2829,79 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="flex flex-col gap-6">
-                          {(() => {
-                            const groupedByTable = filteredConsts.reduce((acc, cItem) => {
-                              const tName = cItem.tableName || 'General / Schema';
-                              if (!acc[tName]) acc[tName] = [];
-                              acc[tName].push(cItem);
-                              return acc;
-                            }, {});
-
-                            const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
-
-                            return tableEntries.map(([tableNameGroup, tableConsts], tableGroupIdx) => (
-                              <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
-                                {/* Box Header for Table */}
-                                <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
-                                    <h4 className="text-sm font-extrabold text-gray-900 font-mono">
-                                      {tableNameGroup}
-                                    </h4>
-                                    <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
-                                      {tableConsts.length} {tableConsts.length === 1 ? 'Constraint' : 'Constraints'}
-                                    </span>
-                                  </div>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => fetchTableData(tableNameGroup)}
-                                    className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                                  >
-                                    View Table Data →
-                                  </button>
+                          {paginatedTableEntries.map(([tableNameGroup, tableConsts], tableGroupIdx) => (
+                            <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
+                              {/* Box Header for Table */}
+                              <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
+                                  <h4 className="text-sm font-extrabold text-gray-900 font-mono">
+                                    {tableNameGroup}
+                                  </h4>
+                                  <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
+                                    {tableConsts.length} {tableConsts.length === 1 ? 'Constraint' : 'Constraints'}
+                                  </span>
                                 </div>
 
-                                {/* Table Constraints List inside 1 Box */}
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-left text-xs">
-                                    <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
-                                      <tr>
-                                        <th className="px-4 py-2.5">Constraint Name</th>
-                                        <th className="px-4 py-2.5">Type</th>
-                                        <th className="px-4 py-2.5">Rule / Definition Details</th>
-                                        <th className="px-4 py-2.5 text-right">Actions</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100 font-mono">
-                                      {tableConsts.map((cItem, idx) => (
-                                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
-                                          <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
-                                            <span className="text-gray-400">🔒</span> {cItem.name}
-                                          </td>
-                                          <td className="px-4 py-3 whitespace-nowrap">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                              cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                                              cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
-                                              'bg-rose-50 text-rose-800 border border-rose-200'
-                                            }`}>
-                                              {cItem.constraintType || 'CONSTRAINT'}
-                                            </span>
-                                          </td>
-                                          <td className="px-4 py-3 text-gray-700 max-w-[350px] truncate" title={cItem.rule || cItem.definition}>
-                                            {cItem.rule || cItem.definition || 'N/A'}
-                                          </td>
-                                          <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <div className="flex items-center justify-end gap-2 font-sans">
-                                              <button
-                                                type="button"
-                                                onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name} (${tableNameGroup})`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${tableNameGroup}\n-- Type: ${cItem.constraintType}` })}
-                                                className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
-                                              >
-                                                📜 Rule Details
-                                              </button>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => fetchTableData(tableNameGroup)}
+                                  className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                                >
+                                  View Table Data →
+                                </button>
                               </div>
-                            ));
-                          })()}
+
+                              {/* Table Constraints List inside 1 Box */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                  <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
+                                    <tr>
+                                      <th className="px-4 py-2.5">Constraint Name</th>
+                                      <th className="px-4 py-2.5">Type</th>
+                                      <th className="px-4 py-2.5">Rule / Definition Details</th>
+                                      <th className="px-4 py-2.5 text-right">Actions</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100 font-mono">
+                                    {tableConsts.map((cItem, idx) => (
+                                      <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
+                                          <span className="text-gray-400">🔒</span> {cItem.name}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                            cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                                            cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
+                                            'bg-rose-50 text-rose-800 border border-rose-200'
+                                          }`}>
+                                            {cItem.constraintType || 'CONSTRAINT'}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-700 max-w-[350px] truncate" title={cItem.rule || cItem.definition}>
+                                          {cItem.rule || cItem.definition || 'N/A'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                                          <div className="flex items-center justify-end gap-2 font-sans">
+                                            <button
+                                              type="button"
+                                              onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name} (${tableNameGroup})`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${tableNameGroup}\n-- Type: ${cItem.constraintType}` })}
+                                              className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                            >
+                                              📜 Rule Details
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
+                      {tableEntries.length > 0 && renderObjectPaginationControls(tableEntries.length, 'table constraint boxes')}
                     </div>
                   );
                 })()}
