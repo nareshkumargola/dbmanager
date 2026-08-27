@@ -215,6 +215,35 @@ export default function ConnectionDashboard() {
     setActiveQueryTabId(newId);
   };
 
+  const openInNewQueryTab = (queryText, customName) => {
+    if (!queryText) return;
+    const newId = `tab-${Date.now()}`;
+    setQueryTabs(prevTabs => {
+      if (prevTabs.length === 1 && (!prevTabs[0].query || !prevTabs[0].query.trim())) {
+        return prevTabs.map(t => ({
+          ...t,
+          query: queryText,
+          name: customName || t.name
+        }));
+      }
+      const newTabNumber = prevTabs.length + 1;
+      const newTab = {
+        id: newId,
+        name: customName || `Query ${newTabNumber}`,
+        query: queryText,
+        results: [],
+        columns: [],
+        error: '',
+        msg: '',
+        loading: false,
+        targetDb: activeDb || stats?.database || 'default'
+      };
+      return [...prevTabs, newTab];
+    });
+    setActiveQueryTabId(newId);
+    setActiveTab('query');
+  };
+
   const handleRenameTab = (tabId, currentName) => {
     const newName = prompt('Enter new custom name for this Query Tab:', currentName);
     if (newName && newName.trim()) {
@@ -660,30 +689,11 @@ export default function ConnectionDashboard() {
   const location = useLocation();
   useEffect(() => {
     if (location?.state?.openTab) {
-      setActiveTab(location.state.openTab);
       if (location.state.query) {
-        const queryText = location.state.query;
-        setQueryTabs(prevTabs => {
-          const currentActive = prevTabs.find(t => t.id === activeQueryTabId) || prevTabs[0];
-          if (currentActive && (!currentActive.query || !currentActive.query.trim())) {
-            return prevTabs.map(t => t.id === currentActive.id ? { ...t, query: queryText } : t);
-          }
-          const newTabId = `tab-${Date.now()}`;
-          const newTabNumber = prevTabs.length + 1;
-          const newTab = {
-            id: newTabId,
-            name: `Query ${newTabNumber}`,
-            query: queryText,
-            results: [],
-            columns: [],
-            error: '',
-            msg: '',
-            loading: false
-          };
-          setActiveQueryTabId(newTabId);
-          return [...prevTabs, newTab];
-        });
+        openInNewQueryTab(location.state.query, location.state.tabName || 'External Query');
         window.history.replaceState({}, document.title);
+      } else {
+        setActiveTab(location.state.openTab);
       }
     }
   }, [location]);
@@ -2273,8 +2283,7 @@ export default function ConnectionDashboard() {
                                   type="button"
                                   onClick={() => {
                                     const runViewSql = dbType === 'mongodb' ? `db.${v.name}.find()` : `SELECT * FROM \`${v.name}\` LIMIT 100;`;
-                                    setQuery(runViewSql);
-                                    setActiveTab('query');
+                                    openInNewQueryTab(runViewSql, `View: ${v.name}`);
                                   }}
                                   className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                                 >
@@ -2333,8 +2342,7 @@ export default function ConnectionDashboard() {
                                   type="button"
                                   onClick={() => {
                                     const execCall = `CALL \`${p.name}\`();`;
-                                    setQuery(execCall);
-                                    setActiveTab('query');
+                                    openInNewQueryTab(execCall, `Proc: ${p.name}`);
                                   }}
                                   className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                                 >
@@ -2393,8 +2401,7 @@ export default function ConnectionDashboard() {
                                   type="button"
                                   onClick={() => {
                                     const execCall = `SELECT \`${f.name}\`();`;
-                                    setQuery(execCall);
-                                    setActiveTab('query');
+                                    openInNewQueryTab(execCall, `Func: ${f.name}`);
                                   }}
                                   className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                                 >
@@ -2453,8 +2460,7 @@ export default function ConnectionDashboard() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setQuery(t.statement || `-- Trigger: ${t.name}`);
-                                    setActiveTab('query');
+                                    openInNewQueryTab(t.statement || `-- Trigger: ${t.name}`, `Trig: ${t.name}`);
                                   }}
                                   className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                                 >
@@ -2626,8 +2632,7 @@ export default function ConnectionDashboard() {
                                                 type="button"
                                                 onClick={() => {
                                                   const explainSql = dbType === 'mongodb' ? `db.${tableNameGroup}.getIndexes()` : `EXPLAIN SELECT * FROM \`${tableNameGroup}\`;`;
-                                                  setQuery(explainSql);
-                                                  setActiveTab('query');
+                                                  openInNewQueryTab(explainSql, `Idx: ${tableNameGroup}`);
                                                 }}
                                                 className="px-2.5 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
                                               >
@@ -3722,7 +3727,7 @@ export default function ConnectionDashboard() {
                           {item.query}
                         </pre>
                         <button
-                          onClick={() => { setQuery(item.query); setActiveTab('query'); }}
+                          onClick={() => openInNewQueryTab(item.query, 'History Query')}
                           className="mt-2 text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700"
                         >
                           Use this query
@@ -4128,8 +4133,7 @@ export default function ConnectionDashboard() {
                 <button
                   type="button"
                   onClick={() => {
-                    setQuery(definitionModal.code);
-                    setActiveTab('query');
+                    openInNewQueryTab(definitionModal.code, definitionModal.title || 'DDL Query');
                     setDefinitionModal({ open: false, title: '', type: '', code: '' });
                   }}
                   className="px-4 py-2 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-xl transition shadow-2xs cursor-pointer flex items-center gap-1.5"
