@@ -615,6 +615,7 @@ export default function ConnectionDashboard() {
   // Database Object Categories (MySQL Workbench Style)
   const [dbObjectType, setDbObjectType] = useState('tables'); // 'tables', 'views', 'procedures', 'functions', 'triggers', 'indexes', 'constraints'
   const [objectSearch, setObjectSearch] = useState('');
+  const [indexTableFilter, setIndexTableFilter] = useState('');
   const [expandedDbs, setExpandedDbs] = useState({});
   const [definitionModal, setDefinitionModal] = useState({ open: false, title: '', type: '', code: '' });
 
@@ -704,6 +705,7 @@ export default function ConnectionDashboard() {
     setSelectedTable(null);
     setTableData([]);
     setTableColumns([]);
+    setIndexTableFilter('');
     
     try {
       setDbLoading(true);
@@ -2470,18 +2472,80 @@ export default function ConnectionDashboard() {
                 {/* 6. INDEXES */}
                 {dbObjectType === 'indexes' && (() => {
                   const rawIdxs = objects?.result?.indexes || [];
-                  const filteredIdxs = objectSearch.trim()
-                    ? rawIdxs.filter(i => (i.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (i.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (i.columnName || '').toLowerCase().includes(objectSearch.toLowerCase()))
-                    : rawIdxs;
+
+                  // Get unique list of current database tables from schema objects or index target tables
+                  const availableTables = Array.from(new Set([
+                    ...(objects?.result?.tables || objects?.result?.collections || []).map(t => typeof t === 'string' ? t : t.name).filter(Boolean),
+                    ...rawIdxs.map(i => i.tableName).filter(Boolean)
+                  ])).sort();
+
+                  const filteredIdxs = rawIdxs.filter(i => {
+                    const matchesSearch = !objectSearch.trim() || (
+                      (i.name || '').toLowerCase().includes(objectSearch.toLowerCase()) ||
+                      (i.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) ||
+                      (i.columnName || '').toLowerCase().includes(objectSearch.toLowerCase())
+                    );
+                    const matchesTable = !indexTableFilter || (i.tableName || '').toLowerCase() === indexTableFilter.toLowerCase();
+                    return matchesSearch && matchesTable;
+                  });
 
                   return (
                     <div>
+                      {/* Table Dropdown Filter Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-white p-3.5 rounded-xl border border-gray-200 shadow-3xs">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            <span>📋</span> Select Table:
+                          </label>
+                          <select
+                            value={indexTableFilter}
+                            onChange={e => setIndexTableFilter(e.target.value)}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50/80 font-semibold text-gray-800 outline-none focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition cursor-pointer"
+                          >
+                            <option value="">All Tables ({availableTables.length})</option>
+                            {availableTables.map((tName, idx) => (
+                              <option key={idx} value={tName}>
+                                {tName}
+                              </option>
+                            ))}
+                          </select>
+
+                          {indexTableFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setIndexTableFilter('')}
+                              className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                              title="Clear table filter"
+                            >
+                              Clear Filter ✕
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-gray-500 font-medium">
+                          Showing <span className="font-bold text-gray-900">{filteredIdxs.length}</span> of <span className="font-bold text-gray-900">{rawIdxs.length}</span> indexes
+                        </div>
+                      </div>
+
                       {filteredIdxs.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">🔍</p>
                           <p className="font-semibold text-gray-700">
-                            {objectSearch.trim() ? `No Indexes matching "${objectSearch}"` : `No Indexes found in database schema ${activeDb}.`}
+                            {indexTableFilter
+                              ? `No Indexes found for table "${indexTableFilter}"`
+                              : objectSearch.trim()
+                                ? `No Indexes matching "${objectSearch}"`
+                                : `No Indexes found in database schema ${activeDb}.`}
                           </p>
+                          {indexTableFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setIndexTableFilter('')}
+                              className="mt-3 px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                            >
+                              Show All Tables
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
