@@ -645,6 +645,7 @@ export default function ConnectionDashboard() {
   const [dbObjectType, setDbObjectType] = useState('tables'); // 'tables', 'views', 'procedures', 'functions', 'triggers', 'indexes', 'constraints'
   const [objectSearch, setObjectSearch] = useState('');
   const [indexTableFilter, setIndexTableFilter] = useState('');
+  const [constraintTableFilter, setConstraintTableFilter] = useState('');
   const [expandedDbs, setExpandedDbs] = useState({});
   const [definitionModal, setDefinitionModal] = useState({ open: false, title: '', type: '', code: '' });
 
@@ -716,6 +717,7 @@ export default function ConnectionDashboard() {
     setTableData([]);
     setTableColumns([]);
     setIndexTableFilter('');
+    setConstraintTableFilter('');
     
     try {
       setDbLoading(true);
@@ -2657,50 +2659,164 @@ export default function ConnectionDashboard() {
                 {/* 7. CONSTRAINTS */}
                 {dbObjectType === 'constraints' && (() => {
                   const rawConsts = objects?.result?.constraints || [];
-                  const filteredConsts = objectSearch.trim()
-                    ? rawConsts.filter(c => (c.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (c.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (c.constraintType || '').toLowerCase().includes(objectSearch.toLowerCase()))
-                    : rawConsts;
+
+                  // Get unique list of current database tables from schema objects or constraint target tables
+                  const availableTables = Array.from(new Set([
+                    ...(objects?.result?.tables || objects?.result?.collections || []).map(t => typeof t === 'string' ? t : t.name).filter(Boolean),
+                    ...rawConsts.map(c => c.tableName).filter(Boolean)
+                  ])).sort();
+
+                  const filteredConsts = rawConsts.filter(c => {
+                    const matchesSearch = !objectSearch.trim() || (
+                      (c.name || '').toLowerCase().includes(objectSearch.toLowerCase()) ||
+                      (c.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) ||
+                      (c.constraintType || '').toLowerCase().includes(objectSearch.toLowerCase())
+                    );
+                    const matchesTable = !constraintTableFilter || (c.tableName || '').toLowerCase() === constraintTableFilter.toLowerCase();
+                    return matchesSearch && matchesTable;
+                  });
 
                   return (
                     <div>
+                      {/* Table Dropdown Filter Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-white p-3.5 rounded-xl border border-gray-200 shadow-3xs">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            <span>📋</span> Select Table:
+                          </label>
+                          <select
+                            value={constraintTableFilter}
+                            onChange={e => setConstraintTableFilter(e.target.value)}
+                            className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50/80 font-semibold text-gray-800 outline-none focus:bg-white focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition cursor-pointer"
+                          >
+                            <option value="">All Tables ({availableTables.length})</option>
+                            {availableTables.map((tName, idx) => (
+                              <option key={idx} value={tName}>
+                                {tName}
+                              </option>
+                            ))}
+                          </select>
+
+                          {constraintTableFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setConstraintTableFilter('')}
+                              className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                              title="Clear table filter"
+                            >
+                              Clear Filter ✕
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-gray-500 font-medium">
+                          Showing <span className="font-bold text-gray-900">{filteredConsts.length}</span> of <span className="font-bold text-gray-900">{rawConsts.length}</span> constraints
+                        </div>
+                      </div>
+
                       {filteredConsts.length === 0 ? (
                         <div className="p-12 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-400 text-xs">
                           <p className="text-2xl mb-2">🔒</p>
                           <p className="font-semibold text-gray-700">
-                            {objectSearch.trim() ? `No Constraints matching "${objectSearch}"` : `No Constraints found in database schema ${activeDb}.`}
+                            {constraintTableFilter
+                              ? `No Constraints found for table "${constraintTableFilter}"`
+                              : objectSearch.trim()
+                                ? `No Constraints matching "${objectSearch}"`
+                                : `No Constraints found in database schema ${activeDb}.`}
                           </p>
+                          {constraintTableFilter && (
+                            <button
+                              type="button"
+                              onClick={() => setConstraintTableFilter('')}
+                              className="mt-3 px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer"
+                            >
+                              Show All Tables
+                            </button>
+                          )}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredConsts.map((cItem, idx) => (
-                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={cItem.name}>
-                                    <span>🔒</span> {cItem.name}
-                                  </h4>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
-                                    cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                                    cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
-                                    'bg-rose-50 text-rose-800 border border-rose-200'
-                                  }`}>
-                                    {cItem.constraintType || 'CONSTRAINT'}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {cItem.tableName || 'N/A'}</p>
-                              </div>
+                        <div className="flex flex-col gap-6">
+                          {(() => {
+                            const groupedByTable = filteredConsts.reduce((acc, cItem) => {
+                              const tName = cItem.tableName || 'General / Schema';
+                              if (!acc[tName]) acc[tName] = [];
+                              acc[tName].push(cItem);
+                              return acc;
+                            }, {});
 
-                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name}`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${cItem.tableName}\n-- Type: ${cItem.constraintType}` })}
-                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                                >
-                                  📜 View Rule Details
-                                </button>
+                            const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
+
+                            return tableEntries.map(([tableNameGroup, tableConsts], tableGroupIdx) => (
+                              <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
+                                {/* Box Header for Table */}
+                                <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
+                                    <h4 className="text-sm font-extrabold text-gray-900 font-mono">
+                                      {tableNameGroup}
+                                    </h4>
+                                    <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
+                                      {tableConsts.length} {tableConsts.length === 1 ? 'Constraint' : 'Constraints'}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => fetchTableData(tableNameGroup)}
+                                    className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                                  >
+                                    View Table Data →
+                                  </button>
+                                </div>
+
+                                {/* Table Constraints List inside 1 Box */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs">
+                                    <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
+                                      <tr>
+                                        <th className="px-4 py-2.5">Constraint Name</th>
+                                        <th className="px-4 py-2.5">Type</th>
+                                        <th className="px-4 py-2.5">Rule / Definition Details</th>
+                                        <th className="px-4 py-2.5 text-right">Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 font-mono">
+                                      {tableConsts.map((cItem, idx) => (
+                                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
+                                          <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
+                                            <span className="text-gray-400">🔒</span> {cItem.name}
+                                          </td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                              cItem.constraintType?.includes('PRIMARY') ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                                              cItem.constraintType?.includes('FOREIGN') ? 'bg-purple-50 text-purple-800 border border-purple-200' :
+                                              'bg-rose-50 text-rose-800 border border-rose-200'
+                                            }`}>
+                                              {cItem.constraintType || 'CONSTRAINT'}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3 text-gray-700 max-w-[350px] truncate" title={cItem.rule || cItem.definition}>
+                                            {cItem.rule || cItem.definition || 'N/A'}
+                                          </td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                                            <div className="flex items-center justify-end gap-2 font-sans">
+                                              <button
+                                                type="button"
+                                                onClick={() => setDefinitionModal({ open: true, title: `Constraint: ${cItem.name} (${tableNameGroup})`, type: 'constraint', code: cItem.rule || `-- Constraint: ${cItem.name}\n-- Table: ${tableNameGroup}\n-- Type: ${cItem.constraintType}` })}
+                                                className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                              >
+                                                📜 Rule Details
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ));
+                          })()}
                         </div>
                       )}
                     </div>
