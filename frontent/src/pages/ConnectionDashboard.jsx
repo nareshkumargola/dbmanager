@@ -2548,48 +2548,101 @@ export default function ConnectionDashboard() {
                           )}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredIdxs.map((idxItem, idx) => (
-                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={idxItem.name}>
-                                    <span>🔍</span> {idxItem.name}
-                                  </h4>
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${
-                                    idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  }`}>
-                                    {idxItem.unique ? 'UNIQUE' : 'INDEX'}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-gray-600 font-mono mb-1">Target Table: {idxItem.tableName || 'N/A'}</p>
-                                {idxItem.columnName && <p className="text-xs text-gray-500 font-mono mb-1">Column: {idxItem.columnName}</p>}
-                                {idxItem.key && <p className="text-xs text-gray-500 font-mono mb-1">Key Pattern: {idxItem.key}</p>}
-                                {idxItem.indexType && <p className="text-xs text-gray-400 font-mono mb-2">Type: {idxItem.indexType}</p>}
-                              </div>
+                        <div className="flex flex-col gap-6">
+                          {(() => {
+                            const groupedByTable = filteredIdxs.reduce((acc, idxItem) => {
+                              const tName = idxItem.tableName || 'General / Schema';
+                              if (!acc[tName]) acc[tName] = [];
+                              acc[tName].push(idxItem);
+                              return acc;
+                            }, {});
 
-                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name}`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${idxItem.tableName}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
-                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                                >
-                                  📜 View Info
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const explainSql = dbType === 'mongodb' ? `db.${idxItem.tableName}.getIndexes()` : `EXPLAIN SELECT * FROM \`${idxItem.tableName}\`;`;
-                                    setQuery(explainSql);
-                                    setActiveTab('query');
-                                  }}
-                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                                >
-                                  ⚡ Explain / Test
-                                </button>
+                            const tableEntries = Object.entries(groupedByTable).sort(([a], [b]) => a.localeCompare(b));
+
+                            return tableEntries.map(([tableNameGroup, tableIdxs], tableGroupIdx) => (
+                              <div key={tableGroupIdx} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-3xs hover:border-teal-300 transition-all">
+                                {/* Box Header for Table */}
+                                <div className="bg-gray-50/90 border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-wrap gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-base">{dbType === 'mongodb' ? '📁' : '📋'}</span>
+                                    <h4 className="text-sm font-extrabold text-gray-900 font-mono">
+                                      {tableNameGroup}
+                                    </h4>
+                                    <span className="text-[11px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full border border-teal-200">
+                                      {tableIdxs.length} {tableIdxs.length === 1 ? 'Index' : 'Indexes'}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => fetchTableData(tableNameGroup)}
+                                    className="text-xs font-bold text-[#0d9da4] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                                  >
+                                    View Table Data →
+                                  </button>
+                                </div>
+
+                                {/* Table Indexes List inside 1 Box */}
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs">
+                                    <thead className="bg-gray-50/50 border-b border-gray-100 text-gray-500 font-semibold uppercase">
+                                      <tr>
+                                        <th className="px-4 py-2.5">Index Name</th>
+                                        <th className="px-4 py-2.5">Type</th>
+                                        <th className="px-4 py-2.5">Columns / Pattern</th>
+                                        <th className="px-4 py-2.5">Index Spec</th>
+                                        <th className="px-4 py-2.5 text-right">Actions</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 font-mono">
+                                      {tableIdxs.map((idxItem, idx) => (
+                                        <tr key={idx} className="hover:bg-teal-50/30 transition-colors">
+                                          <td className="px-4 py-3 font-bold text-gray-900 flex items-center gap-1.5">
+                                            <span className="text-gray-400">🔍</span> {idxItem.name}
+                                          </td>
+                                          <td className="px-4 py-3 whitespace-nowrap">
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                              idxItem.unique ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                            }`}>
+                                              {idxItem.unique ? 'UNIQUE' : 'INDEX'}
+                                            </span>
+                                          </td>
+                                          <td className="px-4 py-3 text-gray-700">
+                                            {idxItem.columnName || idxItem.key || 'N/A'}
+                                          </td>
+                                          <td className="px-4 py-3 text-gray-500 text-[11px]">
+                                            {idxItem.indexType || (idxItem.unique ? 'UNIQUE KEY' : 'BTREE')}
+                                          </td>
+                                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                                            <div className="flex items-center justify-end gap-2 font-sans">
+                                              <button
+                                                type="button"
+                                                onClick={() => setDefinitionModal({ open: true, title: `Index: ${idxItem.name} (${tableNameGroup})`, type: 'index', code: idxItem.definition || `-- Index: ${idxItem.name}\n-- Table: ${tableNameGroup}\n-- Column: ${idxItem.columnName || 'N/A'}\n-- Unique: ${idxItem.unique ? 'YES' : 'NO'}` })}
+                                                className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                              >
+                                                📜 Info
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const explainSql = dbType === 'mongodb' ? `db.${tableNameGroup}.getIndexes()` : `EXPLAIN SELECT * FROM \`${tableNameGroup}\`;`;
+                                                  setQuery(explainSql);
+                                                  setActiveTab('query');
+                                                }}
+                                                className="px-2.5 py-1 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1"
+                                              >
+                                                ⚡ Explain
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ));
+                          })()}
                         </div>
                       )}
                     </div>
