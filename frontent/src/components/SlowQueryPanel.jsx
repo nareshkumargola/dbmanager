@@ -577,7 +577,6 @@ export default function SlowQueryPanel({ connectionId }) {
                 <thead className="bg-gray-100/70 border-b border-gray-200 font-bold text-gray-700 uppercase tracking-wider text-[10px]">
                   <tr>
                     <th className="px-4 py-3">Id</th>
-                    <th className="px-4 py-3">Connection</th>
                     <th className="px-4 py-3">User</th>
                     <th className="px-4 py-3">Host</th>
                     <th className="px-4 py-3">db</th>
@@ -591,7 +590,6 @@ export default function SlowQueryPanel({ connectionId }) {
                   {paginatedLiveProcesses.map(p => (
                     <tr key={p.Id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-4 py-3 font-bold text-gray-800">{p.rawId || p.Id}</td>
-                      <td className="px-4 py-3 font-bold text-teal-700 font-sans whitespace-nowrap">{p.connectionName || 'Server'}</td>
                       <td className="px-4 py-3 text-gray-700">{p.User}</td>
                       <td className="px-4 py-3 text-gray-500 text-[11px] truncate max-w-[150px]" title={p.Host}>{p.Host}</td>
                       <td className="px-4 py-3 font-semibold text-teal-700">{p.db || <span className="text-gray-400 italic">null</span>}</td>
