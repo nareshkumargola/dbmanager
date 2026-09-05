@@ -89,44 +89,12 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Check if user is logging in for the FIRST TIME
+    // First-time OTP flow is intentionally disabled. New users log in directly.
     if (user.isFirstLogin === true) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      user.loginOtp = otp;
-      user.loginOtpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes valid
+      user.isFirstLogin = false;
+      user.loginOtp = null;
+      user.loginOtpExpires = null;
       await user.save();
-
-      console.log("\n====================================================");
-      console.log(`🔑 [FIRST-TIME LOGIN OTP SIMULATION] User: ${user.name} (${user.email})`);
-      console.log(`👉 OTP CODE: ${otp}`);
-      console.log("====================================================\n");
-
-      const subject = "🔒 First-Time Login OTP Verification - Allatone DMS";
-      const htmlContent = `
-        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
-          <h2 style="color: #0d9da4; margin-top: 0;">First-Time Login Verification</h2>
-          <p>Hello <strong>${user.name}</strong>,</p>
-          <p>Your account was created by the System Administrator. Please enter the OTP code below to verify your first-time login:</p>
-          <div style="text-align: center; margin: 25px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0d9da4; background: #f0fdfa; padding: 12px 24px; border-radius: 8px; border: 1px solid #ccfbf1; font-family: monospace;">${otp}</span>
-          </div>
-          <p style="font-size: 12px; color: #777;">This OTP is valid for 10 minutes. Subsequent logins will not require OTP verification.</p>
-        </div>
-      `;
-
-      try {
-        await sendGenericEmail(user.email, subject, htmlContent);
-      } catch (mailErr) {
-        console.error("Failed to send OTP email:", mailErr.message);
-      }
-
-      return res.status(200).json({
-        success: true,
-        requiresOtp: true,
-        email: user.email,
-        message: "First-time login detected. OTP has been sent to your registered email address!",
-        debugOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
-      });
     }
 
     // Subsequent logins: Direct Login
