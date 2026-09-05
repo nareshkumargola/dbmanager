@@ -67,6 +67,18 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  isFirstLogin: {
+    type: Boolean,
+    default: true,
+  },
+  loginOtp: {
+    type: String,
+    default: null,
+  },
+  loginOtpExpires: {
+    type: Date,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

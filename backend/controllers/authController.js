@@ -89,7 +89,47 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // Generate token
+    // Check if user is logging in for the FIRST TIME
+    if (user.isFirstLogin === true) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.loginOtp = otp;
+      user.loginOtpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes valid
+      await user.save();
+
+      console.log("\n====================================================");
+      console.log(`🔑 [FIRST-TIME LOGIN OTP SIMULATION] User: ${user.name} (${user.email})`);
+      console.log(`👉 OTP CODE: ${otp}`);
+      console.log("====================================================\n");
+
+      const subject = "🔒 First-Time Login OTP Verification - Allatone DMS";
+      const htmlContent = `
+        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
+          <h2 style="color: #0d9da4; margin-top: 0;">First-Time Login Verification</h2>
+          <p>Hello <strong>${user.name}</strong>,</p>
+          <p>Your account was created by the System Administrator. Please enter the OTP code below to verify your first-time login:</p>
+          <div style="text-align: center; margin: 25px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0d9da4; background: #f0fdfa; padding: 12px 24px; border-radius: 8px; border: 1px solid #ccfbf1; font-family: monospace;">${otp}</span>
+          </div>
+          <p style="font-size: 12px; color: #777;">This OTP is valid for 10 minutes. Subsequent logins will not require OTP verification.</p>
+        </div>
+      `;
+
+      try {
+        await sendGenericEmail(user.email, subject, htmlContent);
+      } catch (mailErr) {
+        console.error("Failed to send OTP email:", mailErr.message);
+      }
+
+      return res.status(200).json({
+        success: true,
+        requiresOtp: true,
+        email: user.email,
+        message: "First-time login detected. OTP has been sent to your registered email address!",
+        debugOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
+      });
+    }
+
+    // Subsequent logins: Direct Login
     const token = generateToken(user._id, user.role);
 
     // Log to shared connection audit trail
@@ -117,6 +157,114 @@ exports.login = async (req, res) => {
         accessMode: user.accessMode || "read",
         permissions: user.permissions,
       },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// VERIFY FIRST-TIME LOGIN OTP
+exports.verifyLoginOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required!" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found!" });
+    }
+
+    if (!user.loginOtp || user.loginOtp !== otp.trim()) {
+      return res.status(400).json({ message: "Invalid OTP code. Please check and try again." });
+    }
+
+    if (user.loginOtpExpires && user.loginOtpExpires < Date.now()) {
+      return res.status(400).json({ message: "OTP code has expired. Please request a new OTP." });
+    }
+
+    // OTP Verification Success -> Disable OTP for future logins
+    user.isFirstLogin = false;
+    user.loginOtp = null;
+    user.loginOtpExpires = null;
+    await user.save();
+
+    const token = generateToken(user._id, user.role);
+
+    try {
+      const { logAuditTrail } = require("../utils/auditLogger");
+      await logAuditTrail(
+        null,
+        user._id,
+        "LOGIN",
+        `First-time login OTP verified successfully: ${user.email}`,
+      );
+    } catch (auditErr) {
+      console.error("Login OTP audit log failed:", auditErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "First-time login verified successfully!",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        accessMode: user.accessMode || "read",
+        permissions: user.permissions,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// RESEND LOGIN OTP
+exports.resendLoginOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required!" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found!" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.loginOtp = otp;
+    user.loginOtpExpires = Date.now() + 10 * 60 * 1000;
+    await user.save();
+
+    console.log(`🔑 [RESEND LOGIN OTP SIMULATION] Email: ${user.email} | OTP: ${otp}`);
+
+    const subject = "🔒 Resent First-Time Login OTP - Allatone DMS";
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
+        <h2 style="color: #0d9da4; margin-top: 0;">New First-Time Login OTP</h2>
+        <p>Hello <strong>${user.name}</strong>,</p>
+        <p>Your new OTP code for first-time login verification is:</p>
+        <div style="text-align: center; margin: 25px 0;">
+          <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0d9da4; background: #f0fdfa; padding: 12px 24px; border-radius: 8px; border: 1px solid #ccfbf1; font-family: monospace;">${otp}</span>
+        </div>
+        <p style="font-size: 12px; color: #777;">This OTP will expire in 10 minutes.</p>
+      </div>
+    `;
+
+    try {
+      await sendGenericEmail(user.email, subject, htmlContent);
+    } catch (mailErr) {
+      console.error("Failed to send OTP email:", mailErr.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "New OTP has been sent to your email address!",
+      debugOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
     });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });

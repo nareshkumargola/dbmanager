@@ -6,6 +6,8 @@ const { protect } = require('../middlewares/authMiddleware');
 // Public routes — koi bhi access kar sakta hai
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
+router.post('/verify-otp', authController.verifyLoginOtp);
+router.post('/resend-otp', authController.resendLoginOtp);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password/:token', authController.resetPassword);
 

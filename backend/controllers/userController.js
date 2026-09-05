@@ -174,7 +174,8 @@ exports.createUser = async (req, res) => {
       role: userRole,
       accessMode: userAccessMode,
       permissions: userPermissions,
-      allowedConnections: Array.isArray(allowedConnections) ? allowedConnections : []
+      allowedConnections: Array.isArray(allowedConnections) ? allowedConnections : [],
+      isFirstLogin: true
     });
 
     if (Array.isArray(allowedConnections)) {
