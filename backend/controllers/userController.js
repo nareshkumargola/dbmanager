@@ -161,10 +161,10 @@ exports.createUser = async (req, res) => {
       history: req.body.permissions.history !== undefined ? !!req.body.permissions.history : true,
       slowQuery: req.body.permissions.slowQuery !== undefined ? !!req.body.permissions.slowQuery : true,
       auditLogs: req.body.permissions.auditLogs !== undefined ? !!req.body.permissions.auditLogs : true,
-      connections: req.body.permissions.connections !== undefined ? !!req.body.permissions.connections : true
+      connections: req.body.permissions.connections !== undefined ? !!req.body.permissions.connections : false
     } : {
       userManagement: false,
-      backup: false, binlog: true, monitor: true, query: true, history: true, slowQuery: true, auditLogs: true, connections: true
+      backup: false, binlog: true, monitor: true, query: true, history: true, slowQuery: true, auditLogs: true, connections: false
     };
 
     const user = await User.create({

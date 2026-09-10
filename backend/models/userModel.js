@@ -36,7 +36,7 @@ const userSchema = new mongoose.Schema({
       history: { type: Boolean, default: true },
       slowQuery: { type: Boolean, default: true },
       auditLogs: { type: Boolean, default: true },
-      connections: { type: Boolean, default: true }
+      connections: { type: Boolean, default: false }
     },
     default: {
       userManagement: false,
@@ -47,7 +47,7 @@ const userSchema = new mongoose.Schema({
       history: true,
       slowQuery: true,
       auditLogs: true,
-      connections: true
+      connections: false
     }
   },
   allowedConnections: [{

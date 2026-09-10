@@ -17,7 +17,8 @@ export default function UserManagement() {
   const [success, setSuccess] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: '', email: '', password: '', role: 'developer', accessMode: 'read'
+    name: '', email: '', password: '', role: 'developer', accessMode: 'read',
+    permissions: { userManagement: false, connections: false }
   });
   const [formLoading, setFormLoading] = useState(false);
 
@@ -174,7 +175,10 @@ export default function UserManagement() {
       const res = await API.post('/users', form);
       showToast(`User account '${form.name}' created successfully with granted database permissions!`);
       setShowForm(false);
-      setForm({ name: '', email: '', password: '', role: 'developer', accessMode: 'read' });
+      setForm({
+        name: '', email: '', password: '', role: 'developer', accessMode: 'read',
+        permissions: { userManagement: false, connections: false }
+      });
       fetchUsers();
       fetchHistory();
       if (res.data.user?.id) {
@@ -334,7 +338,37 @@ export default function UserManagement() {
               </div>
 
               {form.role === 'developer' && (
-                <div className="pt-3 border-t border-gray-150">
+                <div className="pt-3 border-t border-gray-150 space-y-3">
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!form.permissions?.userManagement}
+                      onChange={e => setForm({
+                        ...form,
+                        permissions: { ...form.permissions, userManagement: e.target.checked }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
+                      <span className="text-[11px] text-gray-500 block">Allow this developer to manage database users</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!form.permissions?.connections}
+                      onChange={e => setForm({
+                        ...form,
+                        permissions: { ...form.permissions, connections: e.target.checked }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-900 block">⚙️ Add & Manage Connections</span>
+                      <span className="text-[11px] text-gray-500 block">Allow this developer to add, edit, and delete database connections</span>
+                    </div>
+                  </label>
                   <ConnectionSchemaSelector
                     value={form.allowedConnections || []}
                     onChange={allowedConnections => setForm({ ...form, allowedConnections })}

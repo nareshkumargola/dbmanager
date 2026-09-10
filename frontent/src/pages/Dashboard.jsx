@@ -129,7 +129,7 @@ export default function Dashboard() {
     permissions: {
       userManagement: false,
       backup: false, binlog: true, monitor: true, query: true,
-      history: true, slowQuery: true, auditLogs: true, connections: true
+      history: true, slowQuery: true, auditLogs: true, connections: false
     }
   });
   const [createLoading, setCreateLoading] = useState(false);
@@ -250,7 +250,10 @@ export default function Dashboard() {
       await API.post('/users', createForm);
       showToast(`User account '${createForm.name}' created successfully with granted database permissions!`);
       setCreateUserModalOpen(false);
-      setCreateForm({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
+      setCreateForm({
+        name: '', email: '', password: '', role: 'developer', accessMode: 'read',
+        permissions: { userManagement: false, connections: false }
+      });
       fetchUsers();
     } catch (err) {
       setCreateError(err.response?.data?.message || 'Failed to create user.');
@@ -983,7 +986,7 @@ export default function Dashboard() {
                             permissions: {
                               userManagement: false,
                               backup: false, binlog: true, monitor: true, query: true,
-                              history: true, slowQuery: true, auditLogs: true, connections: true
+                              history: true, slowQuery: true, auditLogs: true, connections: false
                             }
                           });
                           setCreateError('');
@@ -1364,6 +1367,25 @@ export default function Dashboard() {
                       </div>
                     </label>
 
+                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                      <input
+                        type="checkbox"
+                        checked={!!createForm.permissions?.connections}
+                        onChange={e => setCreateForm({
+                          ...createForm,
+                          permissions: {
+                            ...createForm.permissions,
+                            connections: e.target.checked
+                          }
+                        })}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">⚙️ Add &amp; Manage Connections</span>
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to add, edit, and delete database connections</span>
+                      </div>
+                    </label>
+
                     <ConnectionSchemaSelector
                       value={createForm.allowedConnections || []}
                       onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
@@ -1505,6 +1527,25 @@ export default function Dashboard() {
                     <div>
                       <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">👤 Database Users Manager Access</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!editForm.permissions?.connections}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        permissions: {
+                          ...(editForm.permissions || {}),
+                          connections: e.target.checked
+                        }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">⚙️ Add &amp; Manage Connections</span>
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to add, edit, and delete database connections</span>
                     </div>
                   </label>
 
