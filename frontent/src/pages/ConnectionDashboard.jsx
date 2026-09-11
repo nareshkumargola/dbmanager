@@ -1604,17 +1604,6 @@ export default function ConnectionDashboard() {
                             {tablesCount}
                           </span>
                         </button>
-                        {databaseTablesHasMore && (
-                          <button
-                            type="button"
-                            onClick={loadMoreDatabaseTables}
-                            disabled={databaseTablesLoading}
-                            className="w-full text-left px-2 py-1 text-[10px] font-bold text-teal-700 hover:bg-teal-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {databaseTablesLoading ? 'Loading tables...' : '＋ Load 100 more tables'}
-                          </button>
-                        )}
-
                         {/* Views */}
                         <button
                           onClick={() => {
@@ -2258,6 +2247,17 @@ export default function ConnectionDashboard() {
                       </div>
                     </div>
 
+                    {databaseTablesHasMore && (
+                      <button
+                        type="button"
+                        onClick={loadMoreDatabaseTables}
+                        disabled={databaseTablesLoading}
+                        className="mb-4 px-3 py-2 border border-teal-200 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+                      >
+                        {databaseTablesLoading ? 'Loading tables...' : '＋ Load 100 more tables'}
+                      </button>
+                    )}
+
                     {tables.length === 0 ? (
                       <p className="text-xs text-gray-400">No tables found in this database schema.</p>
                     ) : processedTablesList.length === 0 ? (
@@ -2380,6 +2380,18 @@ export default function ConnectionDashboard() {
                             </div>
                           );
                         })()}
+                        {databaseTablesHasMore && (
+                          <div className="px-5 py-3 border-t border-gray-200 bg-white flex justify-center">
+                            <button
+                              type="button"
+                              onClick={loadMoreDatabaseTables}
+                              disabled={databaseTablesLoading}
+                              className="px-4 py-2 border border-teal-200 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+                            >
+                              {databaseTablesLoading ? 'Loading tables...' : '＋ Load 100 more tables'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
