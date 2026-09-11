@@ -2247,17 +2247,6 @@ export default function ConnectionDashboard() {
                       </div>
                     </div>
 
-                    {databaseTablesHasMore && (
-                      <button
-                        type="button"
-                        onClick={loadMoreDatabaseTables}
-                        disabled={databaseTablesLoading}
-                        className="mb-4 px-3 py-2 border border-teal-200 text-teal-700 text-xs font-bold rounded-lg hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
-                      >
-                        {databaseTablesLoading ? 'Loading tables...' : '＋ Load 100 more tables'}
-                      </button>
-                    )}
-
                     {tables.length === 0 ? (
                       <p className="text-xs text-gray-400">No tables found in this database schema.</p>
                     ) : processedTablesList.length === 0 ? (
