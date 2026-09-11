@@ -245,6 +245,8 @@ exports.getDatabaseObjects = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
+    const summaryOnly = req.query.summary === 'true';
+    const exactCounts = req.query.exactCounts === 'true';
     const { conn, type } = await getConnection(connection, database);
 
     let result = {
@@ -261,7 +263,8 @@ exports.getDatabaseObjects = async (req, res) => {
     if (type === 'mysql') {
       let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
       if (database) {
-        // 1. Base Tables
+        // The dashboard initially needs names and cheap estimates only. Detailed
+        // metadata can still be requested without summary=true.
         try {
           const [tableRows] = await conn.execute(
             `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as tableRows 
@@ -278,6 +281,16 @@ exports.getDatabaseObjects = async (req, res) => {
         } catch (e) {
           const [rows] = await conn.execute('SHOW TABLES');
           tables = rows.map(r => ({ name: Object.values(r)[0] }));
+        }
+
+        if (summaryOnly) {
+          return res.status(200).json({
+            success: true,
+            type,
+            result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+            database,
+            summary: true
+          });
         }
 
         // 2. Views
@@ -378,10 +391,12 @@ exports.getDatabaseObjects = async (req, res) => {
             const formattedTable = `"${schema}"."${tableName}"`;
             let rowCount = Math.max(0, Math.round(parseFloat(r.row_estimate || 0)));
 
-            try {
-              const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
-              rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
-            } catch (e) {}
+            if (exactCounts) {
+              try {
+                const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
+                rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
+              } catch (e) {}
+            }
 
             const sizeBytes = parseInt(r.size_bytes || 0);
             const sizeMB = parseFloat((sizeBytes / 1024 / 1024).toFixed(4));
@@ -398,6 +413,16 @@ exports.getDatabaseObjects = async (req, res) => {
           })
         );
       } catch (e) { tables = []; }
+
+      if (summaryOnly) {
+        return res.status(200).json({
+          success: true,
+          type,
+          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+          database,
+          summary: true
+        });
+      }
 
       // Views
       try {
@@ -488,6 +513,11 @@ exports.getDatabaseObjects = async (req, res) => {
             pipeline: col.options?.pipeline ? JSON.stringify(col.options.pipeline, null, 2) : ''
           });
         } else {
+          if (summaryOnly) {
+            collections.push({ name: col.name });
+            continue;
+          }
+
           try {
             const stats = await db.collection(col.name).stats();
             collections.push({
@@ -1103,11 +1133,10 @@ exports.getDatabaseStats = async (req, res) => {
     else if (type === 'mongodb') {
       const db = conn.db(database || 'test');
       const dbStats = await db.stats();
-      const collections = await db.listCollections().toArray();
       stats = {
         type: 'mongodb',
         database: database,
-        collections: collections.length,
+        collections: dbStats.collections || 0,
         documents: dbStats.objects,
         sizeMB: (dbStats.dataSize / 1024 / 1024).toFixed(2),
       };

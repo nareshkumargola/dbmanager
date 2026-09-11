@@ -206,7 +206,6 @@ exports.getMonitoringData = async (req, res) => {
       const db = conn.db(dbName);
       const serverStatus = await db.command({ serverStatus: 1 });
       const dbStats = await db.stats();
-      const collections = await db.listCollections().toArray();
 
       const uptimeSeconds = serverStatus.uptime || 3600;
       const ops = serverStatus.opcounters || {};
@@ -229,8 +228,8 @@ exports.getMonitoringData = async (req, res) => {
         type: 'mongodb',
         activeConnections: serverStatus.connections?.current || 0,
         maxConnections: (serverStatus.connections?.current || 0) + (serverStatus.connections?.available || 100),
-        totalCollections: collections.length,
-        totalTables: collections.length,
+        totalCollections: dbStats.collections || 0,
+        totalTables: dbStats.collections || 0,
         totalDocuments: dbStats.objects || 0,
         sizeMB,
         queriesPerSecond: qps,
@@ -294,6 +293,10 @@ exports.getTableDetails = async (req, res) => {
     }
 
     const database = req.query.database || connection.database;
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 50;
+    const requestedOffset = Number.parseInt(req.query.offset, 10);
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
     const { conn, type } = await getConnection(connection, database);
 
     let tableData = [];
@@ -313,6 +316,7 @@ exports.getTableDetails = async (req, res) => {
         FROM information_schema.TABLES
         ${dbQuery}
         ORDER BY TABLE_ROWS DESC, (DATA_LENGTH + INDEX_LENGTH) DESC
+        LIMIT ${limit} OFFSET ${offset}
       `, params);
 
       tableData = tables.map(t => ({
@@ -335,20 +339,14 @@ exports.getTableDetails = async (req, res) => {
         JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
         WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
         ORDER BY pg_total_relation_size(quote_ident(t.schemaname)||'.'||quote_ident(t.tablename)) DESC
-      `);
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]);
 
-      tableData = await Promise.all(
-        tables.rows.map(async (t) => {
+      tableData = tables.rows.map((t) => {
           const schema = t.table_schema || 'public';
           const tableName = t.table_name;
           const displayName = schema === 'public' ? tableName : `${schema}.${tableName}`;
-          const formattedTable = `"${schema}"."${tableName}"`;
-          let rowCount = Math.max(0, Math.round(parseFloat(t.row_estimate || 0)));
-
-          try {
-            const cntRes = await conn.query(`SELECT COUNT(*) FROM ${formattedTable}`);
-            rowCount = parseInt(cntRes.rows[0]?.count || rowCount);
-          } catch (e) {}
+          const rowCount = Math.max(0, Math.round(parseFloat(t.row_estimate || 0)));
 
           const sizeBytes = parseInt(t.size_bytes || 0);
           const sizeMB = parseFloat((sizeBytes / 1024 / 1024).toFixed(4));
@@ -360,16 +358,15 @@ exports.getTableDetails = async (req, res) => {
             sizeMB,
             sizeBytes
           };
-        })
-      );
+        });
     } else if (type === 'mongodb') {
       const mongoDbName = targetDb || 'test';
       const db = conn.db(mongoDbName);
-      const collections = await db.listCollections().toArray();
+      const collections = await db.listCollections().skip(offset).limit(limit).toArray();
       const collData = [];
       for (const col of collections) {
         try {
-          const count = await db.collection(col.name).countDocuments().catch(() => 0);
+          const count = await db.collection(col.name).estimatedDocumentCount().catch(() => 0);
           const stats = await db.command({ collStats: col.name }).catch(() => null);
           collData.push({
             table: col.name,
@@ -390,6 +387,7 @@ exports.getTableDetails = async (req, res) => {
           ROUND((blocks * 8192) / 1024 / 1024, 2) AS size_mb
         FROM user_tables
         ORDER BY num_rows DESC NULLS LAST
+        OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `);
       const rows = tables.rows || [];
       tableData = rows.map(t => ({

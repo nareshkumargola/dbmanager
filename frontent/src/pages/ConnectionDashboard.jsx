@@ -632,6 +632,9 @@ export default function ConnectionDashboard() {
   const [monitorLoading, setMonitorLoading] = useState(false);
   const [monitorHistory, setMonitorHistory] = useState([]);
   const [tableDetails, setTableDetails] = useState([]);
+  const [tableDetailsOffset, setTableDetailsOffset] = useState(0);
+  const [tableDetailsHasMore, setTableDetailsHasMore] = useState(false);
+  const [tableDetailsLoading, setTableDetailsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   
   // Table search, sort, unit filters, and pagination
@@ -781,25 +784,54 @@ export default function ConnectionDashboard() {
     setIndexTableFilter('');
     setConstraintTableFilter('');
     setObjectsPage(1);
+    setTableDetails([]);
+    setTableDetailsOffset(0);
+    setTableDetailsHasMore(false);
     
     try {
       setDbLoading(true);
       setError('');
-      const [objRes, statsRes, tablesDetailsRes] = await Promise.all([
-        API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`),
-        API.get(`/connections/${id}/stats?database=${encodeURIComponent(dbName)}`),
-        API.get(`/monitor/${id}/tables?database=${encodeURIComponent(dbName)}`).catch(() => ({ data: { tables: [] } }))
+      const [objRes, statsRes] = await Promise.all([
+        API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}&summary=true`),
+        API.get(`/connections/${id}/stats?database=${encodeURIComponent(dbName)}`)
       ]);
       setObjects(objRes.data);
       setStats(statsRes.data.stats);
-      if (tablesDetailsRes.data?.tables) {
-        setTableDetails(tablesDetailsRes.data.tables);
-      }
+      loadTableDetails();
     } catch (err) {
       console.error('Failed to select database:', err);
       setError('Data load failed - check database connection');
     } finally {
       setDbLoading(false);
+    }
+  };
+
+  const loadDetailedObjects = async () => {
+    if (!activeDb) return;
+    try {
+      const res = await API.get(`/connections/${id}/objects?database=${encodeURIComponent(activeDb)}`);
+      setObjects(res.data);
+    } catch (err) {
+      setError('Failed to load database metadata');
+    }
+  };
+
+  const loadTableDetails = async (append = false) => {
+    if (!activeDb || tableDetailsLoading) return;
+    const offset = append ? tableDetailsOffset : 0;
+    setTableDetailsLoading(true);
+    try {
+      const res = await API.get(
+        `/monitor/${id}/tables?limit=50&offset=${offset}&database=${encodeURIComponent(activeDb)}`
+      );
+      const loadedTables = res.data.tables || [];
+      setTableDetails(prev => append ? [...prev, ...loadedTables] : loadedTables);
+      setTableDetailsOffset(offset + loadedTables.length);
+      setTableDetailsHasMore(loadedTables.length === 50);
+    } catch (err) {
+      console.log('Table details not available');
+    } finally {
+      setTableDetailsLoading(false);
     }
   };
 
@@ -867,15 +899,6 @@ export default function ConnectionDashboard() {
         return updated.slice(-10);
       });
 
-      // Fetch table details separately (non-blocking)
-      try {
-        const tableRes = await API.get(`/monitor/${id}/tables${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`);
-        if (tableRes.data.tables) {
-          setTableDetails(tableRes.data.tables);
-        }
-      } catch (e) {
-        console.log('Table details not available');
-      }
     } catch (err) {
       console.error('Monitor error:', err);
     } finally {
@@ -1072,16 +1095,16 @@ export default function ConnectionDashboard() {
   const refreshDatabaseObjects = async () => {
     if (!activeDb) return;
     try {
-      const [objRes, statsRes, tablesDetailsRes] = await Promise.all([
+      const [objRes, statsRes] = await Promise.all([
         API.get(`/connections/${id}/objects?database=${encodeURIComponent(activeDb)}`),
-        API.get(`/connections/${id}/stats?database=${encodeURIComponent(activeDb)}`),
-        API.get(`/monitor/${id}/tables?database=${encodeURIComponent(activeDb)}`).catch(() => ({ data: { tables: [] } }))
+        API.get(`/connections/${id}/stats?database=${encodeURIComponent(activeDb)}`)
       ]);
       setObjects(objRes.data);
       setStats(statsRes.data.stats);
-      if (tablesDetailsRes.data?.tables) {
-        setTableDetails(tablesDetailsRes.data.tables);
-      }
+      setTableDetails([]);
+      setTableDetailsOffset(0);
+      setTableDetailsHasMore(false);
+      loadTableDetails();
       if (selectedTable) {
         API.get(`/connections/${id}/table/${selectedTable}?database=${encodeURIComponent(activeDb)}`)
           .then(res => {
@@ -1554,6 +1577,7 @@ export default function ConnectionDashboard() {
                             setDbObjectType('views');
                             setSelectedTable(null);
                             setActiveTab('table');
+                            loadDetailedObjects();
                           }}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'views' && activeTab === 'table'
@@ -1576,6 +1600,7 @@ export default function ConnectionDashboard() {
                               setDbObjectType('procedures');
                               setSelectedTable(null);
                               setActiveTab('table');
+                              loadDetailedObjects();
                             }}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'procedures' && activeTab === 'table'
@@ -1599,6 +1624,7 @@ export default function ConnectionDashboard() {
                               setDbObjectType('functions');
                               setSelectedTable(null);
                               setActiveTab('table');
+                              loadDetailedObjects();
                             }}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'functions' && activeTab === 'table'
@@ -1622,6 +1648,7 @@ export default function ConnectionDashboard() {
                               setDbObjectType('triggers');
                               setSelectedTable(null);
                               setActiveTab('table');
+                              loadDetailedObjects();
                             }}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'triggers' && activeTab === 'table'
@@ -1644,6 +1671,7 @@ export default function ConnectionDashboard() {
                             setDbObjectType('indexes');
                             setSelectedTable(null);
                             setActiveTab('table');
+                            loadDetailedObjects();
                           }}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'indexes' && activeTab === 'table'
@@ -1665,6 +1693,7 @@ export default function ConnectionDashboard() {
                             setDbObjectType('constraints');
                             setSelectedTable(null);
                             setActiveTab('table');
+                            loadDetailedObjects();
                           }}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'constraints' && activeTab === 'table'
@@ -1825,11 +1854,11 @@ export default function ConnectionDashboard() {
                   ))}
                 </div>
 
-                {/* Top 5 Tables */}
+                {/* Monitoring Tables */}
                 <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
                   <div className="flex items-center justify-between border-b border-gray-150 pb-3 mb-4">
                     <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                      <span>📊</span> Top 5 Tables (by Size / Rows)
+                      <span>📊</span> Monitoring Tables (by Size / Rows)
                     </h3>
                     {((tableDetails && tableDetails.length > 0) || (tables && tables.length > 0)) && (
                       <span className="text-xs font-bold text-gray-500 font-mono">
@@ -1840,7 +1869,7 @@ export default function ConnectionDashboard() {
                   
                   <div className="space-y-2.5">
                     {tableDetails && tableDetails.length > 0 ? (
-                      tableDetails.slice(0, 5).map((t, idx) => (
+                      tableDetails.map((t, idx) => (
                         <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100/80 rounded-xl transition border border-gray-200 shadow-3xs">
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400 font-mono text-xs">{idx + 1}.</span>
@@ -1889,6 +1918,16 @@ export default function ConnectionDashboard() {
                       <p className="text-xs text-gray-400">No tables data available.</p>
                     )}
                   </div>
+                  {tableDetailsHasMore && (
+                    <button
+                      type="button"
+                      onClick={() => loadTableDetails(true)}
+                      disabled={tableDetailsLoading}
+                      className="mt-4 w-full px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {tableDetailsLoading ? 'Loading...' : 'Load More Tables'}
+                    </button>
+                  )}
                 </div>
 
                 {/* Recent Activity Section */}

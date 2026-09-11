@@ -60,6 +60,9 @@ const connectPostgreSQL = async (config) => {
 const connectMongoDB = async (config) => {
   const client = new MongoClient(config.connectionString, {
     serverSelectionTimeoutMS: 2000, // Fail fast on offline hosts
+    maxPoolSize: 5,
+    minPoolSize: 0,
+    waitQueueTimeoutMS: 10000,
   });
   await client.connect();
   return client;
