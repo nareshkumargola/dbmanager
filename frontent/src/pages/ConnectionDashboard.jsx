@@ -635,6 +635,9 @@ export default function ConnectionDashboard() {
   const [tableDetailsOffset, setTableDetailsOffset] = useState(0);
   const [tableDetailsHasMore, setTableDetailsHasMore] = useState(false);
   const [tableDetailsLoading, setTableDetailsLoading] = useState(false);
+  const [databaseTableOffset, setDatabaseTableOffset] = useState(0);
+  const [databaseTablesHasMore, setDatabaseTablesHasMore] = useState(false);
+  const [databaseTablesLoading, setDatabaseTablesLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   
   // Table search, sort, unit filters, and pagination
@@ -787,6 +790,8 @@ export default function ConnectionDashboard() {
     setTableDetails([]);
     setTableDetailsOffset(0);
     setTableDetailsHasMore(false);
+    setDatabaseTableOffset(0);
+    setDatabaseTablesHasMore(false);
     
     try {
       setDbLoading(true);
@@ -797,7 +802,10 @@ export default function ConnectionDashboard() {
       ]);
       setObjects(objRes.data);
       setStats(statsRes.data.stats);
-      loadTableDetails();
+      const initialTableOffset = objRes.data.tableOffset || objRes.data.result?.tableOffset || 0;
+      const initialTables = objRes.data.result?.tables || [];
+      setDatabaseTableOffset(initialTableOffset + initialTables.length);
+      setDatabaseTablesHasMore(objRes.data.tablesHasMore || objRes.data.result?.tablesHasMore || false);
     } catch (err) {
       console.error('Failed to select database:', err);
       setError('Data load failed - check database connection');
@@ -813,6 +821,32 @@ export default function ConnectionDashboard() {
       setObjects(res.data);
     } catch (err) {
       setError('Failed to load database metadata');
+    }
+  };
+
+  const loadMoreDatabaseTables = async () => {
+    if (!activeDb || databaseTablesLoading || !databaseTablesHasMore) return;
+    setDatabaseTablesLoading(true);
+    try {
+      const res = await API.get(
+        `/connections/${id}/objects?database=${encodeURIComponent(activeDb)}&summary=true&tableLimit=100&tableOffset=${databaseTableOffset}`
+      );
+      const nextTables = res.data.result?.tables || [];
+      setObjects(prev => ({
+        ...prev,
+        result: {
+          ...prev?.result,
+          tables: [...(prev?.result?.tables || []), ...nextTables]
+        },
+        tablesHasMore: res.data.tablesHasMore,
+        tableOffset: res.data.tableOffset
+      }));
+      setDatabaseTableOffset((res.data.tableOffset || databaseTableOffset) + nextTables.length);
+      setDatabaseTablesHasMore(res.data.tablesHasMore || false);
+    } catch (err) {
+      setError('Failed to load more tables');
+    } finally {
+      setDatabaseTablesLoading(false);
     }
   };
 
@@ -1570,6 +1604,16 @@ export default function ConnectionDashboard() {
                             {tablesCount}
                           </span>
                         </button>
+                        {databaseTablesHasMore && (
+                          <button
+                            type="button"
+                            onClick={loadMoreDatabaseTables}
+                            disabled={databaseTablesLoading}
+                            className="w-full text-left px-2 py-1 text-[10px] font-bold text-teal-700 hover:bg-teal-50 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {databaseTablesLoading ? 'Loading tables...' : '＋ Load 100 more tables'}
+                          </button>
+                        )}
 
                         {/* Views */}
                         <button

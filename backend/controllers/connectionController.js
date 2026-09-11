@@ -247,6 +247,10 @@ exports.getDatabaseObjects = async (req, res) => {
     const database = req.query.database || connection.database;
     const summaryOnly = req.query.summary === 'true';
     const exactCounts = req.query.exactCounts === 'true';
+    const requestedTableLimit = Number.parseInt(req.query.tableLimit, 10);
+    const tableLimit = Number.isFinite(requestedTableLimit) ? Math.min(Math.max(requestedTableLimit, 1), 100) : 100;
+    const requestedTableOffset = Number.parseInt(req.query.tableOffset, 10);
+    const tableOffset = Number.isFinite(requestedTableOffset) ? Math.max(requestedTableOffset, 0) : 0;
     const { conn, type } = await getConnection(connection, database);
 
     let result = {
@@ -269,7 +273,9 @@ exports.getDatabaseObjects = async (req, res) => {
           const [tableRows] = await conn.execute(
             `SELECT TABLE_NAME, ROUND((DATA_LENGTH + INDEX_LENGTH) / 1024 / 1024, 2) AS sizeMB, TABLE_ROWS as tableRows 
              FROM information_schema.TABLES 
-             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`,
+             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
+             ORDER BY TABLE_NAME
+             LIMIT ${tableLimit} OFFSET ${tableOffset}`,
             [database]
           );
           tables = tableRows.map(r => ({
@@ -279,7 +285,7 @@ exports.getDatabaseObjects = async (req, res) => {
             rows: r.tableRows || 0
           }));
         } catch (e) {
-          const [rows] = await conn.execute('SHOW TABLES');
+          const [rows] = await conn.execute(`SHOW TABLES LIMIT ${tableLimit} OFFSET ${tableOffset}`);
           tables = rows.map(r => ({ name: Object.values(r)[0] }));
         }
 
@@ -289,7 +295,9 @@ exports.getDatabaseObjects = async (req, res) => {
             type,
             result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
             database,
-            summary: true
+            summary: true,
+            tablesHasMore: tables.length === tableLimit,
+            tableOffset
           });
         }
 
@@ -361,10 +369,26 @@ exports.getDatabaseObjects = async (req, res) => {
           constraints = constRows.map(c => ({ name: c.name, tableName: c.tableName, constraintType: c.constraintType }));
         } catch (e) { constraints = []; }
       } else {
-        const [rows] = await conn.execute('SHOW TABLES');
-        tables = rows.map(r => ({ name: Object.values(r)[0] }));
+        const [rows] = await conn.execute(`
+          SELECT TABLE_NAME AS name
+          FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')
+            AND TABLE_TYPE = 'BASE TABLE'
+          ORDER BY TABLE_NAME
+          LIMIT ${tableLimit} OFFSET ${tableOffset}
+        `);
+        tables = rows.map(r => ({ name: r.name }));
       }
-      result = { tables, views, procedures, functions, triggers, indexes, constraints };
+      result = {
+        tables,
+        views,
+        procedures,
+        functions,
+        triggers,
+        indexes,
+        constraints,
+        ...(summaryOnly ? { tablesHasMore: tables.length === tableLimit, tableOffset } : {})
+      };
     }
 
     else if (type === 'postgresql') {
@@ -381,7 +405,8 @@ exports.getDatabaseObjects = async (req, res) => {
           JOIN pg_class c ON c.relname = t.tablename AND c.relnamespace = n.oid
           WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
           ORDER BY t.tablename
-        `);
+          LIMIT $1 OFFSET $2
+        `, [tableLimit, tableOffset]);
 
         tables = await Promise.all(
           tablesRes.rows.map(async (r) => {
@@ -420,7 +445,9 @@ exports.getDatabaseObjects = async (req, res) => {
           type,
           result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
           database,
-          summary: true
+          summary: true,
+          tablesHasMore: tables.length === tableLimit,
+          tableOffset
         });
       }
 
@@ -497,7 +524,7 @@ exports.getDatabaseObjects = async (req, res) => {
 
     else if (type === 'mongodb') {
       const db = conn.db(database || 'test');
-      const collectionsRaw = await db.listCollections().toArray();
+      const collectionsRaw = await db.listCollections().skip(tableOffset).limit(tableLimit).toArray();
       
       const collections = [];
       const views = [];
@@ -553,15 +580,37 @@ exports.getDatabaseObjects = async (req, res) => {
           }
         }
       }
-      result = { collections, tables: collections, views, procedures: [], functions: [], triggers: [], indexes, constraints };
+      result = {
+        collections,
+        tables: collections,
+        views,
+        procedures: [],
+        functions: [],
+        triggers: [],
+        indexes,
+        constraints,
+        ...(summaryOnly ? { tablesHasMore: collections.length === tableLimit, tableOffset } : {})
+      };
     }
 
     else if (type === 'oracle') {
       let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
       try {
-        const r = await conn.execute(`SELECT table_name FROM user_tables ORDER BY table_name`);
+        const r = await conn.execute(`SELECT table_name FROM user_tables ORDER BY table_name OFFSET ${tableOffset} ROWS FETCH NEXT ${tableLimit} ROWS ONLY`);
         tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: 0.01 }));
       } catch (e) {}
+
+      if (summaryOnly) {
+        return res.status(200).json({
+          success: true,
+          type,
+          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+          database,
+          summary: true,
+          tablesHasMore: tables.length === tableLimit,
+          tableOffset
+        });
+      }
 
       try {
         const v = await conn.execute(`SELECT view_name FROM user_views ORDER BY view_name`);
