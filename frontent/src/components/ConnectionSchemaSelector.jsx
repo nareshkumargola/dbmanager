@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import API from '../api/axios';
 
-export default function ConnectionSchemaSelector({ value = [], onChange, role = 'developer' }) {
+export default function ConnectionSchemaSelector({ value = [], onChange, role = 'developer', defaultAccessMode = 'read' }) {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dbMap, setDbMap] = useState({}); // { [connId]: string[] }
@@ -50,6 +50,18 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
     }
   };
 
+  const getDbMode = (connEntry, dbName) => {
+    if (!connEntry) return defaultAccessMode || 'read';
+    const modes = connEntry.databaseModes || {};
+    if (modes instanceof Map) {
+      return modes.get(dbName) || defaultAccessMode || 'read';
+    }
+    if (typeof modes === 'object' && modes[dbName]) {
+      return modes[dbName];
+    }
+    return defaultAccessMode || 'read';
+  };
+
   const handleToggleConnection = (connId) => {
     const existingIndex = value.findIndex(v => v.connectionId === connId);
     let updated = [];
@@ -59,7 +71,11 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
     } else {
       // Enable connection access with all databases by default
       const dbs = dbMap[connId] || ['*'];
-      updated = [...value, { connectionId: connId, databases: dbs }];
+      const initialModes = {};
+      dbs.forEach(d => {
+        if (d !== '*') initialModes[d] = defaultAccessMode || 'read';
+      });
+      updated = [...value, { connectionId: connId, databases: dbs, databaseModes: initialModes }];
       fetchDatabasesForConnection(connId);
     }
     onChange(updated);
@@ -83,9 +99,41 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
       updatedDbs = [...currentDbs, dbName];
     }
 
+    const currentModes = { ...(connEntry.databaseModes || {}) };
+    if (!currentModes[dbName]) {
+      currentModes[dbName] = defaultAccessMode || 'read';
+    }
+
     const updated = value.map(v => {
       if (v.connectionId === connId) {
-        return { ...v, databases: updatedDbs };
+        return { ...v, databases: updatedDbs, databaseModes: currentModes };
+      }
+      return v;
+    });
+
+    onChange(updated);
+  };
+
+  const handleSetDatabaseMode = (connId, dbName, mode) => {
+    const connEntry = value.find(v => v.connectionId === connId);
+    if (!connEntry) return;
+
+    let currentDbs = connEntry.databases || [];
+    if (currentDbs.includes('*')) {
+      const allAvailable = dbMap[connId] || [];
+      currentDbs = allAvailable.length > 0 ? [...allAvailable] : [dbName];
+    }
+
+    if (!currentDbs.includes(dbName)) {
+      currentDbs = [...currentDbs, dbName];
+    }
+
+    const currentModes = { ...(connEntry.databaseModes || {}) };
+    currentModes[dbName] = mode;
+
+    const updated = value.map(v => {
+      if (v.connectionId === connId) {
+        return { ...v, databases: currentDbs, databaseModes: currentModes };
       }
       return v;
     });
@@ -95,9 +143,24 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
 
   const handleSelectAllDbs = (connId, selectAll) => {
     const allAvailable = dbMap[connId] || [];
+    const connEntry = value.find(v => v.connectionId === connId);
+    const currentModes = { ...(connEntry?.databaseModes || {}) };
+
+    if (selectAll) {
+      allAvailable.forEach(db => {
+        if (!currentModes[db]) {
+          currentModes[db] = defaultAccessMode || 'read';
+        }
+      });
+    }
+
     const updated = value.map(v => {
       if (v.connectionId === connId) {
-        return { ...v, databases: selectAll ? (allAvailable.length > 0 ? [...allAvailable] : ['*']) : [] };
+        return {
+          ...v,
+          databases: selectAll ? (allAvailable.length > 0 ? [...allAvailable] : ['*']) : [],
+          databaseModes: currentModes
+        };
       }
       return v;
     });
@@ -197,7 +260,7 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
                 <div className="px-3 pb-3 pt-1 border-t border-teal-200/60 dark:border-teal-800/40 bg-white/70 dark:bg-gray-850/70">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                      Allowed Databases / Schemas:
+                      Allowed Databases / Schemas Access &amp; Mode:
                     </span>
 
                     {availableDbs.length > 0 && (
@@ -218,26 +281,76 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
                   ) : errorMap[conn._id] ? (
                     <p className="text-[11px] text-amber-600 py-1">⚠️ {errorMap[conn._id]}</p>
                   ) : availableDbs.length > 0 ? (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[130px] overflow-y-auto pr-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[170px] overflow-y-auto pr-1">
                       {availableDbs.map(db => {
                         const isChecked = connDbs.includes('*') || connDbs.includes(db);
+                        const dbMode = getDbMode(connEntry, db);
+
                         return (
-                          <label
+                          <div
                             key={db}
-                            className={`flex items-center gap-2 p-1.5 rounded-lg border text-[11px] font-medium cursor-pointer transition select-none ${
+                            className={`flex items-center justify-between gap-2 p-2 rounded-xl border text-[11px] transition select-none ${
                               isChecked
-                                ? 'border-teal-400 bg-teal-50/70 dark:bg-teal-900/40 text-teal-900 dark:text-teal-200'
-                                : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50'
+                                ? 'border-teal-400/80 bg-teal-50/70 dark:bg-teal-950/40 text-teal-900 dark:text-teal-100 shadow-2xs'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 bg-white/50 dark:bg-gray-800/20'
                             }`}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleToggleDatabase(conn._id, db)}
-                              className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-3.5 h-3.5"
-                            />
-                            <span className="truncate" title={db}>{db}</span>
-                          </label>
+                            {/* DB Checkbox & Name */}
+                            <label className="flex items-center gap-2 cursor-pointer grow min-w-0 pr-1">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleDatabase(conn._id, db)}
+                                className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-3.5 h-3.5 cursor-pointer shrink-0"
+                              />
+                              <span className="truncate text-xs font-bold text-gray-800 dark:text-gray-200" title={db}>
+                                🗄️ {db}
+                              </span>
+                            </label>
+
+                            {/* Mode Radio Buttons */}
+                            {isChecked && (
+                              <div className="flex items-center gap-1.5 bg-white dark:bg-gray-900 px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0">
+                                <label
+                                  className={`flex items-center gap-1 text-[10px] cursor-pointer font-bold transition select-none ${
+                                    dbMode === 'read'
+                                      ? 'text-amber-700 dark:text-amber-400'
+                                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`db-mode-${conn._id}-${db}`}
+                                    value="read"
+                                    checked={dbMode === 'read'}
+                                    onChange={() => handleSetDatabaseMode(conn._id, db, 'read')}
+                                    className="w-3 h-3 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                                  />
+                                  <span>Read</span>
+                                </label>
+
+                                <span className="text-gray-300 dark:text-gray-600 text-[10px]">|</span>
+
+                                <label
+                                  className={`flex items-center gap-1 text-[10px] cursor-pointer font-bold transition select-none ${
+                                    dbMode === 'readwrite'
+                                      ? 'text-teal-700 dark:text-teal-400'
+                                      : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`db-mode-${conn._id}-${db}`}
+                                    value="readwrite"
+                                    checked={dbMode === 'readwrite'}
+                                    onChange={() => handleSetDatabaseMode(conn._id, db, 'readwrite')}
+                                    className="w-3 h-3 text-teal-600 focus:ring-teal-500 cursor-pointer accent-teal-600"
+                                  />
+                                  <span>Read Write</span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

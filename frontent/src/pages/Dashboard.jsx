@@ -1390,6 +1390,7 @@ export default function Dashboard() {
                       value={createForm.allowedConnections || []}
                       onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
                       role={createForm.role}
+                      defaultAccessMode={createForm.accessMode || 'read'}
                     />
                   </div>
                 </>
@@ -1553,6 +1554,7 @@ export default function Dashboard() {
                     value={editForm.allowedConnections || []}
                     onChange={allowedConnections => setEditForm({ ...editForm, allowedConnections })}
                     role={editForm.role}
+                    defaultAccessMode={editForm.accessMode || 'read'}
                   />
                 </div>
               )}

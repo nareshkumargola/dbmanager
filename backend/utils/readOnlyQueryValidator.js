@@ -2,12 +2,30 @@
  * Validates query execution permissions based on user role & dbType.
  * Read Users ('read') are strictly limited to Read-Only operations across MySQL, PostgreSQL, Oracle, and MongoDB.
  */
-function validateQueryPermissions(rawQuery, user, dbType) {
+function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connectionId) {
   if (!user || user.role === 'admin') {
     return { isAllowed: true };
   }
 
-  const effectiveMode = user.accessMode || (user.role === 'readwrite' ? 'readwrite' : 'read');
+  let effectiveMode = user.accessMode || (user.role === 'readwrite' ? 'readwrite' : 'read');
+
+  // Check per-database mode if defined for this connection & database
+  if (connectionId && targetDatabase && Array.isArray(user.allowedConnections)) {
+    const connIdStr = connectionId.toString();
+    const connEntry = user.allowedConnections.find(ac => (ac.connectionId?._id || ac.connectionId)?.toString() === connIdStr);
+    if (connEntry && connEntry.databaseModes) {
+      const modes = connEntry.databaseModes;
+      let dbMode = null;
+      if (modes instanceof Map) {
+        dbMode = modes.get(targetDatabase);
+      } else if (typeof modes === 'object') {
+        dbMode = modes[targetDatabase];
+      }
+      if (dbMode && ['read', 'readwrite'].includes(dbMode)) {
+        effectiveMode = dbMode;
+      }
+    }
+  }
 
   if (effectiveMode === 'readwrite') {
     return { isAllowed: true };

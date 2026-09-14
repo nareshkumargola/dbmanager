@@ -35,6 +35,30 @@ exports.getConnections = async (req, res) => {
   }
 };
 
+// ─── SAARE SYSTEM CONNECTIONS DEKHO (USER CREATION & MANAGEMENT) ───
+exports.getAllConnectionsAdmin = async (req, res) => {
+  try {
+    const query = (req.user.role === 'admin' || req.user.permissions?.userManagement)
+      ? {}
+      : {
+          $or: [
+            { user: req.user.id },
+            { allowedUsers: req.user.id }
+          ]
+        };
+
+    const connections = await Connection.find(query)
+      .populate('user', 'name email role')
+      .populate('allowedUsers', 'name email role')
+      .select('-password')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, connections });
+  } catch (err) {
+    res.status(500).json({ message: 'Error', error: err.message });
+  }
+};
+
 // ─── NAYA CONNECTION BANAO ────────────────────────
 exports.createConnection = async (req, res) => {
   try {

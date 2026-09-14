@@ -57,7 +57,11 @@ const userSchema = new mongoose.Schema({
     },
     databases: [{
       type: String
-    }]
+    }],
+    databaseModes: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
+    }
   }],
   passwordResetToken: {
     type: String,

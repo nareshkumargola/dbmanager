@@ -8,7 +8,7 @@ const { protect, adminOnly, checkPermission } = require('../middlewares/authMidd
 
 // Saare routes protected
 router.get('/', protect, connectionController.getConnections);
-router.get('/all', protect, adminOnly, connectionController.getAllConnectionsAdmin);
+router.get('/all', protect, connectionController.getAllConnectionsAdmin);
 router.post('/', protect, checkPermission('connections'), connectionController.createConnection);
 router.post('/test', protect, checkPermission('connections'), connectionController.testConnectionRoute);
 router.delete('/:id', protect, checkPermission('connections'), connectionController.deleteConnection);

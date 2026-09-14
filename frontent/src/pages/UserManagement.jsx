@@ -373,6 +373,7 @@ export default function UserManagement() {
                     value={form.allowedConnections || []}
                     onChange={allowedConnections => setForm({ ...form, allowedConnections })}
                     role={form.role}
+                    defaultAccessMode={form.accessMode || 'read'}
                   />
                 </div>
               )}
@@ -738,6 +739,7 @@ export default function UserManagement() {
                             value={userAllowedConnections}
                             onChange={setUserAllowedConnections}
                             role={selectedUserObj.role}
+                            defaultAccessMode={selectedUserObj.accessMode || 'read'}
                           />
                         </div>
                       )}
