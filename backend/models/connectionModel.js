@@ -28,6 +28,11 @@ const connectionSchema = new mongoose.Schema({
   password: { type: String, default: null },
   database: { type: String, default: null },
   ssl: { type: Boolean, default: false },
+  accessMode: {
+    type: String,
+    enum: ['read', 'readwrite'],
+    default: 'readwrite',
+  },
 
   // MongoDB ke liye
   connectionString: { type: String, default: null },

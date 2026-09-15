@@ -80,12 +80,6 @@ exports.runMysqlQuery = async (req, res) => {
     const database = req.query.database;
 
     // Read User role query validation
-    const { validateQueryPermissions } = require('../utils/readOnlyQueryValidator');
-    const validation = validateQueryPermissions(query, req.user, 'mysql');
-    if (!validation.isAllowed) {
-      return res.status(403).json({ message: validation.error });
-    }
-
     const upperQuery = query.toUpperCase();
 
     // Check if it is a stored procedure DDL command for auditing
@@ -111,6 +105,19 @@ exports.runMysqlQuery = async (req, res) => {
       }
       if (!checkAccess(connectionDoc, req.user)) {
         return res.status(403).json({ message: 'You do not have access to this connection!' });
+      }
+
+      const { validateQueryPermissions } = require('../utils/readOnlyQueryValidator');
+      const validation = validateQueryPermissions(
+        query,
+        req.user,
+        'mysql',
+        database || connectionDoc.database,
+        connectionDoc._id,
+        connectionDoc.accessMode || 'readwrite'
+      );
+      if (!validation.isAllowed) {
+        return res.status(403).json({ message: validation.error });
       }
 
       const useDb = database || connectionDoc.database;

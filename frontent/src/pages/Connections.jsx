@@ -97,7 +97,7 @@ export default function Connections() {
   // Edit Connection Modal States
   const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
   const [editConnForm, setEditConnForm] = useState({
-    name: '', type: 'mysql', host: 'localhost', port: '3306', username: 'root', password: '', database: '', connectionString: '', ssl: false
+    name: '', type: 'mysql', host: 'localhost', port: '3306', username: 'root', password: '', database: '', connectionString: '', ssl: false, accessMode: 'readwrite'
   });
   const [editConnLoading, setEditConnLoading] = useState(false);
   const [editConnTestLoading, setEditConnTestLoading] = useState(false);
@@ -115,7 +115,8 @@ export default function Connections() {
       password: '',
       database: conn.database || '',
       connectionString: conn.connectionString || '',
-      ssl: !!conn.ssl
+      ssl: !!conn.ssl,
+      accessMode: conn.accessMode || 'readwrite'
     });
     setEditConnError('');
     setEditConnTestResult(null);
@@ -161,6 +162,7 @@ export default function Connections() {
     database: '',
     connectionString: '',
     ssl: false,
+    accessMode: 'readwrite',
   });
 
   const [mongoMode, setMongoMode] = useState('structured');
@@ -246,7 +248,7 @@ export default function Connections() {
       setForm({
         name: '', type: 'mysql', host: 'localhost',
         port: '3306', username: 'root', password: '',
-        database: '', connectionString: '',
+        database: '', connectionString: '', accessMode: 'readwrite',
       });
       fetchConnections();
     } catch (err) {
@@ -552,6 +554,21 @@ export default function Connections() {
                 </div>
               )}
 
+              {/* Connection Access Mode */}
+              <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Connection Access Mode</label>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="radio" name="connection-access-mode" value="read" checked={form.accessMode === 'read'} onChange={e => setForm({ ...form, accessMode: e.target.value })} className="text-amber-600 focus:ring-amber-500" />
+                    Read Only
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="radio" name="connection-access-mode" value="readwrite" checked={form.accessMode === 'readwrite'} onChange={e => setForm({ ...form, accessMode: e.target.value })} className="text-teal-600 focus:ring-teal-500" />
+                    Read &amp; Write
+                  </label>
+                </div>
+              </div>
+
               {/* SSL Configuration Checkbox */}
               {form.type !== 'mongodb' && (
                 <div className="flex items-center gap-2 mt-3 mb-1 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100">
@@ -763,6 +780,9 @@ export default function Connections() {
                           </p>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadge(conn.type)}`}>
                             {conn.type}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${conn.accessMode === 'read' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}
                           </span>
                           {/* Shared Badge */}
                           {conn.user && conn.user._id !== (user?._id || user?.id) && (
@@ -1026,6 +1046,21 @@ export default function Connections() {
                   />
                 </div>
               )}
+
+              {/* Connection Access Mode */}
+              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                <label className="block text-xs font-bold text-gray-700 mb-2">Connection Access Mode</label>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                    <input type="radio" name="edit-connection-access-mode" value="read" checked={editConnForm.accessMode === 'read'} onChange={e => setEditConnForm({ ...editConnForm, accessMode: e.target.value })} className="text-amber-600 focus:ring-amber-500" />
+                    Read Only
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                    <input type="radio" name="edit-connection-access-mode" value="readwrite" checked={editConnForm.accessMode === 'readwrite'} onChange={e => setEditConnForm({ ...editConnForm, accessMode: e.target.value })} className="text-teal-600 focus:ring-teal-500" />
+                    Read &amp; Write
+                  </label>
+                </div>
+              </div>
 
               {/* Modal Footer */}
               <div className="pt-4 flex items-center justify-between border-t border-gray-150">

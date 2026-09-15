@@ -646,6 +646,7 @@ export default function ConnectionDashboard() {
   const [tableSizeUnit, setTableSizeUnit] = useState('MB'); // 'Bytes', 'KB', 'MB', 'GB'
   const [tablesListPage, setTablesListPage] = useState(1);
   const [tablesListRowsPerPage, setTablesListRowsPerPage] = useState(10);
+  const [tableLoadLimit, setTableLoadLimit] = useState(100);
 
   // Database Object Categories (MySQL Workbench Style)
   const [dbObjectType, setDbObjectType] = useState('tables'); // 'tables', 'views', 'procedures', 'functions', 'triggers', 'indexes', 'constraints'
@@ -824,6 +825,15 @@ export default function ConnectionDashboard() {
     }
   };
 
+  const openDatabaseObjectCategory = async (category) => {
+    setDbObjectType(category);
+    setObjectSearch('');
+    setObjectsPage(1);
+    setSelectedTable(null);
+    setActiveTab('table');
+    await loadDetailedObjects();
+  };
+
   const loadMoreDatabaseTables = async () => {
     if (!activeDb || databaseTablesLoading || !databaseTablesHasMore) return;
     setDatabaseTablesLoading(true);
@@ -845,6 +855,35 @@ export default function ConnectionDashboard() {
       setDatabaseTablesHasMore(res.data.tablesHasMore || false);
     } catch (err) {
       setError('Failed to load more tables');
+    } finally {
+      setDatabaseTablesLoading(false);
+    }
+  };
+
+  const loadTablesUpTo = async (limit) => {
+    if (!activeDb || databaseTablesLoading) return;
+    setDatabaseTablesLoading(true);
+    try {
+      const res = await API.get(
+        `/connections/${id}/objects?database=${encodeURIComponent(activeDb)}&summary=true&tableLimit=${limit}&tableOffset=0`
+      );
+      const loadedTables = res.data.result?.tables || [];
+      setObjects(prev => ({
+        ...prev,
+        result: {
+          ...prev?.result,
+          ...res.data.result,
+          tables: loadedTables
+        },
+        tablesHasMore: res.data.tablesHasMore,
+        tableOffset: res.data.tableOffset
+      }));
+      setTableLoadLimit(limit);
+      setDatabaseTableOffset(loadedTables.length);
+      setDatabaseTablesHasMore(res.data.tablesHasMore || false);
+      setTablesListPage(1);
+    } catch (err) {
+      setError('Failed to load selected number of tables');
     } finally {
       setDatabaseTablesLoading(false);
     }
@@ -1543,14 +1582,15 @@ export default function ConnectionDashboard() {
               databases.map((db, i) => {
                 const isSelected = activeDb === db;
                 const isExpanded = expandedDbs[db] !== undefined ? expandedDbs[db] : isSelected;
-                const tablesCount = isSelected && objects?.result?.tables ? objects.result.tables.length : 0;
-                const viewsCount = isSelected && objects?.result?.views ? objects.result.views.length : 0;
-                const proceduresCount = isSelected && objects?.result?.procedures ? objects.result.procedures.length : 0;
-                const functionsCount = isSelected && objects?.result?.functions ? objects.result.functions.length : 0;
-                const triggersCount = isSelected && objects?.result?.triggers ? objects.result.triggers.length : 0;
-
-                const indexesCount = isSelected && objects?.result?.indexes ? objects.result.indexes.length : 0;
-                const constraintsCount = isSelected && objects?.result?.constraints ? objects.result.constraints.length : 0;
+                const objectCounts = isSelected ? (objects?.result || {}) : {};
+                const getObjectCount = value => Array.isArray(value) ? value.length : Number(value || 0);
+                const tablesCount = getObjectCount(objectCounts.totalTables ?? objectCounts.tables ?? objectCounts.collections);
+                const viewsCount = getObjectCount(objectCounts.views);
+                const proceduresCount = getObjectCount(objectCounts.procedures);
+                const functionsCount = getObjectCount(objectCounts.functions);
+                const triggersCount = getObjectCount(objectCounts.triggers);
+                const indexesCount = getObjectCount(objectCounts.indexes);
+                const constraintsCount = getObjectCount(objectCounts.constraints);
 
                 return (
                   <div key={i} className="border-b border-gray-100/80">
@@ -1606,12 +1646,7 @@ export default function ConnectionDashboard() {
                         </button>
                         {/* Views */}
                         <button
-                          onClick={() => {
-                            setDbObjectType('views');
-                            setSelectedTable(null);
-                            setActiveTab('table');
-                            loadDetailedObjects();
-                          }}
+                            onClick={() => openDatabaseObjectCategory('views')}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'views' && activeTab === 'table'
                               ? 'bg-teal-100 text-teal-900 font-bold'
@@ -1629,12 +1664,7 @@ export default function ConnectionDashboard() {
                         {/* Stored Procedures */}
                         {dbType !== 'mongodb' && (
                           <button
-                            onClick={() => {
-                              setDbObjectType('procedures');
-                              setSelectedTable(null);
-                              setActiveTab('table');
-                              loadDetailedObjects();
-                            }}
+                            onClick={() => openDatabaseObjectCategory('procedures')}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'procedures' && activeTab === 'table'
                                 ? 'bg-teal-100 text-teal-900 font-bold'
@@ -1653,12 +1683,7 @@ export default function ConnectionDashboard() {
                         {/* Functions */}
                         {dbType !== 'mongodb' && (
                           <button
-                            onClick={() => {
-                              setDbObjectType('functions');
-                              setSelectedTable(null);
-                              setActiveTab('table');
-                              loadDetailedObjects();
-                            }}
+                            onClick={() => openDatabaseObjectCategory('functions')}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'functions' && activeTab === 'table'
                                 ? 'bg-teal-100 text-teal-900 font-bold'
@@ -1677,12 +1702,7 @@ export default function ConnectionDashboard() {
                         {/* Triggers */}
                         {dbType !== 'mongodb' && (
                           <button
-                            onClick={() => {
-                              setDbObjectType('triggers');
-                              setSelectedTable(null);
-                              setActiveTab('table');
-                              loadDetailedObjects();
-                            }}
+                            onClick={() => openDatabaseObjectCategory('triggers')}
                             className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                               dbObjectType === 'triggers' && activeTab === 'table'
                                 ? 'bg-teal-100 text-teal-900 font-bold'
@@ -1700,12 +1720,7 @@ export default function ConnectionDashboard() {
 
                         {/* Indexes */}
                         <button
-                          onClick={() => {
-                            setDbObjectType('indexes');
-                            setSelectedTable(null);
-                            setActiveTab('table');
-                            loadDetailedObjects();
-                          }}
+                            onClick={() => openDatabaseObjectCategory('indexes')}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'indexes' && activeTab === 'table'
                               ? 'bg-teal-100 text-teal-900 font-bold'
@@ -1722,12 +1737,7 @@ export default function ConnectionDashboard() {
 
                         {/* Constraints */}
                         <button
-                          onClick={() => {
-                            setDbObjectType('constraints');
-                            setSelectedTable(null);
-                            setActiveTab('table');
-                            loadDetailedObjects();
-                          }}
+                            onClick={() => openDatabaseObjectCategory('constraints')}
                           className={`w-full text-left px-2 py-1 text-[11px] font-medium flex items-center justify-between rounded transition ${
                             dbObjectType === 'constraints' && activeTab === 'table'
                               ? 'bg-teal-100 text-teal-900 font-bold'
@@ -2070,7 +2080,7 @@ export default function ConnectionDashboard() {
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span>📋</span> Tables ({(objects?.result?.tables || objects?.result?.collections || []).length})
+                          <span>📋</span> Tables ({objects?.result?.totalTables ?? (Array.isArray(objects?.result?.tables) ? objects.result.tables.length : 0)})
                         </button>
 
                         <button
@@ -2082,7 +2092,7 @@ export default function ConnectionDashboard() {
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span>👁️</span> Views ({(objects?.result?.views || []).length})
+                          <span>👁️</span> Views ({Array.isArray(objects?.result?.views) ? objects.result.views.length : (objects?.result?.views ?? 0)})
                         </button>
 
                         {dbType !== 'mongodb' && (
@@ -2095,7 +2105,7 @@ export default function ConnectionDashboard() {
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            <span>⚙️</span> Procedures ({(objects?.result?.procedures || []).length})
+                            <span>⚙️</span> Procedures ({Array.isArray(objects?.result?.procedures) ? objects.result.procedures.length : (objects?.result?.procedures ?? 0)})
                           </button>
                         )}
 
@@ -2109,7 +2119,7 @@ export default function ConnectionDashboard() {
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            <span>🧮</span> Functions ({(objects?.result?.functions || []).length})
+                            <span>🧮</span> Functions ({Array.isArray(objects?.result?.functions) ? objects.result.functions.length : (objects?.result?.functions ?? 0)})
                           </button>
                         )}
 
@@ -2123,7 +2133,7 @@ export default function ConnectionDashboard() {
                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                             }`}
                           >
-                            <span>⚡</span> Triggers ({(objects?.result?.triggers || []).length})
+                            <span>⚡</span> Triggers ({Array.isArray(objects?.result?.triggers) ? objects.result.triggers.length : (objects?.result?.triggers ?? 0)})
                           </button>
                         )}
 
@@ -2136,7 +2146,7 @@ export default function ConnectionDashboard() {
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span>🔍</span> Indexes ({(objects?.result?.indexes || []).length})
+                          <span>🔍</span> Indexes ({Array.isArray(objects?.result?.indexes) ? objects.result.indexes.length : (objects?.result?.indexes ?? 0)})
                         </button>
 
                         <button
@@ -2148,7 +2158,7 @@ export default function ConnectionDashboard() {
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
-                          <span>🔒</span> Constraints ({(objects?.result?.constraints || []).length})
+                          <span>🔒</span> Constraints ({Array.isArray(objects?.result?.constraints) ? objects.result.constraints.length : (objects?.result?.constraints ?? 0)})
                         </button>
                       </div>
                     </div>
@@ -2211,6 +2221,32 @@ export default function ConnectionDashboard() {
                             <option value={20}>20</option>
                             <option value={50}>50</option>
                             <option value={100}>100</option>
+                            <option value={200}>200</option>
+                            <option value={300}>300</option>
+                            <option value={400}>400</option>
+                            <option value={500}>500</option>
+                          </select>
+                        </div>
+
+                        {/* Direct Table Load Selector */}
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                          <span>Load tables:</span>
+                          <select
+                            value={tableLoadLimit}
+                            onChange={e => loadTablesUpTo(Number(e.target.value))}
+                            disabled={databaseTablesLoading}
+                            className="px-2 py-1.5 border border-teal-200 rounded-lg text-xs bg-white font-bold outline-none cursor-pointer focus:border-teal-500 disabled:opacity-60"
+                          >
+                            <option value={100}>100</option>
+                            <option value={200}>200</option>
+                            <option value={300}>300</option>
+                            <option value={400}>400</option>
+                            <option value={500}>500</option>
+                            <option value={600}>600</option>
+                            <option value={700}>700</option>
+                            <option value={800}>800</option>
+                            <option value={900}>900</option>
+                            <option value={1000}>1000</option>
                           </select>
                         </div>
 
@@ -2388,7 +2424,7 @@ export default function ConnectionDashboard() {
 
                 {/* 2. VIEWS */}
                 {dbObjectType === 'views' && (() => {
-                  const rawViews = objects?.result?.views || [];
+                  const rawViews = Array.isArray(objects?.result?.views) ? objects.result.views : [];
                   const filteredViews = objectSearch.trim()
                     ? rawViews.filter(v => (v.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (v.viewOn || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawViews;
@@ -2453,7 +2489,7 @@ export default function ConnectionDashboard() {
 
                 {/* 3. STORED PROCEDURES */}
                 {dbObjectType === 'procedures' && (() => {
-                  const rawProcs = objects?.result?.procedures || [];
+                  const rawProcs = Array.isArray(objects?.result?.procedures) ? objects.result.procedures : [];
                   const filteredProcs = objectSearch.trim()
                     ? rawProcs.filter(p => (p.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawProcs;
@@ -2516,7 +2552,7 @@ export default function ConnectionDashboard() {
 
                 {/* 4. FUNCTIONS */}
                 {dbObjectType === 'functions' && (() => {
-                  const rawFuncs = objects?.result?.functions || [];
+                  const rawFuncs = Array.isArray(objects?.result?.functions) ? objects.result.functions : [];
                   const filteredFuncs = objectSearch.trim()
                     ? rawFuncs.filter(f => (f.name || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawFuncs;
@@ -2579,7 +2615,7 @@ export default function ConnectionDashboard() {
 
                 {/* 5. TRIGGERS */}
                 {dbObjectType === 'triggers' && (() => {
-                  const rawTrigs = objects?.result?.triggers || [];
+                  const rawTrigs = Array.isArray(objects?.result?.triggers) ? objects.result.triggers : [];
                   const filteredTrigs = objectSearch.trim()
                     ? rawTrigs.filter(t => (t.name || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.tableName || '').toLowerCase().includes(objectSearch.toLowerCase()) || (t.event || '').toLowerCase().includes(objectSearch.toLowerCase()))
                     : rawTrigs;
@@ -2642,7 +2678,7 @@ export default function ConnectionDashboard() {
 
                 {/* 6. INDEXES */}
                 {dbObjectType === 'indexes' && (() => {
-                  const rawIdxs = objects?.result?.indexes || [];
+                  const rawIdxs = Array.isArray(objects?.result?.indexes) ? objects.result.indexes : [];
 
                   // Get unique list of current database tables from schema objects or index target tables
                   const availableTables = Array.from(new Set([
@@ -2823,7 +2859,7 @@ export default function ConnectionDashboard() {
 
                 {/* 7. CONSTRAINTS */}
                 {dbObjectType === 'constraints' && (() => {
-                  const rawConsts = objects?.result?.constraints || [];
+                  const rawConsts = Array.isArray(objects?.result?.constraints) ? objects.result.constraints : [];
 
                   // Get unique list of current database tables from schema objects or constraint target tables
                   const availableTables = Array.from(new Set([

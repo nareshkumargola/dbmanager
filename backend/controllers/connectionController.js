@@ -4,6 +4,96 @@ const { saveHistory } = require('./queryHistoryController');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 const { logAuditTrail } = require('../utils/auditLogger');
 
+const getObjectCounts = async (conn, type, database) => {
+  const counts = { totalTables: 0, views: 0, procedures: 0, functions: 0, triggers: 0, indexes: 0, constraints: 0 };
+
+  if (type === 'mysql') {
+    const [rows] = await conn.execute(`
+      SELECT SUM(TABLE_TYPE = 'BASE TABLE') AS totalTables, SUM(TABLE_TYPE = 'VIEW') AS views
+      FROM information_schema.tables WHERE TABLE_SCHEMA = ?
+    `, [database]);
+    const [routineRows] = await conn.execute(`
+      SELECT ROUTINE_TYPE, COUNT(*) AS count FROM information_schema.routines
+      WHERE ROUTINE_SCHEMA = ? GROUP BY ROUTINE_TYPE
+    `, [database]);
+    const [triggerRows] = await conn.execute('SELECT COUNT(*) AS count FROM information_schema.triggers WHERE trigger_schema = ?', [database]);
+    const [indexRows] = await conn.execute('SELECT COUNT(*) AS count FROM information_schema.statistics WHERE table_schema = ?', [database]);
+    const [constraintRows] = await conn.execute('SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE table_schema = ?', [database]);
+    counts.totalTables = Number(rows[0]?.totalTables || 0);
+    counts.views = Number(rows[0]?.views || 0);
+    routineRows.forEach(row => {
+      if (row.ROUTINE_TYPE === 'PROCEDURE') counts.procedures = Number(row.count || 0);
+      if (row.ROUTINE_TYPE === 'FUNCTION') counts.functions = Number(row.count || 0);
+    });
+    counts.triggers = Number(triggerRows[0]?.count || 0);
+    counts.indexes = Number(indexRows[0]?.count || 0);
+    counts.constraints = Number(constraintRows[0]?.count || 0);
+    return counts;
+  }
+
+  if (type === 'postgresql') {
+    const tableResult = await conn.query(`
+      SELECT COUNT(*) FILTER (WHERE table_type = 'BASE TABLE') AS total_tables,
+             COUNT(*) FILTER (WHERE table_type = 'VIEW') AS views
+      FROM information_schema.tables
+      WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+    `);
+    const routineResult = await conn.query(`
+      SELECT p.prokind, COUNT(*) AS count FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') GROUP BY p.prokind
+    `);
+    const triggerResult = await conn.query("SELECT COUNT(*) AS count FROM information_schema.triggers WHERE trigger_schema NOT IN ('pg_catalog', 'information_schema')");
+    const indexResult = await conn.query("SELECT COUNT(*) AS count FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema')");
+    const constraintResult = await conn.query("SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE table_schema NOT IN ('pg_catalog', 'information_schema')");
+    counts.totalTables = Number(tableResult.rows[0]?.total_tables || 0);
+    counts.views = Number(tableResult.rows[0]?.views || 0);
+    routineResult.rows.forEach(row => {
+      if (row.prokind === 'p') counts.procedures = Number(row.count || 0);
+      if (row.prokind === 'f') counts.functions = Number(row.count || 0);
+    });
+    counts.triggers = Number(triggerResult.rows[0]?.count || 0);
+    counts.indexes = Number(indexResult.rows[0]?.count || 0);
+    counts.constraints = Number(constraintResult.rows[0]?.count || 0);
+    return counts;
+  }
+
+  if (type === 'mongodb') {
+    const collections = await conn.db(database || 'test').listCollections({}, { nameOnly: true }).toArray();
+    for (const collection of collections) {
+      const isView = collection.type === 'view' || !!collection.options?.viewOn;
+      if (isView) {
+        counts.views += 1;
+        continue;
+      }
+      counts.totalTables += 1;
+      try {
+        counts.indexes += (await conn.db(database || 'test').collection(collection.name).indexes()).length;
+      } catch (error) {}
+      if (collection.options?.validator) counts.constraints += 1;
+    }
+    return counts;
+  }
+
+  if (type === 'oracle') {
+    const result = await conn.execute("SELECT object_type, COUNT(*) AS object_count FROM user_objects WHERE object_type IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'TRIGGER', 'INDEX') GROUP BY object_type");
+    result.rows.forEach(row => {
+      const objectType = row.OBJECT_TYPE || row.object_type;
+      const count = Number(row.OBJECT_COUNT || row.object_count || 0);
+      if (objectType === 'TABLE') counts.totalTables = count;
+      if (objectType === 'VIEW') counts.views = count;
+      if (objectType === 'PROCEDURE') counts.procedures = count;
+      if (objectType === 'FUNCTION') counts.functions = count;
+      if (objectType === 'TRIGGER') counts.triggers = count;
+      if (objectType === 'INDEX') counts.indexes = count;
+    });
+    const constraintResult = await conn.execute('SELECT COUNT(*) AS constraint_count FROM user_constraints');
+    counts.constraints = Number(constraintResult.rows[0]?.CONSTRAINT_COUNT || constraintResult.rows[0]?.constraint_count || 0);
+  }
+
+  return counts;
+};
+
 const checkAccess = (connection, user) => {
   if (user.role === 'admin') return true;
   if (connection.user.toString() === user.id) return true;
@@ -65,7 +155,7 @@ exports.createConnection = async (req, res) => {
     const {
       name, type, host, port,
       username, password, database,
-      connectionString, ssl
+      connectionString, ssl, accessMode
     } = req.body;
 
     // Pehle test karo
@@ -87,7 +177,8 @@ exports.createConnection = async (req, res) => {
       name, type, host,
       port: port || (type === 'mysql' ? 3306 : type === 'postgresql' ? 5432 : null),
       username, password, database,
-      connectionString, ssl
+      connectionString, ssl,
+      accessMode: ['read', 'readwrite'].includes(accessMode) ? accessMode : 'readwrite'
     });
 
     // Log to Audit Trail
@@ -118,7 +209,7 @@ exports.updateConnection = async (req, res) => {
     const {
       name, type, host, port,
       username, password, database,
-      connectionString, ssl
+      connectionString, ssl, accessMode
     } = req.body;
 
     const connection = await Connection.findById(id);
@@ -138,6 +229,7 @@ exports.updateConnection = async (req, res) => {
     const connDatabase = database !== undefined ? database : connection.database;
     const connString = connectionString !== undefined ? connectionString : connection.connectionString;
     const connSsl = ssl !== undefined ? ssl : connection.ssl;
+    const connAccessMode = ['read', 'readwrite'].includes(accessMode) ? accessMode : (connection.accessMode || 'readwrite');
 
     const testResult = await testConnection({
       type: connType,
@@ -168,6 +260,7 @@ exports.updateConnection = async (req, res) => {
     if (database !== undefined) connection.database = database;
     if (connectionString !== undefined) connection.connectionString = connectionString;
     if (ssl !== undefined) connection.ssl = ssl;
+    connection.accessMode = connAccessMode;
 
     await connection.save();
 
@@ -272,7 +365,7 @@ exports.getDatabaseObjects = async (req, res) => {
     const summaryOnly = req.query.summary === 'true';
     const exactCounts = req.query.exactCounts === 'true';
     const requestedTableLimit = Number.parseInt(req.query.tableLimit, 10);
-    const tableLimit = Number.isFinite(requestedTableLimit) ? Math.min(Math.max(requestedTableLimit, 1), 100) : 100;
+    const tableLimit = Number.isFinite(requestedTableLimit) ? Math.min(Math.max(requestedTableLimit, 1), 1000) : 100;
     const requestedTableOffset = Number.parseInt(req.query.tableOffset, 10);
     const tableOffset = Number.isFinite(requestedTableOffset) ? Math.max(requestedTableOffset, 0) : 0;
     const { conn, type } = await getConnection(connection, database);
@@ -287,6 +380,37 @@ exports.getDatabaseObjects = async (req, res) => {
       constraints: [],
       collections: []
     };
+
+    let totalTables = null;
+    if (summaryOnly) {
+      try {
+        if (type === 'mysql') {
+          const [countRows] = await conn.execute(
+            database
+              ? `SELECT COUNT(*) AS totalTables FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE'`
+              : `SELECT COUNT(*) AS totalTables FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') AND table_type = 'BASE TABLE'`,
+            database ? [database] : []
+          );
+          totalTables = Number(countRows[0]?.totalTables || 0);
+        } else if (type === 'postgresql') {
+          const countResult = await conn.query(`
+            SELECT COUNT(*) AS total_tables
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+              AND table_type = 'BASE TABLE'
+          `);
+          totalTables = Number(countResult.rows[0]?.total_tables || 0);
+        } else if (type === 'mongodb') {
+          const collections = await conn.db(database || 'test').listCollections({}, { nameOnly: true }).toArray();
+          totalTables = collections.length;
+        } else if (type === 'oracle') {
+          const countResult = await conn.execute('SELECT COUNT(*) AS TOTAL_TABLES FROM user_tables');
+          totalTables = Number(countResult.rows[0]?.TOTAL_TABLES || countResult.rows[0]?.total_tables || 0);
+        }
+      } catch (countError) {
+        console.warn('Failed to count total tables:', countError.message);
+      }
+    }
 
     if (type === 'mysql') {
       let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
@@ -314,10 +438,11 @@ exports.getDatabaseObjects = async (req, res) => {
         }
 
         if (summaryOnly) {
+          const objectCounts = await getObjectCounts(conn, type, database);
           return res.status(200).json({
             success: true,
             type,
-            result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+            result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [], ...objectCounts },
             database,
             summary: true,
             tablesHasMore: tables.length === tableLimit,
@@ -464,10 +589,11 @@ exports.getDatabaseObjects = async (req, res) => {
       } catch (e) { tables = []; }
 
       if (summaryOnly) {
+        const objectCounts = await getObjectCounts(conn, type, database);
         return res.status(200).json({
           success: true,
           type,
-          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [], ...objectCounts },
           database,
           summary: true,
           tablesHasMore: tables.length === tableLimit,
@@ -613,6 +739,7 @@ exports.getDatabaseObjects = async (req, res) => {
         triggers: [],
         indexes,
         constraints,
+        ...(summaryOnly ? { totalTables } : {}),
         ...(summaryOnly ? { tablesHasMore: collections.length === tableLimit, tableOffset } : {})
       };
     }
@@ -625,10 +752,11 @@ exports.getDatabaseObjects = async (req, res) => {
       } catch (e) {}
 
       if (summaryOnly) {
+        const objectCounts = await getObjectCounts(conn, type, database);
         return res.status(200).json({
           success: true,
           type,
-          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [] },
+          result: { tables, views: [], procedures: [], functions: [], triggers: [], indexes: [], constraints: [], ...objectCounts },
           database,
           summary: true,
           tablesHasMore: tables.length === tableLimit,
@@ -777,7 +905,15 @@ exports.runQuery = async (req, res) => {
 
     // Read User role query validation
     const { validateQueryPermissions } = require('../utils/readOnlyQueryValidator');
-    const validation = validateQueryPermissions(query, req.user, connection.type);
+    const database = req.body?.database || req.query?.database || connection.database;
+    const validation = validateQueryPermissions(
+      query,
+      req.user,
+      connection.type,
+      database,
+      connection._id,
+      connection.accessMode || 'readwrite'
+    );
     if (!validation.isAllowed) {
       return res.status(403).json({ message: validation.error });
     }
@@ -800,7 +936,6 @@ exports.runQuery = async (req, res) => {
       });
     }
 
-    const database = req.body?.database || req.query?.database || connection.database;
     const { conn, type } = await getConnection(connection, database);
     const startTime = Date.now();
     let results = [];
