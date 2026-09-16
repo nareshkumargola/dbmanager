@@ -3,7 +3,7 @@
  * Read Users ('read') are strictly limited to Read-Only operations across MySQL, PostgreSQL, Oracle, and MongoDB.
  */
 function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connectionId, connectionMode) {
-  if (!user || user.role === 'admin') {
+  if (!user) {
     return { isAllowed: true };
   }
 

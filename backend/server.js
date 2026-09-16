@@ -92,7 +92,7 @@ const connectAppDB = async () => {
   }
 };
 
-// Routes — sirf zaroori wale
+// Routes — only important ones for now, others can be added as needed
 const authRoutes = require("./routes/authRoutes");
 const connectionRoutes = require("./routes/connectionRoutes");
 const queryHistoryRoutes = require("./routes/queryHistoryRoutes");

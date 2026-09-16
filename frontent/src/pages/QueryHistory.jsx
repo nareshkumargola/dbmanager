@@ -26,6 +26,7 @@ export default function QueryHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copiedQueryId, setCopiedQueryId] = useState(null);
 
   useEffect(() => {
     fetchHistory();
@@ -46,6 +47,31 @@ export default function QueryHistory() {
   // Query Editor mein bhejo
   const useQuery = (query) => {
     navigate('/query', { state: { query } });
+  };
+
+  const copyQuery = async (query, queryId) => {
+    if (!query) return;
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(query);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = query;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      setCopiedQueryId(queryId);
+      setTimeout(() => setCopiedQueryId(null), 2000);
+    } catch (copyError) {
+      console.error('Failed to copy query:', copyError);
+    }
   };
 
   // Time format karo
@@ -218,6 +244,13 @@ export default function QueryHistory() {
 
                 {/* Action Buttons */}
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copyQuery(item.query, item._id)}
+                    className="text-xs px-3 py-1.5 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition font-bold"
+                  >
+                    {copiedQueryId === item._id ? '✓ Copied' : '📋 Copy'}
+                  </button>
                   <button
                     onClick={() => useQuery(item.query)}
                     className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition font-bold"

@@ -233,7 +233,12 @@ export default function QueryEditor() {
       }
 
     } catch (err) {
-      setError(err.response?.data?.error || 'Query failed!');
+      setError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Query failed!'
+      );
     } finally {
       setLoading(false);
     }
@@ -511,6 +516,7 @@ export default function QueryEditor() {
     }
 
     if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
       runQuery(false);
     }
   };

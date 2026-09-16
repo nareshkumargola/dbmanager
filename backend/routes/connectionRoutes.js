@@ -11,6 +11,7 @@ router.get('/', protect, connectionController.getConnections);
 router.get('/all', protect, connectionController.getAllConnectionsAdmin);
 router.post('/', protect, checkPermission('connections'), connectionController.createConnection);
 router.post('/test', protect, checkPermission('connections'), connectionController.testConnectionRoute);
+router.put('/:id', protect, checkPermission('connections'), connectionController.updateConnection);
 router.delete('/:id', protect, checkPermission('connections'), connectionController.deleteConnection);
 
 // Database operations

@@ -61,6 +61,7 @@ export default function ConnectionDashboard() {
   const [databases, setDatabases] = useState([]);
   const [activeDb, setActiveDb] = useState(null);
   const [dbLoading, setDbLoading] = useState(false);
+  const [databaseSearch, setDatabaseSearch] = useState('');
 
   // Table data
   const [selectedTable, setSelectedTable] = useState(null);
@@ -501,6 +502,36 @@ export default function ConnectionDashboard() {
     document.body.removeChild(link);
   };
 
+  const formatInsertValue = (value) => {
+    if (value === null || value === undefined) return 'NULL';
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === 'object') {
+      return `'${String(JSON.stringify(value)).replace(/'/g, "''")}'`;
+    }
+    return `'${String(value).replace(/'/g, "''")}'`;
+  };
+
+  const quoteInsertIdentifier = (identifier, quote) => {
+    return identifier
+      .split('.')
+      .map(part => `${quote}${part.replace(new RegExp(`\\${quote}`, 'g'), `${quote}${quote}`)}${quote}`)
+      .join('.');
+  };
+
+  const getInsertCopyCommand = (row) => {
+    const tableFromQuery = query.match(/\bFROM\s+[`"']?([\w.]+)[`"']?/i)?.[1];
+    const tableName = selectedTable || tableFromQuery || 'your_table';
+
+    if (dbType === 'mongodb') {
+      return `db.${tableName.replace(/[^a-zA-Z0-9_$]/g, '')}.insertOne(${JSON.stringify(row, null, 2)});`;
+    }
+
+    const quote = dbType === 'mysql' ? '`' : '"';
+    const columns = queryColumns.map(column => quoteInsertIdentifier(column, quote)).join(', ');
+    const values = queryColumns.map(column => formatInsertValue(row[column])).join(', ');
+    return `INSERT INTO ${quoteInsertIdentifier(tableName, quote)} (${columns})\nVALUES (${values});`;
+  };
+
   const handleCommentToggle = (textarea) => {
     if (!textarea) return;
     const start = textarea.selectionStart;
@@ -594,6 +625,12 @@ export default function ConnectionDashboard() {
   };
 
   const handleEditorKeyDown = (e, textareaRefToUse) => {
+    if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault();
+      setShowSuggestions(false);
+      runQuery(false);
+      return;
+    }
     if (e.ctrlKey && e.key === '/') {
       e.preventDefault();
       handleCommentToggle(textareaRefToUse.current);
@@ -1271,7 +1308,12 @@ export default function ConnectionDashboard() {
       refreshDatabaseObjects();
       addToHistory(queryToRun);
     } catch (err) {
-      setQueryError(err.response?.data?.error || 'Query failed!');
+      setQueryError(
+        err.response?.data?.error ||
+        err.response?.data?.message ||
+        err.message ||
+        'Query failed!'
+      );
     } finally {
       setQueryLoading(false);
     }
@@ -1407,6 +1449,9 @@ export default function ConnectionDashboard() {
 
   const dbType = objects?.type;
   const tables = getTablesArray();
+  const filteredDatabases = databases.filter(db =>
+    db.toLowerCase().includes(databaseSearch.toLowerCase().trim())
+  );
 
   const formatTableSize = (sizeMB, unit) => {
     const val = parseFloat(sizeMB || 0);
@@ -1575,11 +1620,24 @@ export default function ConnectionDashboard() {
             <span className="text-[10px] text-gray-400 font-mono font-medium">{sidebarWidth}px</span>
           </div>
 
+          <div className="px-3 py-2 border-b border-gray-100">
+            <input
+              type="search"
+              value={databaseSearch}
+              onChange={e => setDatabaseSearch(e.target.value)}
+              placeholder="Search databases..."
+              aria-label="Search databases"
+              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-[11px] outline-none bg-gray-50 focus:bg-white focus:border-teal-500 transition"
+            />
+          </div>
+
           <div className="overflow-y-auto flex-1 py-1">
             {databases.length === 0 ? (
               <p className="text-[10px] text-gray-400 px-3 py-3">No databases</p>
+            ) : filteredDatabases.length === 0 ? (
+              <p className="text-[10px] text-gray-400 px-3 py-3">No matching databases</p>
             ) : (
-              databases.map((db, i) => {
+              filteredDatabases.map((db, i) => {
                 const isSelected = activeDb === db;
                 const isExpanded = expandedDbs[db] !== undefined ? expandedDbs[db] : isSelected;
                 const objectCounts = isSelected ? (objects?.result || {}) : {};
@@ -3970,6 +4028,9 @@ export default function ConnectionDashboard() {
                                 </th>
                               );
                             })}
+                            <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase whitespace-nowrap">
+                              Action
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 font-mono text-xs">
@@ -3982,6 +4043,16 @@ export default function ConnectionDashboard() {
                                   ) : String(row[col])}
                                 </td>
                               ))}
+                              <td className="px-4 py-3 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => openInNewQueryTab(getInsertCopyCommand(row), 'Insert Copy Command')}
+                                  title="Insert a generated row insert command into a new query tab"
+                                  className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer whitespace-nowrap"
+                                >
+                                  Insert Copy Command
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
