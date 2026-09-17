@@ -2131,7 +2131,7 @@ export default function ConnectionDashboard() {
                       <div className="flex items-center gap-2 overflow-x-auto pt-1">
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('tables'); setObjectSearch(''); setObjectsPage(1); }}
+                          onClick={() => openDatabaseObjectCategory('tables')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'tables'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2143,7 +2143,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('views'); setObjectSearch(''); setObjectsPage(1); }}
+                          onClick={() => openDatabaseObjectCategory('views')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'views'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2156,7 +2156,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('procedures'); setObjectSearch(''); setObjectsPage(1); }}
+                            onClick={() => openDatabaseObjectCategory('procedures')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'procedures'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2170,7 +2170,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('functions'); setObjectSearch(''); setObjectsPage(1); }}
+                            onClick={() => openDatabaseObjectCategory('functions')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'functions'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2184,7 +2184,7 @@ export default function ConnectionDashboard() {
                         {dbType !== 'mongodb' && (
                           <button
                             type="button"
-                            onClick={() => { setDbObjectType('triggers'); setObjectSearch(''); setObjectsPage(1); }}
+                            onClick={() => openDatabaseObjectCategory('triggers')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               dbObjectType === 'triggers'
                                 ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2197,7 +2197,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('indexes'); setObjectSearch(''); setObjectsPage(1); }}
+                          onClick={() => openDatabaseObjectCategory('indexes')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'indexes'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'
@@ -2209,7 +2209,7 @@ export default function ConnectionDashboard() {
 
                         <button
                           type="button"
-                          onClick={() => { setDbObjectType('constraints'); setObjectSearch(''); setObjectsPage(1); }}
+                          onClick={() => openDatabaseObjectCategory('constraints')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                             dbObjectType === 'constraints'
                               ? 'bg-[#0d9da4] text-white shadow-2xs'

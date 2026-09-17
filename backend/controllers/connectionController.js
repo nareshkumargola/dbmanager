@@ -1275,7 +1275,7 @@ exports.runQuery = async (req, res) => {
     } catch (e) {
       console.error('History save error:', e.message);
     }
-    res.status(500).json({ message: 'Query Error', error: err.message });
+    res.status(400).json({ message: err.message || 'Query execution failed', error: err.message || 'Query execution failed' });
   }
 };
 

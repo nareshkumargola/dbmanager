@@ -61,12 +61,12 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// Rate limiting
+// Rate limiting — High capacity limit (20,000 requests per 15m) to prevent blocking active polling & query dashboards
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "production" ? 150 : 5000, // Secure in prod, flexible in dev
-  message: "Too many requests, please try again later.",
-  skip: (req) => req.originalUrl && req.originalUrl.includes("/binlog/events"),
+  max: 20000,
+  message: "Too many requests from this IP, please try again later.",
+  skip: (req) => req.originalUrl && (req.originalUrl.includes("/binlog/events") || req.originalUrl.includes("/monitor")),
 });
 app.use("/api", limiter);
 
