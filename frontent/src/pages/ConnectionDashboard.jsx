@@ -71,6 +71,19 @@ export default function ConnectionDashboard() {
   const [tablePage, setTablePage] = useState(1);
   const [tableRowsPerPage, setTableRowsPerPage] = useState(20);
 
+  // Row Action States (Copy, Edit, Insert, Delete, Open in Editor)
+  const [openRowActionMenuId, setOpenRowActionMenuId] = useState(null);
+  const [editingRowModalOpen, setEditingRowModalOpen] = useState(false);
+  const [editingRowOriginal, setEditingRowOriginal] = useState(null);
+  const [editingRowData, setEditingRowData] = useState({});
+  const [editingRowLoading, setEditingRowLoading] = useState(false);
+  const [editingRowError, setEditingRowError] = useState('');
+
+  const [insertRowModalOpen, setInsertRowModalOpen] = useState(false);
+  const [insertRowData, setInsertRowData] = useState({});
+  const [insertRowLoading, setInsertRowLoading] = useState(false);
+  const [insertRowError, setInsertRowError] = useState('');
+
   const userId = user?.id || user?._id || 'guest';
   const storageKeyTabs = `dms_query_tabs_${userId}_${id}`;
   const storageKeyActive = `dms_active_query_tab_${userId}_${id}`;
@@ -967,6 +980,205 @@ export default function ConnectionDashboard() {
     } finally {
       setTableLoading(false);
     }
+  };
+
+  // Row Action Operations (Copy, Edit, Insert, Delete, Open in Editor)
+  const buildRowWhereClause = (row) => {
+    if (!row || typeof row !== 'object') return '1=1';
+    const keys = Object.keys(row);
+    const pkKey = keys.find(k => k.toLowerCase() === 'id' || k.toLowerCase() === '_id');
+    if (pkKey && row[pkKey] !== undefined && row[pkKey] !== null) {
+      const val = row[pkKey];
+      if (typeof val === 'number') return `\`${pkKey}\` = ${val}`;
+      return `\`${pkKey}\` = '${String(val).replace(/'/g, "''")}'`;
+    }
+
+    const conditions = [];
+    keys.forEach(k => {
+      const val = row[k];
+      if (val !== null && val !== undefined && typeof val !== 'object') {
+        if (typeof val === 'number') {
+          conditions.push(`\`${k}\` = ${val}`);
+        } else {
+          conditions.push(`\`${k}\` = '${String(val).replace(/'/g, "''")}'`);
+        }
+      }
+    });
+
+    return conditions.slice(0, 4).join(' AND ') || '1=1';
+  };
+
+  const handleCopyRow = (row) => {
+    try {
+      const jsonStr = JSON.stringify(row, null, 2);
+      navigator.clipboard.writeText(jsonStr);
+      showToast('📋 Row data copied to clipboard as JSON!');
+    } catch (err) {
+      showToast('Failed to copy row data', 'error');
+    }
+  };
+
+  const handleOpenEditRowModal = (row) => {
+    setEditingRowOriginal(row);
+    setEditingRowData({ ...row });
+    setEditingRowError('');
+    setEditingRowModalOpen(true);
+  };
+
+  const handleSaveEditRow = async (e) => {
+    e.preventDefault();
+    if (!editingRowOriginal || !selectedTable) return;
+
+    setEditingRowLoading(true);
+    setEditingRowError('');
+    try {
+      let updateQuery = '';
+      const whereClause = buildRowWhereClause(editingRowOriginal);
+
+      if (dbType === 'mongodb') {
+        updateQuery = `db.${selectedTable}.updateOne({ ${whereClause.replace(/`/g, '"')} }, { $set: ${JSON.stringify(editingRowData)} })`;
+      } else {
+        const setClauses = [];
+        Object.entries(editingRowData).forEach(([k, v]) => {
+          if (v === null || v === undefined || v === '') {
+            setClauses.push(`\`${k}\` = NULL`);
+          } else if (typeof v === 'number' || (!isNaN(v) && v !== '' && typeof editingRowOriginal[k] === 'number')) {
+            setClauses.push(`\`${k}\` = ${v}`);
+          } else {
+            setClauses.push(`\`${k}\` = '${String(v).replace(/'/g, "''")}'`);
+          }
+        });
+        updateQuery = `UPDATE \`${activeDb || connection?.database}\`.\`${selectedTable}\` SET ${setClauses.join(', ')} WHERE ${whereClause};`;
+      }
+
+      await API.post(`/connections/${id}/query`, {
+        query: updateQuery,
+        database: activeDb || connection?.database
+      });
+
+      showToast(`✏️ Row updated successfully in ${selectedTable}!`);
+      setEditingRowModalOpen(false);
+      fetchTableData(selectedTable);
+    } catch (err) {
+      setEditingRowError(err.response?.data?.error || err.response?.data?.message || 'Failed to update row');
+    } finally {
+      setEditingRowLoading(false);
+    }
+  };
+
+  const handleOpenInsertRowModal = (templateRow = null) => {
+    const initialData = {};
+    const cols = tableColumns && tableColumns.length > 0
+      ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name) : c)
+      : (tableData[0] ? Object.keys(tableData[0]) : []);
+
+    cols.forEach(col => {
+      if (templateRow) {
+        initialData[col] = templateRow[col] !== undefined && templateRow[col] !== null ? templateRow[col] : '';
+      } else {
+        initialData[col] = '';
+      }
+    });
+
+    setInsertRowData(initialData);
+    setInsertRowError('');
+    setInsertRowModalOpen(true);
+  };
+
+  const handleSaveInsertRow = async (e) => {
+    e.preventDefault();
+    if (!selectedTable) return;
+
+    setInsertRowLoading(true);
+    setInsertRowError('');
+    try {
+      let insertQuery = '';
+      if (dbType === 'mongodb') {
+        const cleanData = {};
+        Object.entries(insertRowData).forEach(([k, v]) => {
+          if (v !== '' && v !== null && v !== undefined) cleanData[k] = v;
+        });
+        insertQuery = `db.${selectedTable}.insertOne(${JSON.stringify(cleanData)})`;
+      } else {
+        const cols = [];
+        const vals = [];
+        Object.entries(insertRowData).forEach(([k, v]) => {
+          if (v !== '' && v !== null && v !== undefined) {
+            cols.push(`\`${k}\``);
+            if (typeof v === 'number' || (!isNaN(v) && v !== '')) {
+              vals.push(v);
+            } else {
+              vals.push(`'${String(v).replace(/'/g, "''")}'`);
+            }
+          }
+        });
+
+        if (cols.length === 0) {
+          throw new Error('Please enter at least one column value!');
+        }
+
+        insertQuery = `INSERT INTO \`${activeDb || connection?.database}\`.\`${selectedTable}\` (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
+      }
+
+      await API.post(`/connections/${id}/query`, {
+        query: insertQuery,
+        database: activeDb || connection?.database
+      });
+
+      showToast(`➕ New row inserted successfully into ${selectedTable}!`);
+      setInsertRowModalOpen(false);
+      fetchTableData(selectedTable);
+    } catch (err) {
+      setInsertRowError(err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to insert row');
+    } finally {
+      setInsertRowLoading(false);
+    }
+  };
+
+  const handleDeleteRow = async (row) => {
+    const whereClause = buildRowWhereClause(row);
+    if (!window.confirm(`Are you sure you want to delete this row from table '${selectedTable}'?\n\nWHERE ${whereClause}`)) {
+      return;
+    }
+
+    try {
+      let deleteQuery = '';
+      if (dbType === 'mongodb') {
+        deleteQuery = `db.${selectedTable}.deleteOne({ ${whereClause.replace(/`/g, '"')} })`;
+      } else {
+        deleteQuery = `DELETE FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\` WHERE ${whereClause};`;
+      }
+
+      await API.post(`/connections/${id}/query`, {
+        query: deleteQuery,
+        database: activeDb || connection?.database
+      });
+
+      showToast(`🗑️ Row deleted successfully from ${selectedTable}!`);
+      fetchTableData(selectedTable);
+    } catch (err) {
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Delete row failed!', 'error');
+    }
+  };
+
+  const handleOpenRowInEditor = (row) => {
+    const whereClause = buildRowWhereClause(row);
+    let editorQuery = '';
+    if (dbType === 'mongodb') {
+      editorQuery = `// Query for collection ${selectedTable}\ndb.${selectedTable}.find({ ${whereClause.replace(/`/g, '"')} });`;
+    } else {
+      editorQuery = `-- Query for table ${selectedTable}\nSELECT * FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\` WHERE ${whereClause};`;
+    }
+
+    setQueryTabs(prev => prev.map(tab => {
+      if (tab.id === activeQueryTabId) {
+        return { ...tab, query: editorQuery };
+      }
+      return tab;
+    }));
+
+    setActiveTab('query');
+    showToast(`⚡ Opened row query in Query Editor!`);
   };
 
   const fetchHistory = async () => {
@@ -3102,6 +3314,14 @@ export default function ConnectionDashboard() {
                       </div>
 
                       <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenInsertRowModal(null)}
+                          className="px-3 py-1.5 bg-[#0d9da4] hover:bg-teal-700 text-white text-xs font-bold rounded-lg shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>➕</span> Insert Row
+                        </button>
+
                         <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg font-bold font-mono">
                           Total: {tableData.length} records
                         </span>
@@ -3160,14 +3380,24 @@ export default function ConnectionDashboard() {
 
                     {tableData.length === 0 ? (
                       <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                        <p className="text-gray-400 text-sm">No data found</p>
+                        <p className="text-gray-400 text-sm mb-3">No data found in table {selectedTable}</p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenInsertRowModal(null)}
+                          className="px-4 py-2 bg-[#0d9da4] text-white text-xs font-bold rounded-lg hover:bg-teal-700 transition"
+                        >
+                          ➕ Insert First Row
+                        </button>
                       </div>
                     ) : (
                       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
-                            <thead className="bg-gray-50 border-b border-gray-200">
+                            <thead className="bg-gray-50 border-b border-gray-200 text-left">
                               <tr>
+                                <th className="px-3 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider w-28 bg-gray-100/90 sticky left-0 z-10 border-r border-gray-200">
+                                  ⚙️ Action
+                                </th>
                                 {(tableColumns && tableColumns.length > 0
                                   ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name || '') : String(c))
                                   : Object.keys(tableData[0] || {})
@@ -3183,12 +3413,95 @@ export default function ConnectionDashboard() {
                                 const cols = tableColumns && tableColumns.length > 0
                                   ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name) : c)
                                   : Object.keys(row);
+                                const isMenuOpen = openRowActionMenuId === i;
+
                                 return (
                                   <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                                    {/* Action Dropdown Menu Cell */}
+                                    <td className="px-2 py-2 text-center whitespace-nowrap bg-gray-50/40 sticky left-0 z-10 border-r border-gray-200">
+                                      <div className="relative inline-block text-left">
+                                        <button
+                                          type="button"
+                                          onClick={() => setOpenRowActionMenuId(isMenuOpen ? null : i)}
+                                          className="px-2.5 py-1 text-[11px] font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg shadow-3xs flex items-center gap-1 transition cursor-pointer"
+                                        >
+                                          <span>⚙️ Action</span>
+                                          <span className="text-[9px]">▼</span>
+                                        </button>
+
+                                        {isMenuOpen && (
+                                          <>
+                                            <div
+                                              className="fixed inset-0 z-30"
+                                              onClick={() => setOpenRowActionMenuId(null)}
+                                            />
+                                            <div className="absolute left-0 mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-40 py-1 text-xs text-left animate-fadeIn">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenRowActionMenuId(null);
+                                                  handleCopyRow(row);
+                                                }}
+                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                                              >
+                                                <span>📋</span> Copy Row
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenRowActionMenuId(null);
+                                                  handleOpenEditRowModal(row);
+                                                }}
+                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                                              >
+                                                <span>✏️</span> Edit Row
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenRowActionMenuId(null);
+                                                  handleOpenInsertRowModal(row);
+                                                }}
+                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                                              >
+                                                <span>➕</span> Insert Row
+                                              </button>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenRowActionMenuId(null);
+                                                  handleOpenRowInEditor(row);
+                                                }}
+                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                                              >
+                                                <span>⚡</span> Open in Editor
+                                              </button>
+
+                                              <div className="my-1 border-t border-gray-150 dark:border-gray-700" />
+
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setOpenRowActionMenuId(null);
+                                                  handleDeleteRow(row);
+                                                }}
+                                                className="w-full px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                                              >
+                                                <span>🗑️</span> Delete Row
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </td>
+
                                     {cols.map((colName, j) => {
                                       const val = row[colName];
                                       return (
-                                        <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                        <td key={j} className="px-4 py-3 text-gray-700 whitespace-nowrap font-mono text-xs">
                                           {val === null || val === undefined ? (
                                             <span className="text-gray-300 italic">null</span>
                                           ) : typeof val === 'object' ? (
@@ -3205,6 +3518,131 @@ export default function ConnectionDashboard() {
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Edit Row Modal */}
+                        {editingRowModalOpen && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+                            <div className="bg-white dark:bg-gray-850 rounded-2xl w-[90vw] max-w-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+                              <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                  <span>✏️</span> Edit Row — <span className="font-mono text-teal-600">{selectedTable}</span>
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingRowModalOpen(false)}
+                                  className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <form onSubmit={handleSaveEditRow} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                                {editingRowError && (
+                                  <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                                    ❌ {editingRowError}
+                                  </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  {Object.keys(editingRowData).map(col => (
+                                    <div key={col} className="space-y-1">
+                                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 font-mono">
+                                        {col}
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        value={editingRowData[col] === null ? '' : String(editingRowData[col])}
+                                        onChange={e => setEditingRowData({ ...editingRowData, [col]: e.target.value })}
+                                        className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 font-mono"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingRowModalOpen(false)}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={editingRowLoading}
+                                    style={{ backgroundColor: '#0d9da4' }}
+                                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {editingRowLoading ? 'Saving Changes...' : 'Save Row Changes'}
+                                  </button>
+                                </div>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Insert Row Modal */}
+                        {insertRowModalOpen && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+                            <div className="bg-white dark:bg-gray-850 rounded-2xl w-[90vw] max-w-2xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+                              <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
+                                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                  <span>➕</span> Insert New Row — <span className="font-mono text-teal-600">{selectedTable}</span>
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() => setInsertRowModalOpen(false)}
+                                  className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <form onSubmit={handleSaveInsertRow} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                                {insertRowError && (
+                                  <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                                    ❌ {insertRowError}
+                                  </div>
+                                )}
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  {Object.keys(insertRowData).map(col => (
+                                    <div key={col} className="space-y-1">
+                                      <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 font-mono">
+                                        {col}
+                                      </label>
+                                      <textarea
+                                        rows={2}
+                                        placeholder="Enter value or leave blank for NULL / DEFAULT"
+                                        value={insertRowData[col] === null ? '' : String(insertRowData[col])}
+                                        onChange={e => setInsertRowData({ ...insertRowData, [col]: e.target.value })}
+                                        className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 font-mono"
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => setInsertRowModalOpen(false)}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="submit"
+                                    disabled={insertRowLoading}
+                                    style={{ backgroundColor: '#0d9da4' }}
+                                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                                  >
+                                    {insertRowLoading ? 'Inserting...' : 'Insert Row'}
+                                  </button>
+                                </div>
+                              </form>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Pagination Footer */}
                         {tableData.length > 0 && (() => {
