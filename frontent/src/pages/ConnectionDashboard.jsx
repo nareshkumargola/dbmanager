@@ -89,6 +89,8 @@ export default function ConnectionDashboard() {
   const [deleteRowLoading, setDeleteRowLoading] = useState(false);
   const [deleteRowError, setDeleteRowError] = useState('');
 
+  const [copiedQueryText, setCopiedQueryText] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => {
       if (openRowActionMenu) setOpenRowActionMenu(null);
@@ -670,6 +672,33 @@ export default function ConnectionDashboard() {
         const newCursorPos = before.length + selectedSuggestion.length + 1;
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
+    }
+  };
+
+  const handleCopyQueryText = (textareaRefToUse) => {
+    const textarea = textareaRefToUse?.current;
+    let textToCopy = query;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = query.substring(start, end).trim();
+      if (selected) {
+        textToCopy = selected;
+      }
+    }
+
+    if (!textToCopy.trim()) {
+      showToast('Nothing to copy!', 'error');
+      return;
+    }
+
+    try {
+      navigator.clipboard.writeText(textToCopy);
+      setCopiedQueryText(true);
+      showToast(textToCopy === query ? '📋 All query text copied to clipboard!' : '📋 Selected query text copied to clipboard!');
+      setTimeout(() => setCopiedQueryText(false), 2000);
+    } catch (err) {
+      showToast('Failed to copy text', 'error');
     }
   };
 
@@ -4187,6 +4216,26 @@ export default function ConnectionDashboard() {
 
                   {/* Textarea Overlay Container */}
                   <div className="sql-editor-container h-[280px]">
+                    {/* Copy Query Text Button (Top Right) */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyQueryText(textareaRef)}
+                      title="Copy query text to clipboard"
+                      className="absolute top-2.5 right-3 z-20 px-2.5 py-1 bg-white/95 dark:bg-gray-800/95 hover:bg-teal-50 dark:hover:bg-teal-950 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg shadow-2xs transition cursor-pointer text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-xs active:scale-95"
+                    >
+                      {copiedQueryText ? (
+                        <>
+                          <span className="text-emerald-600 font-bold">✓</span>
+                          <span className="text-emerald-600 font-bold">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>📋</span>
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+
                     {/* Gutter Line Numbers */}
                     <div ref={lineCounterRef} className="sql-editor-gutter">
                       {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
@@ -4459,6 +4508,26 @@ export default function ConnectionDashboard() {
 
                         {/* Textarea Overlay Container (Fullscreen) */}
                         <div className="sql-editor-container flex-1 rounded-b-xl rounded-tr-xl border border-gray-250 relative overflow-hidden">
+                          {/* Copy Query Text Button (Top Right) */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopyQueryText(fullscreenTextareaRef)}
+                            title="Copy query text to clipboard"
+                            className="absolute top-2.5 right-3 z-20 px-2.5 py-1 bg-white/95 dark:bg-gray-800/95 hover:bg-teal-50 dark:hover:bg-teal-950 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg shadow-2xs transition cursor-pointer text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-xs active:scale-95"
+                          >
+                            {copiedQueryText ? (
+                              <>
+                                <span className="text-emerald-600 font-bold">✓</span>
+                                <span className="text-emerald-600 font-bold">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>📋</span>
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+
                           {/* Gutter Line Numbers */}
                           <div ref={fullscreenLineCounterRef} className="sql-editor-gutter">
                             {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
