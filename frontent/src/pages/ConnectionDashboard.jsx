@@ -72,7 +72,7 @@ export default function ConnectionDashboard() {
   const [tableRowsPerPage, setTableRowsPerPage] = useState(20);
 
   // Row Action States (Copy, Edit, Insert, Delete, Open in Editor)
-  const [openRowActionMenuId, setOpenRowActionMenuId] = useState(null);
+  const [openRowActionMenu, setOpenRowActionMenu] = useState(null); // { id, row, top, left }
   const [editingRowModalOpen, setEditingRowModalOpen] = useState(false);
   const [editingRowOriginal, setEditingRowOriginal] = useState(null);
   const [editingRowData, setEditingRowData] = useState({});
@@ -83,6 +83,18 @@ export default function ConnectionDashboard() {
   const [insertRowData, setInsertRowData] = useState({});
   const [insertRowLoading, setInsertRowLoading] = useState(false);
   const [insertRowError, setInsertRowError] = useState('');
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (openRowActionMenu) setOpenRowActionMenu(null);
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll, true);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll, true);
+    };
+  }, [openRowActionMenu]);
 
   const userId = user?.id || user?._id || 'guest';
   const storageKeyTabs = `dms_query_tabs_${userId}_${id}`;
@@ -3413,89 +3425,39 @@ export default function ConnectionDashboard() {
                                 const cols = tableColumns && tableColumns.length > 0
                                   ? tableColumns.map(c => typeof c === 'object' ? (c.Field || c.name || c.column_name) : c)
                                   : Object.keys(row);
-                                const isMenuOpen = openRowActionMenuId === i;
+                                const isMenuOpen = openRowActionMenu && openRowActionMenu.id === i;
 
                                 return (
                                   <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                                     {/* Action Dropdown Menu Cell */}
                                     <td className="px-2 py-2 text-center whitespace-nowrap bg-gray-50/40 sticky left-0 z-10 border-r border-gray-200">
-                                      <div className="relative inline-block text-left">
-                                        <button
-                                          type="button"
-                                          onClick={() => setOpenRowActionMenuId(isMenuOpen ? null : i)}
-                                          className="px-2.5 py-1 text-[11px] font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-lg shadow-3xs flex items-center gap-1 transition cursor-pointer"
-                                        >
-                                          <span>⚙️ Action</span>
-                                          <span className="text-[9px]">▼</span>
-                                        </button>
-
-                                        {isMenuOpen && (
-                                          <>
-                                            <div
-                                              className="fixed inset-0 z-30"
-                                              onClick={() => setOpenRowActionMenuId(null)}
-                                            />
-                                            <div className="absolute left-0 mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-40 py-1 text-xs text-left animate-fadeIn">
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setOpenRowActionMenuId(null);
-                                                  handleCopyRow(row);
-                                                }}
-                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
-                                              >
-                                                <span>📋</span> Copy Row
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setOpenRowActionMenuId(null);
-                                                  handleOpenEditRowModal(row);
-                                                }}
-                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
-                                              >
-                                                <span>✏️</span> Edit Row
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setOpenRowActionMenuId(null);
-                                                  handleOpenInsertRowModal(row);
-                                                }}
-                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
-                                              >
-                                                <span>➕</span> Insert Row
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setOpenRowActionMenuId(null);
-                                                  handleOpenRowInEditor(row);
-                                                }}
-                                                className="w-full px-3 py-1.5 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
-                                              >
-                                                <span>⚡</span> Open in Editor
-                                              </button>
-
-                                              <div className="my-1 border-t border-gray-150 dark:border-gray-700" />
-
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setOpenRowActionMenuId(null);
-                                                  handleDeleteRow(row);
-                                                }}
-                                                className="w-full px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 font-medium flex items-center gap-2 transition text-left cursor-pointer"
-                                              >
-                                                <span>🗑️</span> Delete Row
-                                              </button>
-                                            </div>
-                                          </>
-                                        )}
-                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isMenuOpen) {
+                                            setOpenRowActionMenu(null);
+                                          } else {
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            const spaceBelow = window.innerHeight - rect.bottom;
+                                            const openUpward = spaceBelow < 220;
+                                            setOpenRowActionMenu({
+                                              id: i,
+                                              row: row,
+                                              top: openUpward ? Math.max(10, rect.top - 210) : (rect.bottom + 4),
+                                              left: Math.max(10, Math.min(rect.left, window.innerWidth - 200))
+                                            });
+                                          }
+                                        }}
+                                        className={`px-2.5 py-1 text-[11px] font-bold border rounded-lg shadow-3xs flex items-center gap-1 transition cursor-pointer ${
+                                          isMenuOpen
+                                            ? 'bg-teal-600 text-white border-teal-600'
+                                            : 'text-gray-700 bg-white hover:bg-gray-100 border-gray-300'
+                                        }`}
+                                      >
+                                        <span>⚙️ Action</span>
+                                        <span className="text-[9px]">▼</span>
+                                      </button>
                                     </td>
 
                                     {cols.map((colName, j) => {
@@ -3518,6 +3480,86 @@ export default function ConnectionDashboard() {
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Fixed Floating Action Dropdown Menu */}
+                        {openRowActionMenu && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-[9998] bg-transparent"
+                              onClick={() => setOpenRowActionMenu(null)}
+                            />
+                            <div
+                              style={{
+                                position: 'fixed',
+                                top: `${openRowActionMenu.top}px`,
+                                left: `${openRowActionMenu.left}px`,
+                              }}
+                              className="z-[9999] w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 text-xs text-left animate-fadeIn font-sans"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rowData = openRowActionMenu.row;
+                                  setOpenRowActionMenu(null);
+                                  handleCopyRow(rowData);
+                                }}
+                                className="w-full px-3.5 py-2 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                              >
+                                <span>📋</span> Copy Row
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rowData = openRowActionMenu.row;
+                                  setOpenRowActionMenu(null);
+                                  handleOpenEditRowModal(rowData);
+                                }}
+                                className="w-full px-3.5 py-2 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                              >
+                                <span>✏️</span> Edit Row
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rowData = openRowActionMenu.row;
+                                  setOpenRowActionMenu(null);
+                                  handleOpenInsertRowModal(rowData);
+                                }}
+                                className="w-full px-3.5 py-2 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                              >
+                                <span>➕</span> Insert Row
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rowData = openRowActionMenu.row;
+                                  setOpenRowActionMenu(null);
+                                  handleOpenRowInEditor(rowData);
+                                }}
+                                className="w-full px-3.5 py-2 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-gray-700 dark:text-gray-200 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                              >
+                                <span>⚡</span> Open in Editor
+                              </button>
+
+                              <div className="my-1 border-t border-gray-150 dark:border-gray-700" />
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const rowData = openRowActionMenu.row;
+                                  setOpenRowActionMenu(null);
+                                  handleDeleteRow(rowData);
+                                }}
+                                className="w-full px-3.5 py-2 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 font-medium flex items-center gap-2 transition text-left cursor-pointer"
+                              >
+                                <span>🗑️</span> Delete Row
+                              </button>
+                            </div>
+                          </>
+                        )}
 
                         {/* Edit Row Modal */}
                         {editingRowModalOpen && (
