@@ -584,11 +584,30 @@ export default function ConnectionDashboard() {
       }
     });
     const updatedTarget = updatedLines.join('\n');
-    setQuery(before + updatedTarget + after);
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(selectionStartLineIndex, selectionStartLineIndex + updatedTarget.length);
-    }, 0);
+
+    textarea.focus();
+    textarea.setSelectionRange(selectionStartLineIndex, selectionEndLineIndex);
+
+    let success = false;
+    try {
+      success = document.execCommand('insertText', false, updatedTarget);
+    } catch (e) {
+      success = false;
+    }
+
+    if (success) {
+      setQuery(textarea.value);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(selectionStartLineIndex, selectionStartLineIndex + updatedTarget.length);
+      }, 0);
+    } else {
+      setQuery(before + updatedTarget + after);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(selectionStartLineIndex, selectionStartLineIndex + updatedTarget.length);
+      }, 0);
+    }
   };
 
   const getCursorXY = (textarea) => {
@@ -661,7 +680,7 @@ export default function ConnectionDashboard() {
       runQuery(false);
       return;
     }
-    if (e.ctrlKey && e.key === '/') {
+    if (e.ctrlKey && (e.key === '/' || e.code === 'Slash')) {
       e.preventDefault();
       handleCommentToggle(textareaRefToUse.current);
       return;
