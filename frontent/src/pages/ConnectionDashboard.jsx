@@ -1212,20 +1212,26 @@ export default function ConnectionDashboard() {
 
   const handleConfirmDirectDelete = async () => {
     if (!deleteRowTarget || !selectedTable) return;
+    const targetRow = deleteRowTarget;
     setDeleteRowLoading(true);
     setDeleteRowError('');
+
+    // Optimistically remove row from UI tableData state INSTANTLY
+    setTableData(prev => prev.filter(r => r !== targetRow));
+    setDeleteRowModalOpen(false);
+    setDeleteRowTarget(null);
+
     try {
-      const deleteQuery = generateDeleteQuery(deleteRowTarget);
+      const deleteQuery = generateDeleteQuery(targetRow);
       await API.post(`/connections/${id}/query`, {
         query: deleteQuery,
         database: activeDb || connection?.database
       });
       showToast(`🗑️ Row deleted successfully from ${selectedTable}!`);
-      setDeleteRowModalOpen(false);
-      setDeleteRowTarget(null);
       fetchTableData(selectedTable);
     } catch (err) {
-      setDeleteRowError(err.response?.data?.error || err.response?.data?.message || 'Delete row failed!');
+      showToast(err.response?.data?.error || err.response?.data?.message || 'Delete row failed!', 'error');
+      fetchTableData(selectedTable);
     } finally {
       setDeleteRowLoading(false);
     }

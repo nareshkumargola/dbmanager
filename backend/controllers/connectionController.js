@@ -1262,7 +1262,7 @@ exports.runQuery = async (req, res) => {
     // Slow query check karo — 100ms se zyada?
     try {
       const { saveSlowQuery } = require('./slowQueryController');
-      await saveSlowQuery(req.user.id, query, executionTime, rowsAffected);
+      await saveSlowQuery(id, req.user.id, query, executionTime, rowsAffected);
     } catch (slowQueryErr) {
       console.error('Failed to log slow query:', slowQueryErr.message);
     }
