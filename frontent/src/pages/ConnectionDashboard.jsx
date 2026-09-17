@@ -84,6 +84,11 @@ export default function ConnectionDashboard() {
   const [insertRowLoading, setInsertRowLoading] = useState(false);
   const [insertRowError, setInsertRowError] = useState('');
 
+  const [deleteRowModalOpen, setDeleteRowModalOpen] = useState(false);
+  const [deleteRowTarget, setDeleteRowTarget] = useState(null);
+  const [deleteRowLoading, setDeleteRowLoading] = useState(false);
+  const [deleteRowError, setDeleteRowError] = useState('');
+
   useEffect(() => {
     const handleScroll = () => {
       if (openRowActionMenu) setOpenRowActionMenu(null);
@@ -1030,6 +1035,101 @@ export default function ConnectionDashboard() {
     }
   };
 
+  const generateUpdateQuery = (original, data) => {
+    if (!original || !selectedTable) return '';
+    const whereClause = buildRowWhereClause(original);
+    if (dbType === 'mongodb') {
+      const cleanData = {};
+      Object.entries(data).forEach(([k, v]) => {
+        if (v !== undefined) cleanData[k] = v;
+      });
+      return `db.${selectedTable}.updateOne(\n  { ${whereClause.replace(/`/g, '"')} },\n  { $set: ${JSON.stringify(cleanData, null, 2)} }\n);`;
+    } else {
+      const setClauses = [];
+      Object.entries(data).forEach(([k, v]) => {
+        if (v === null || v === undefined || v === '') {
+          setClauses.push(`\`${k}\` = NULL`);
+        } else if (typeof v === 'number' || (!isNaN(v) && v !== '' && typeof original[k] === 'number')) {
+          setClauses.push(`\`${k}\` = ${v}`);
+        } else {
+          setClauses.push(`\`${k}\` = '${String(v).replace(/'/g, "''")}'`);
+        }
+      });
+      return `UPDATE \`${activeDb || connection?.database}\`.\`${selectedTable}\`\nSET ${setClauses.join(', ')}\nWHERE ${whereClause};`;
+    }
+  };
+
+  const generateInsertQuery = (data) => {
+    if (!selectedTable) return '';
+    if (dbType === 'mongodb') {
+      const cleanData = {};
+      Object.entries(data).forEach(([k, v]) => {
+        if (v !== '' && v !== null && v !== undefined) cleanData[k] = v;
+      });
+      return `db.${selectedTable}.insertOne(\n  ${JSON.stringify(cleanData, null, 2)}\n);`;
+    } else {
+      const cols = [];
+      const vals = [];
+      Object.entries(data).forEach(([k, v]) => {
+        if (v !== '' && v !== null && v !== undefined) {
+          cols.push(`\`${k}\``);
+          if (typeof v === 'number' || (!isNaN(v) && v !== '')) {
+            vals.push(v);
+          } else {
+            vals.push(`'${String(v).replace(/'/g, "''")}'`);
+          }
+        }
+      });
+      return `INSERT INTO \`${activeDb || connection?.database}\`.\`${selectedTable}\` (${cols.join(', ')})\nVALUES (${vals.join(', ')});`;
+    }
+  };
+
+  const generateDeleteQuery = (row) => {
+    if (!row || !selectedTable) return '';
+    const whereClause = buildRowWhereClause(row);
+    if (dbType === 'mongodb') {
+      return `db.${selectedTable}.deleteOne({\n  ${whereClause.replace(/`/g, '"')}\n});`;
+    } else {
+      return `DELETE FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\`\nWHERE ${whereClause};`;
+    }
+  };
+
+  const sendQueryToEditorAndRun = async (queryText, successMsg = 'Query transferred & executed in Editor!') => {
+    if (!queryText) return;
+
+    setQueryTabs(prev => prev.map(tab => {
+      if (tab.id === activeQueryTabId) {
+        return { ...tab, query: queryText };
+      }
+      return tab;
+    }));
+
+    setActiveTab('query');
+    showToast('⚡ Query transferred to Query Editor! Executing...');
+
+    setQueryResult(null);
+    setQueryError('');
+    setQueryLoading(true);
+    try {
+      const res = await API.post(`/connections/${id}/query`, {
+        query: queryText,
+        database: activeDb || connection?.database
+      });
+      setQueryResult(res.data);
+      showToast(successMsg);
+
+      if (selectedTable) {
+        fetchTableData(selectedTable);
+      }
+    } catch (err) {
+      const errText = err.response?.data?.error || err.response?.data?.message || err.message || 'Query execution failed';
+      setQueryError(errText);
+      showToast(`❌ Query execution failed: ${errText}`, 'error');
+    } finally {
+      setQueryLoading(false);
+    }
+  };
+
   const handleOpenEditRowModal = (row) => {
     setEditingRowOriginal(row);
     setEditingRowData({ ...row });
@@ -1044,24 +1144,7 @@ export default function ConnectionDashboard() {
     setEditingRowLoading(true);
     setEditingRowError('');
     try {
-      let updateQuery = '';
-      const whereClause = buildRowWhereClause(editingRowOriginal);
-
-      if (dbType === 'mongodb') {
-        updateQuery = `db.${selectedTable}.updateOne({ ${whereClause.replace(/`/g, '"')} }, { $set: ${JSON.stringify(editingRowData)} })`;
-      } else {
-        const setClauses = [];
-        Object.entries(editingRowData).forEach(([k, v]) => {
-          if (v === null || v === undefined || v === '') {
-            setClauses.push(`\`${k}\` = NULL`);
-          } else if (typeof v === 'number' || (!isNaN(v) && v !== '' && typeof editingRowOriginal[k] === 'number')) {
-            setClauses.push(`\`${k}\` = ${v}`);
-          } else {
-            setClauses.push(`\`${k}\` = '${String(v).replace(/'/g, "''")}'`);
-          }
-        });
-        updateQuery = `UPDATE \`${activeDb || connection?.database}\`.\`${selectedTable}\` SET ${setClauses.join(', ')} WHERE ${whereClause};`;
-      }
+      const updateQuery = generateUpdateQuery(editingRowOriginal, editingRowData);
 
       await API.post(`/connections/${id}/query`, {
         query: updateQuery,
@@ -1104,33 +1187,7 @@ export default function ConnectionDashboard() {
     setInsertRowLoading(true);
     setInsertRowError('');
     try {
-      let insertQuery = '';
-      if (dbType === 'mongodb') {
-        const cleanData = {};
-        Object.entries(insertRowData).forEach(([k, v]) => {
-          if (v !== '' && v !== null && v !== undefined) cleanData[k] = v;
-        });
-        insertQuery = `db.${selectedTable}.insertOne(${JSON.stringify(cleanData)})`;
-      } else {
-        const cols = [];
-        const vals = [];
-        Object.entries(insertRowData).forEach(([k, v]) => {
-          if (v !== '' && v !== null && v !== undefined) {
-            cols.push(`\`${k}\``);
-            if (typeof v === 'number' || (!isNaN(v) && v !== '')) {
-              vals.push(v);
-            } else {
-              vals.push(`'${String(v).replace(/'/g, "''")}'`);
-            }
-          }
-        });
-
-        if (cols.length === 0) {
-          throw new Error('Please enter at least one column value!');
-        }
-
-        insertQuery = `INSERT INTO \`${activeDb || connection?.database}\`.\`${selectedTable}\` (${cols.join(', ')}) VALUES (${vals.join(', ')});`;
-      }
+      const insertQuery = generateInsertQuery(insertRowData);
 
       await API.post(`/connections/${id}/query`, {
         query: insertQuery,
@@ -1147,29 +1204,30 @@ export default function ConnectionDashboard() {
     }
   };
 
-  const handleDeleteRow = async (row) => {
-    const whereClause = buildRowWhereClause(row);
-    if (!window.confirm(`Are you sure you want to delete this row from table '${selectedTable}'?\n\nWHERE ${whereClause}`)) {
-      return;
-    }
+  const handleDeleteRow = (row) => {
+    setDeleteRowTarget(row);
+    setDeleteRowError('');
+    setDeleteRowModalOpen(true);
+  };
 
+  const handleConfirmDirectDelete = async () => {
+    if (!deleteRowTarget || !selectedTable) return;
+    setDeleteRowLoading(true);
+    setDeleteRowError('');
     try {
-      let deleteQuery = '';
-      if (dbType === 'mongodb') {
-        deleteQuery = `db.${selectedTable}.deleteOne({ ${whereClause.replace(/`/g, '"')} })`;
-      } else {
-        deleteQuery = `DELETE FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\` WHERE ${whereClause};`;
-      }
-
+      const deleteQuery = generateDeleteQuery(deleteRowTarget);
       await API.post(`/connections/${id}/query`, {
         query: deleteQuery,
         database: activeDb || connection?.database
       });
-
       showToast(`🗑️ Row deleted successfully from ${selectedTable}!`);
+      setDeleteRowModalOpen(false);
+      setDeleteRowTarget(null);
       fetchTableData(selectedTable);
     } catch (err) {
-      showToast(err.response?.data?.error || err.response?.data?.message || 'Delete row failed!', 'error');
+      setDeleteRowError(err.response?.data?.error || err.response?.data?.message || 'Delete row failed!');
+    } finally {
+      setDeleteRowLoading(false);
     }
   };
 
@@ -3601,7 +3659,17 @@ export default function ConnectionDashboard() {
                                   ))}
                                 </div>
 
-                                <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                                {/* Generated Query Preview */}
+                                <div className="space-y-1 mt-4">
+                                  <div className="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <span>🔍 Live Generated Query Preview:</span>
+                                  </div>
+                                  <pre className="bg-gray-900 text-teal-300 text-xs font-mono p-3 rounded-xl border border-gray-700 overflow-x-auto max-h-32 whitespace-pre-wrap select-all">
+                                    {generateUpdateQuery(editingRowOriginal, editingRowData)}
+                                  </pre>
+                                </div>
+
+                                <div className="pt-3 flex items-center justify-between gap-3 border-t border-gray-150 dark:border-gray-800 flex-wrap">
                                   <button
                                     type="button"
                                     onClick={() => setEditingRowModalOpen(false)}
@@ -3609,14 +3677,28 @@ export default function ConnectionDashboard() {
                                   >
                                     Cancel
                                   </button>
-                                  <button
-                                    type="submit"
-                                    disabled={editingRowLoading}
-                                    style={{ backgroundColor: '#0d9da4' }}
-                                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
-                                  >
-                                    {editingRowLoading ? 'Saving Changes...' : 'Save Row Changes'}
-                                  </button>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const q = generateUpdateQuery(editingRowOriginal, editingRowData);
+                                        setEditingRowModalOpen(false);
+                                        sendQueryToEditorAndRun(q, `✏️ UPDATE query executed via Query Editor!`);
+                                      }}
+                                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                                    >
+                                      <span>⚡</span> Apply & Run in Query Editor
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      disabled={editingRowLoading}
+                                      style={{ backgroundColor: '#0d9da4' }}
+                                      className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {editingRowLoading ? 'Saving...' : 'Direct Save Row'}
+                                    </button>
+                                  </div>
                                 </div>
                               </form>
                             </div>
@@ -3664,7 +3746,17 @@ export default function ConnectionDashboard() {
                                   ))}
                                 </div>
 
-                                <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
+                                {/* Generated Query Preview */}
+                                <div className="space-y-1 mt-4">
+                                  <div className="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <span>🔍 Live Generated Query Preview:</span>
+                                  </div>
+                                  <pre className="bg-gray-900 text-teal-300 text-xs font-mono p-3 rounded-xl border border-gray-700 overflow-x-auto max-h-32 whitespace-pre-wrap select-all">
+                                    {generateInsertQuery(insertRowData)}
+                                  </pre>
+                                </div>
+
+                                <div className="pt-3 flex items-center justify-between gap-3 border-t border-gray-150 dark:border-gray-800 flex-wrap">
                                   <button
                                     type="button"
                                     onClick={() => setInsertRowModalOpen(false)}
@@ -3672,16 +3764,112 @@ export default function ConnectionDashboard() {
                                   >
                                     Cancel
                                   </button>
-                                  <button
-                                    type="submit"
-                                    disabled={insertRowLoading}
-                                    style={{ backgroundColor: '#0d9da4' }}
-                                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
-                                  >
-                                    {insertRowLoading ? 'Inserting...' : 'Insert Row'}
-                                  </button>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const q = generateInsertQuery(insertRowData);
+                                        setInsertRowModalOpen(false);
+                                        sendQueryToEditorAndRun(q, `➕ INSERT query executed via Query Editor!`);
+                                      }}
+                                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                                    >
+                                      <span>⚡</span> Apply & Run in Query Editor
+                                    </button>
+                                    <button
+                                      type="submit"
+                                      disabled={insertRowLoading}
+                                      style={{ backgroundColor: '#0d9da4' }}
+                                      className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {insertRowLoading ? 'Inserting...' : 'Direct Insert Row'}
+                                    </button>
+                                  </div>
                                 </div>
                               </form>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Delete Row Modal */}
+                        {deleteRowModalOpen && deleteRowTarget && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+                            <div className="bg-white dark:bg-gray-850 rounded-2xl w-[90vw] max-w-xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
+                              <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between bg-red-50/50 dark:bg-red-950/20">
+                                <h3 className="text-sm font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+                                  <span>🗑️</span> Confirm Delete Row — <span className="font-mono text-gray-800 dark:text-gray-200">{selectedTable}</span>
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeleteRowModalOpen(false);
+                                    setDeleteRowTarget(null);
+                                  }}
+                                  className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+
+                              <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                                {deleteRowError && (
+                                  <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                                    ❌ {deleteRowError}
+                                  </div>
+                                )}
+
+                                <p className="text-xs text-gray-600 dark:text-gray-400 font-medium">
+                                  Are you sure you want to delete this row from table <strong className="text-gray-900 dark:text-gray-100 font-mono">{selectedTable}</strong>?
+                                </p>
+
+                                {/* Generated Query Preview */}
+                                <div className="space-y-1">
+                                  <div className="text-[11px] font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                                    <span>🔍 Generated Delete Query:</span>
+                                  </div>
+                                  <pre className="bg-gray-900 text-red-300 text-xs font-mono p-3 rounded-xl border border-gray-700 overflow-x-auto max-h-32 whitespace-pre-wrap select-all">
+                                    {generateDeleteQuery(deleteRowTarget)}
+                                  </pre>
+                                </div>
+
+                                <div className="pt-3 flex items-center justify-between gap-3 border-t border-gray-150 dark:border-gray-800 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDeleteRowModalOpen(false);
+                                      setDeleteRowTarget(null);
+                                    }}
+                                    className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const q = generateDeleteQuery(deleteRowTarget);
+                                        setDeleteRowModalOpen(false);
+                                        setDeleteRowTarget(null);
+                                        sendQueryToEditorAndRun(q, `🗑️ DELETE query executed via Query Editor!`);
+                                      }}
+                                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                                    >
+                                      <span>⚡</span> Apply & Run in Query Editor
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      disabled={deleteRowLoading}
+                                      onClick={handleConfirmDirectDelete}
+                                      className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition disabled:opacity-50 cursor-pointer"
+                                    >
+                                      {deleteRowLoading ? 'Deleting...' : 'Confirm Direct Delete'}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}
