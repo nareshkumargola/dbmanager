@@ -387,14 +387,23 @@ export default function Connections() {
               Connect and manage your databases
             </p>
           </div>
-          {hasPermission('connections') && (
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => { setShowForm(!showForm); setTestResult(null); }}
-              className="px-4 py-2 gradient-btn text-sm rounded-lg transition"
+              onClick={() => navigate('/query')}
+              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 text-sm font-medium rounded-lg transition shadow-sm flex items-center gap-2"
+              title="Open Query Editor"
             >
-              {showForm ? 'Cancel' : '+ Add Connection'}
+              <span>💻</span> Query Editor
             </button>
-          )}
+            {hasPermission('connections') && (
+              <button
+                onClick={() => { setShowForm(!showForm); setTestResult(null); }}
+                className="px-4 py-2 gradient-btn text-sm rounded-lg transition"
+              >
+                {showForm ? 'Cancel' : '+ Add Connection'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Error / Success */}

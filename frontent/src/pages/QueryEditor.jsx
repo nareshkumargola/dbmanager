@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import API from '../api/axios';
@@ -41,7 +41,6 @@ export default function QueryEditor() {
   const [suggestions, setSuggestions] = useState([]);
   const [selectedSuggestionIdx, setSelectedSuggestionIdx] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [wordToReplace, setWordToReplace] = useState('');
   const [dbTables, setDbTables] = useState([]);
 
   // Smart Index Advisor & Latency Tracking state
@@ -58,12 +57,23 @@ export default function QueryEditor() {
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
 
-  // Connection selection state
+  // Connection selection state (Single Mode)
   const [connections, setConnections] = useState([]);
   const [selectedConnection, setSelectedConnection] = useState(location.state?.connectionId || '');
   const [connectionType, setConnectionType] = useState('');
   const [databases, setDatabases] = useState([]);
   const [selectedDatabase, setSelectedDatabase] = useState(location.state?.database || '');
+
+  // Multi-Connection & Multi-DB Batch Execution State
+  const [executionMode, setExecutionMode] = useState(location.state?.batchMode ? 'batch' : 'single'); // 'single' | 'batch'
+  const [batchTypeFilter, setBatchTypeFilter] = useState('all'); // 'all', 'mysql', 'postgresql', 'mongodb', 'oracle'
+  const [selectedConnIds, setSelectedConnIds] = useState([]);
+  const [connDatabasesMap, setConnDatabasesMap] = useState({}); // { [connId]: string[] }
+  const [connDbLoadingMap, setConnDbLoadingMap] = useState({}); // { [connId]: boolean }
+  const [selectedDatabasesMap, setSelectedDatabasesMap] = useState({}); // { [connId]: string[] }
+  const [batchResults, setBatchResults] = useState(null); // { targets: [...], summary: {...} }
+  const [activeResultKey, setActiveResultKey] = useState('summary'); // 'summary' | targetKey
+  const [batchConnSearch, setBatchConnSearch] = useState('');
 
   useEffect(() => {
     fetchConnections();
@@ -90,33 +100,38 @@ export default function QueryEditor() {
     if (selectedConnection) {
       fetchDbTables(selectedConnection, selectedDatabase);
     } else {
-      setDbTables([]);
+      fetchDbTables('', '');
     }
   }, [selectedConnection, selectedDatabase]);
 
   const fetchDbTables = async (connId, dbName) => {
-    if (!connId) {
-      setDbTables([]);
-      return;
-    }
     try {
+      if (!connId) {
+        const res = await API.get('/db/mysql/tables');
+        setDbTables((res.data.tables || []).map(table =>
+          table.name || table.table_name || Object.values(table)[0]
+        ).filter(Boolean));
+        return;
+      }
+
       const params = new URLSearchParams();
       if (dbName) params.append('database', dbName);
       const res = await API.get(`/connections/${connId}/objects?${params.toString()}`);
       if (res.data.success && res.data.result) {
-        let names = [];
         const type = res.data.type;
         const result = res.data.result;
+        let names = [];
         if (type === 'mysql') {
-          names = result.tables?.map(t => Object.values(t)[0]) || [];
+          names = result.tables?.map(t => t.name || t.table_name || Object.values(t)[0]) || [];
         } else if (type === 'postgresql') {
-          names = result.tables?.map(t => t.table_name) || [];
+          names = result.tables?.map(t => t.name || t.table_name) || [];
         } else if (type === 'mongodb') {
           names = result.collections?.map(c => c.name) || [];
         }
-        setDbTables(names);
+        setDbTables(names.filter(Boolean));
       }
     } catch (err) {
+      setDbTables([]);
       console.error('Failed to fetch DB tables for autocomplete:', err);
     }
   };
@@ -124,10 +139,13 @@ export default function QueryEditor() {
   const fetchConnections = async () => {
     try {
       const res = await API.get('/connections');
-      setConnections(res.data.connections || []);
+      const list = res.data.connections || [];
+      setConnections(list);
       // If there is an active connection from location state, set it
       if (location.state?.connectionId) {
         setSelectedConnection(location.state.connectionId);
+        setSelectedConnIds([location.state.connectionId]);
+        fetchDatabasesForConn(location.state.connectionId);
       }
     } catch (err) {
       console.error('Failed to fetch connections:', err);
@@ -148,6 +166,123 @@ export default function QueryEditor() {
     } catch (err) {
       console.error('Failed to fetch databases:', err);
     }
+  };
+
+  // Batch helper: Fetch databases for a single connection in batch mode
+  const fetchDatabasesForConn = async (connId) => {
+    setConnDbLoadingMap(prev => ({ ...prev, [connId]: true }));
+    try {
+      const res = await API.get(`/connections/${connId}/databases`);
+      const dbs = res.data.databases || [];
+      setConnDatabasesMap(prev => ({ ...prev, [connId]: dbs }));
+      const conn = connections.find(c => c._id === connId);
+      setSelectedDatabasesMap(prev => {
+        if (prev[connId] && prev[connId].length > 0) return prev;
+        if (conn?.database && dbs.includes(conn.database)) {
+          return { ...prev, [connId]: [conn.database] };
+        }
+        return { ...prev, [connId]: dbs.length > 0 ? [dbs[0]] : (conn?.database ? [conn.database] : []) };
+      });
+    } catch (err) {
+      console.error(`Failed to fetch databases for conn ${connId}:`, err);
+      const conn = connections.find(c => c._id === connId);
+      setConnDatabasesMap(prev => ({ ...prev, [connId]: conn?.database ? [conn.database] : [] }));
+      setSelectedDatabasesMap(prev => ({ ...prev, [connId]: conn?.database ? [conn.database] : [] }));
+    } finally {
+      setConnDbLoadingMap(prev => ({ ...prev, [connId]: false }));
+    }
+  };
+
+  const toggleSelectConnection = (connId) => {
+    if (selectedConnIds.includes(connId)) {
+      setSelectedConnIds(prev => prev.filter(id => id !== connId));
+    } else {
+      setSelectedConnIds(prev => [...prev, connId]);
+      if (!connDatabasesMap[connId]) {
+        fetchDatabasesForConn(connId);
+      }
+    }
+  };
+
+  const toggleSelectDatabase = (connId, dbName) => {
+    setSelectedDatabasesMap(prev => {
+      const current = prev[connId] || [];
+      if (current.includes(dbName)) {
+        return { ...prev, [connId]: current.filter(d => d !== dbName) };
+      } else {
+        return { ...prev, [connId]: [...current, dbName] };
+      }
+    });
+  };
+
+  const selectAllDatabasesForConn = (connId) => {
+    const dbs = connDatabasesMap[connId] || [];
+    setSelectedDatabasesMap(prev => ({ ...prev, [connId]: [...dbs] }));
+  };
+
+  const clearAllDatabasesForConn = (connId) => {
+    setSelectedDatabasesMap(prev => ({ ...prev, [connId]: [] }));
+  };
+
+  const filteredBatchConnections = useMemo(() => {
+    return connections.filter(conn => {
+      if (batchTypeFilter !== 'all' && (conn.type || '').toLowerCase() !== batchTypeFilter.toLowerCase()) {
+        return false;
+      }
+      if (batchConnSearch.trim()) {
+        const s = batchConnSearch.toLowerCase().trim();
+        const name = (conn.name || '').toLowerCase();
+        const host = (conn.host || '').toLowerCase();
+        const db = (conn.database || '').toLowerCase();
+        if (!name.includes(s) && !host.includes(s) && !db.includes(s)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [connections, batchTypeFilter, batchConnSearch]);
+
+  const totalBatchTargetsCount = useMemo(() => {
+    let count = 0;
+    selectedConnIds.forEach(connId => {
+      const dbs = selectedDatabasesMap[connId] || [];
+      count += (dbs.length > 0 ? dbs.length : 1);
+    });
+    return count;
+  }, [selectedConnIds, selectedDatabasesMap]);
+
+  const handleSelectAllFilteredConnections = () => {
+    const filteredIds = filteredBatchConnections.map(c => c._id);
+    const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedConnIds.includes(id));
+    if (allSelected) {
+      setSelectedConnIds(prev => prev.filter(id => !filteredIds.includes(id)));
+    } else {
+      const next = Array.from(new Set([...selectedConnIds, ...filteredIds]));
+      setSelectedConnIds(next);
+      filteredIds.forEach(id => {
+        if (!connDatabasesMap[id]) fetchDatabasesForConn(id);
+      });
+    }
+  };
+
+  const exportTargetCSV = (target) => {
+    if (!target.results || target.results.length === 0) return;
+    const headers = target.columns.join(',');
+    const rows = target.results.map(row => 
+      target.columns.map(col => {
+        const val = row[col];
+        if (val === null || val === undefined) return '""';
+        return `"${String(val).replace(/"/g, '""')}"`;
+      }).join(',')
+    );
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${(target.connectionName || 'conn').replace(/\s+/g, '_')}_${target.database}_export.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const runQuery = async (forceRunAll = false) => {
@@ -177,6 +312,106 @@ export default function QueryEditor() {
       return;
     }
 
+    // MULTI-CONNECTION & MULTI-DB BATCH RUNNER
+    if (executionMode === 'batch') {
+      const targets = [];
+      selectedConnIds.forEach(connId => {
+        const conn = connections.find(c => c._id === connId);
+        if (!conn) return;
+        const dbs = selectedDatabasesMap[connId] || [];
+        if (dbs.length === 0) {
+          targets.push({ connection: conn, database: conn.database || '' });
+        } else {
+          dbs.forEach(db => {
+            targets.push({ connection: conn, database: db });
+          });
+        }
+      });
+
+      if (targets.length === 0) {
+        setError('Please select at least one connection and database target.');
+        setLoading(false);
+        return;
+      }
+
+      const overallStart = performance.now();
+      try {
+        const batchResultsArr = await Promise.all(targets.map(async (target) => {
+          const tStart = performance.now();
+          try {
+            const params = new URLSearchParams();
+            if (target.database) params.append('database', target.database);
+            const res = await API.post(`/connections/${target.connection._id}/query?${params.toString()}`, {
+              query: queryToRun,
+              database: target.database
+            });
+            const tEnd = performance.now();
+            const data = res.data.results;
+            let colList = [];
+            if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+              colList = Object.keys(data[0]);
+            }
+            const rowCount = Array.isArray(data) ? data.length : (data?.affectedRows ?? 0);
+            return {
+              key: `${target.connection._id}_${target.database || 'default'}`,
+              connectionId: target.connection._id,
+              connectionName: target.connection.name,
+              connectionType: target.connection.type,
+              database: target.database || '(default)',
+              status: 'success',
+              executionTime: (tEnd - tStart).toFixed(1),
+              results: Array.isArray(data) ? data : [],
+              columns: colList,
+              rowCount,
+              affectedRows: data?.affectedRows,
+              message: Array.isArray(data)
+                ? `${data.length} rows retrieved`
+                : (data?.affectedRows !== undefined ? `${data.affectedRows} rows affected` : 'Success')
+            };
+          } catch (err) {
+            const tEnd = performance.now();
+            return {
+              key: `${target.connection._id}_${target.database || 'default'}`,
+              connectionId: target.connection._id,
+              connectionName: target.connection.name,
+              connectionType: target.connection.type,
+              database: target.database || '(default)',
+              status: 'error',
+              executionTime: (tEnd - tStart).toFixed(1),
+              results: [],
+              columns: [],
+              rowCount: 0,
+              error: err.response?.data?.error || err.response?.data?.message || err.message || 'Execution failed'
+            };
+          }
+        }));
+
+        const overallEnd = performance.now();
+        const totalDuration = (overallEnd - overallStart).toFixed(1);
+        const successCount = batchResultsArr.filter(r => r.status === 'success').length;
+        const errorCount = batchResultsArr.filter(r => r.status === 'error').length;
+
+        setBatchResults({
+          targets: batchResultsArr,
+          summary: {
+            total: targets.length,
+            successCount,
+            errorCount,
+            totalTime: totalDuration
+          }
+        });
+        setActiveResultKey('summary');
+        setExecutionTime(totalDuration);
+        setMessage(`Batch executed across ${targets.length} targets (${successCount} successful, ${errorCount} failed) in ${totalDuration}ms`);
+      } catch (err) {
+        setError(err.message || 'Batch execution failed');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // SINGLE CONNECTION MODE
     const startTime = performance.now();
 
     try {
@@ -258,25 +493,20 @@ export default function QueryEditor() {
     if (textareaRef.current) {
       const cursorIdx = textareaRef.current.selectionStart;
       const textBeforeCursor = val.substring(0, cursorIdx);
-      const words = textBeforeCursor.split(/[\s\n,;()]/);
-      const lastWord = words[words.length - 1];
+      const token = textBeforeCursor.match(/[`"A-Za-z0-9_$.]+$/)?.[0] || '';
+      const expectsTable = /\b(?:FROM|JOIN|UPDATE|INTO|TABLE)\s+[`"A-Za-z0-9_$.]*$/i.test(textBeforeCursor);
+      const candidates = expectsTable ? dbTables : [...SQL_KEYWORDS, ...dbTables];
+      const normalizedToken = token.replace(/^[`"]/, '').toLowerCase();
+      const matches = Array.from(new Set(candidates)).filter(candidate => {
+        const name = String(candidate).toLowerCase();
+        return (!token || name.startsWith(normalizedToken) || name.includes(normalizedToken)) &&
+          name !== normalizedToken;
+      });
 
-      if (lastWord && lastWord.length >= 1) {
-        const allSuggestions = [...SQL_KEYWORDS, ...dbTables];
-        const uniqueSuggestions = Array.from(new Set(allSuggestions));
-        const matches = uniqueSuggestions.filter(k => 
-          k.toLowerCase().startsWith(lastWord.toLowerCase()) && 
-          k.toLowerCase() !== lastWord.toLowerCase()
-        );
-        
-        if (matches.length > 0) {
-          setSuggestions(matches.slice(0, 10)); // Limit to top 10 suggestions
-          setShowSuggestions(true);
-          setSelectedSuggestionIdx(0);
-          setWordToReplace(lastWord);
-        } else {
-          setShowSuggestions(false);
-        }
+      if ((token || expectsTable) && matches.length > 0) {
+        setSuggestions(matches.slice(0, 10));
+        setShowSuggestions(true);
+        setSelectedSuggestionIdx(0);
       } else {
         setShowSuggestions(false);
       }
@@ -288,18 +518,9 @@ export default function QueryEditor() {
       const cursorIdx = textareaRef.current.selectionStart;
       const textBeforeCursor = query.substring(0, cursorIdx);
       const textAfterCursor = query.substring(cursorIdx);
-      
-      const words = textBeforeCursor.split(/([\s\n,;()])/);
-      let replaced = false;
-      for (let i = words.length - 1; i >= 0; i--) {
-        if (words[i] && !/[\s\n,;()]/.test(words[i])) {
-          words[i] = selectedToken;
-          replaced = true;
-          break;
-        }
-      }
-      
-      const newTextBefore = words.join('');
+
+      const token = textBeforeCursor.match(/[`"A-Za-z0-9_$.]+$/)?.[0] || '';
+      const newTextBefore = textBeforeCursor.slice(0, textBeforeCursor.length - token.length) + selectedToken;
       const newQuery = newTextBefore + textAfterCursor;
       setQuery(newQuery);
       setShowSuggestions(false);
@@ -530,84 +751,355 @@ export default function QueryEditor() {
       <div className="max-w-6xl mx-auto px-6 py-8">
 
         {/* Header */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900 text-left">
-            SQL Query Editor
-          </h2>
-          <p className="text-sm text-gray-500 mt-1 text-left">
-            Execute MySQL, PostgreSQL and MongoDB queries — or press Ctrl+Enter to run.
-          </p>
-        </div>
-
-        {/* Connection & DB Selector */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex flex-wrap items-end gap-4 shadow-sm text-left">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-              Select Connection
-            </label>
-            <select
-              value={selectedConnection}
-              onChange={(e) => {
-                setSelectedConnection(e.target.value);
-                setSelectedDatabase('');
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:border-gray-500 focus:bg-white transition font-medium"
-            >
-              <option value="">🐬 Default App Database (MySQL)</option>
-              {connections.map(c => (
-                <option key={c._id} value={c._id}>
-                  {c.type === 'mysql' ? '🐬' : c.type === 'postgresql' ? '🐘' : '🍃'} {c.name} ({c.type})
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h2 className="text-2xl font-semibold text-gray-900 text-left flex items-center gap-2">
+              <span>SQL Query Editor</span>
+              {executionMode === 'batch' && (
+                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+                  Batch Multi-Target Active
+                </span>
+              )}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1 text-left">
+              {executionMode === 'batch' 
+                ? 'Execute a single SQL script across multiple connections and multiple databases simultaneously.'
+                : 'Execute MySQL, PostgreSQL, MongoDB and Oracle queries — or press Ctrl+Enter to run.'}
+            </p>
           </div>
 
-          {(connectionType === 'mysql' || connectionType === 'postgresql') && databases.length > 0 && (
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center p-1 bg-gray-200/80 rounded-xl border border-gray-300 self-start sm:self-auto shadow-inner">
+            <button
+              type="button"
+              onClick={() => setExecutionMode('single')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                executionMode === 'single'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span>🎯</span> Single Connection
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExecutionMode('batch');
+                if (selectedConnIds.length === 0 && connections.length > 0) {
+                  const initialId = selectedConnection || connections[0]._id;
+                  setSelectedConnIds([initialId]);
+                  if (!connDatabasesMap[initialId]) fetchDatabasesForConn(initialId);
+                }
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                executionMode === 'batch'
+                  ? 'bg-[#0d9da4] text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span>⚡</span> Multi-Connection & Multi-DB
+              {totalBatchTargetsCount > 0 && (
+                <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px] ml-0.5">
+                  {totalBatchTargetsCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* 1. SINGLE CONNECTION SELECTOR */}
+        {executionMode === 'single' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex flex-wrap items-end gap-4 shadow-sm text-left animate-fadeIn">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                Select Database / Schema
+                Select Connection
               </label>
               <select
-                value={selectedDatabase}
-                onChange={(e) => setSelectedDatabase(e.target.value)}
+                value={selectedConnection}
+                onChange={(e) => {
+                  setSelectedConnection(e.target.value);
+                  setSelectedDatabase('');
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:border-gray-500 focus:bg-white transition font-medium"
               >
-                {databases.map(db => (
-                  <option key={db} value={db}>
-                    {db}
+                <option value="">🐬 Default App Database (MySQL)</option>
+                {connections.map(c => (
+                  <option key={c._id} value={c._id}>
+                    {c.type === 'mysql' ? '🐬' : c.type === 'postgresql' ? '🐘' : c.type === 'mongodb' ? '🍃' : '🔴'} {c.name} ({c.type})
                   </option>
                 ))}
               </select>
             </div>
-          )}
 
-          <button
-            onClick={() => {
-              fetchConnections();
-              if (selectedConnection) {
-                fetchDatabases(selectedConnection);
-              }
-            }}
-             title="Refresh Connections & Databases"
-            className="p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition shadow-sm h-[38px] w-[38px] flex items-center justify-center cursor-pointer mr-1"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
-            </svg>
-          </button>
+            {(connectionType === 'mysql' || connectionType === 'postgresql') && databases.length > 0 && (
+              <div className="flex-1 min-w-[200px]">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                  Select Database / Schema
+                </label>
+                <select
+                  value={selectedDatabase}
+                  onChange={(e) => setSelectedDatabase(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 outline-none focus:border-gray-500 focus:bg-white transition font-medium"
+                >
+                  {databases.map(db => (
+                    <option key={db} value={db}>
+                      {db}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-          <button
-            onClick={() => setShowImportWizard(!showImportWizard)}
-            title="Import CSV/Excel Data"
-            className={`px-3 py-2 border rounded-lg transition-all text-xs font-bold flex items-center gap-1.5 h-[38px] cursor-pointer shadow-xs ${
-              showImportWizard 
-                ? 'bg-teal-600 text-white border-teal-650' 
-                : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
-            }`}
-          >
-            <span>📂</span> Import Wizard
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                fetchConnections();
+                if (selectedConnection) {
+                  fetchDatabases(selectedConnection);
+                }
+              }}
+              title="Refresh Connections & Databases"
+              className="p-2 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition shadow-sm h-[38px] w-[38px] flex items-center justify-center cursor-pointer mr-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
+              </svg>
+            </button>
+
+            <button
+              onClick={() => setShowImportWizard(!showImportWizard)}
+              title="Import CSV/Excel Data"
+              className={`px-3 py-2 border rounded-lg transition-all text-xs font-bold flex items-center gap-1.5 h-[38px] cursor-pointer shadow-xs ${
+                showImportWizard 
+                  ? 'bg-teal-600 text-white border-teal-650' 
+                  : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+              }`}
+            >
+              <span>📂</span> Import Wizard
+            </button>
+          </div>
+        )}
+
+        {/* 2. MULTI-CONNECTION & MULTI-DATABASE DISPATCHER PANEL */}
+        {executionMode === 'batch' && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm text-left animate-fadeIn">
+            <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-gray-150 gap-3 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <span>🌐</span> Multi-Connection & Multi-Database Target Dispatcher
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Select database engine type, check connections, and select multiple databases per connection.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchConnections();
+                    selectedConnIds.forEach(id => fetchDatabasesForConn(id));
+                  }}
+                  title="Refresh Connections & Databases"
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
+                  </svg>
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImportWizard(!showImportWizard)}
+                  className={`px-3 py-1.5 border rounded-lg transition text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
+                    showImportWizard ? 'bg-teal-600 text-white border-teal-650' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
+                  }`}
+                >
+                  <span>📂</span> Import Wizard
+                </button>
+              </div>
+            </div>
+
+            {/* Engine Type Filter & Search Bar */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+              {/* Type Filter Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'all', label: 'All Engines', icon: '🗄️' },
+                  { id: 'mysql', label: 'MySQL', icon: '🐬' },
+                  { id: 'postgresql', label: 'PostgreSQL', icon: '🐘' },
+                  { id: 'mongodb', label: 'MongoDB', icon: '🍃' },
+                  { id: 'oracle', label: 'Oracle', icon: '🔴' }
+                ].map(type => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setBatchTypeFilter(type.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition flex items-center gap-1 cursor-pointer ${
+                      batchTypeFilter === type.id
+                        ? 'bg-[#0d9da4] text-white border-[#0d9da4] shadow-xs'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{type.icon}</span> {type.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search & Bulk Select */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Filter connections..."
+                  value={batchConnSearch}
+                  onChange={(e) => setBatchConnSearch(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50 focus:bg-white outline-none focus:border-[#0d9da4] transition w-44 font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={handleSelectAllFilteredConnections}
+                  className="px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:text-teal-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition cursor-pointer"
+                >
+                  {filteredBatchConnections.length > 0 && filteredBatchConnections.every(c => selectedConnIds.includes(c._id))
+                    ? 'Deselect All'
+                    : 'Select All'}
+                </button>
+              </div>
+            </div>
+
+            {/* Connection & DB Tree List */}
+            {filteredBatchConnections.length === 0 ? (
+              <div className="py-8 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                <p className="text-sm text-gray-500 font-medium">No database connections found matching this filter.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto p-1">
+                {filteredBatchConnections.map(conn => {
+                  const isChecked = selectedConnIds.includes(conn._id);
+                  const connDbs = connDatabasesMap[conn._id] || (conn.database ? [conn.database] : []);
+                  const selectedDbs = selectedDatabasesMap[conn._id] || [];
+                  const isLoadingDbs = !!connDbLoadingMap[conn._id];
+
+                  return (
+                    <div
+                      key={conn._id}
+                      className={`border rounded-xl p-3.5 transition-all flex flex-col justify-between ${
+                        isChecked
+                          ? 'border-teal-400 bg-teal-50/20 shadow-xs'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      {/* Connection Header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <label className="flex items-start gap-2.5 cursor-pointer flex-1 select-none">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSelectConnection(conn._id)}
+                            className="mt-0.5 rounded text-teal-600 focus:ring-teal-500 h-4 w-4 cursor-pointer"
+                          />
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-base">
+                                {conn.type === 'mysql' ? '🐬' : conn.type === 'postgresql' ? '🐘' : conn.type === 'mongodb' ? '🍃' : '🔴'}
+                              </span>
+                              <span className="text-xs font-bold text-gray-900">{conn.name}</span>
+                              <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 border border-gray-200">
+                                {conn.type}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 font-mono mt-0.5">
+                              {conn.host}:{conn.port || (conn.type === 'mysql' ? 3306 : 5432)}
+                            </p>
+                          </div>
+                        </label>
+
+                        {isChecked && (
+                          <span className="text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            {selectedDbs.length} DB{selectedDbs.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Databases Multi-Select area (shown when connection is checked) */}
+                      {isChecked && (
+                        <div className="mt-3 pt-2.5 border-t border-teal-100/80">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">
+                              Select Databases:
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {connDbs.length > 1 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => selectAllDatabasesForConn(conn._id)}
+                                    className="text-[10px] font-bold text-teal-700 hover:underline cursor-pointer"
+                                  >
+                                    All
+                                  </button>
+                                  <span className="text-gray-300">|</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => clearAllDatabasesForConn(conn._id)}
+                                    className="text-[10px] font-bold text-gray-500 hover:underline cursor-pointer"
+                                  >
+                                    None
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {isLoadingDbs ? (
+                            <div className="py-2 flex items-center gap-1.5 text-xs text-teal-700">
+                              <div className="w-3 h-3 border-2 border-teal-600/30 border-t-teal-600 rounded-full animate-spin"></div>
+                              <span>Loading databases...</span>
+                            </div>
+                          ) : connDbs.length === 0 ? (
+                            <div className="text-[11px] text-gray-400 italic">No accessible databases listed</div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                              {connDbs.map(dbName => {
+                                const isDbSelected = selectedDbs.includes(dbName);
+                                return (
+                                  <button
+                                    key={dbName}
+                                    type="button"
+                                    onClick={() => toggleSelectDatabase(conn._id, dbName)}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer flex items-center gap-1 border ${
+                                      isDbSelected
+                                        ? 'bg-teal-600 text-white border-teal-700 font-bold shadow-xs'
+                                        : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
+                                    }`}
+                                  >
+                                    <span>{isDbSelected ? '✓' : '+'}</span>
+                                    <span>{dbName}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Target Summary Status Banner */}
+            <div className="mt-4 pt-3 border-t border-gray-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="font-semibold text-gray-700">
+                  Ready Target Dispatch: <span className="text-teal-700 font-bold">{selectedConnIds.length}</span> Connection{selectedConnIds.length !== 1 ? 's' : ''} &middot; <span className="text-teal-700 font-bold">{totalBatchTargetsCount}</span> Database Target{totalBatchTargetsCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-500">
+                Single query script will execute concurrently across all selected databases in one click.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* CSV Import Wizard Panel */}
         {showImportWizard && (
@@ -908,11 +1400,13 @@ export default function QueryEditor() {
               please use quiry and manage 
             </p>
             <button
-              onClick={runQuery}
+              onClick={() => runQuery(false)}
               disabled={loading || !query.trim()}
-              className="px-6 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition disabled:opacity-60"
+              className="px-6 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition disabled:opacity-60 font-semibold flex items-center gap-2 cursor-pointer"
             >
-              {loading ? 'Running...' : '▶ Run Query'}
+              {loading 
+                ? (executionMode === 'batch' ? `Running (${totalBatchTargetsCount} targets)...` : 'Running...') 
+                : (executionMode === 'batch' ? `▶ Run Batch (${totalBatchTargetsCount} Target${totalBatchTargetsCount !== 1 ? 's' : ''})` : '▶ Run Query')}
             </button>
           </div>
         </div>
@@ -959,9 +1453,259 @@ export default function QueryEditor() {
           </div>
         )}
 
-        {/* Results Table */}
-        {results.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* MULTI-DATABASE BATCH EXECUTION RESULTS DASHBOARD */}
+        {executionMode === 'batch' && batchResults && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6 text-left animate-fadeIn">
+            {/* Top Metrics Row */}
+            <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 text-white flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚡</span>
+                <div>
+                  <h3 className="text-sm font-bold tracking-wide">Multi-Database Batch Execution Results</h3>
+                  <p className="text-xs text-gray-300">
+                    Dispatched query across {batchResults.summary.total} targets in {batchResults.summary.totalTime} ms
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-bold">
+                <div className="bg-gray-800/80 border border-gray-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  <span className="text-gray-400">Targets:</span>
+                  <span className="text-white">{batchResults.summary.total}</span>
+                </div>
+                <div className="bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  <span>✅ Success:</span>
+                  <span>{batchResults.summary.successCount}</span>
+                </div>
+                {batchResults.summary.errorCount > 0 && (
+                  <div className="bg-rose-950/60 border border-rose-700/50 text-rose-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                    <span>❌ Errors:</span>
+                    <span>{batchResults.summary.errorCount}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Target Tab Navigation */}
+            <div className="flex items-center gap-1 p-2 bg-gray-50 border-b border-gray-200 overflow-x-auto text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveResultKey('summary')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                  activeResultKey === 'summary'
+                    ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <span>📊</span> Overview Matrix ({batchResults.targets.length})
+              </button>
+
+              {batchResults.targets.map((tgt) => (
+                <button
+                  key={tgt.key}
+                  type="button"
+                  onClick={() => setActiveResultKey(tgt.key)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 border ${
+                    activeResultKey === tgt.key
+                      ? 'bg-white text-teal-800 border-teal-500 shadow-sm font-bold'
+                      : tgt.status === 'error'
+                      ? 'border-red-200 bg-red-50/50 text-red-700 hover:bg-red-50'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <span>{tgt.connectionType === 'mysql' ? '🐬' : tgt.connectionType === 'postgresql' ? '🐘' : tgt.connectionType === 'mongodb' ? '🍃' : '🔴'}</span>
+                  <span>{tgt.connectionName} &gt; {tgt.database}</span>
+                  <span className={`text-[10px] px-1 py-0.2 rounded font-bold ${
+                    tgt.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {tgt.status === 'success' ? `${tgt.rowCount}r` : 'ERR'}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* TAB CONTENT: Overview Matrix */}
+            {activeResultKey === 'summary' && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
+                    <tr>
+                      <th className="px-4 py-3">Connection</th>
+                      <th className="px-4 py-3">Target Database</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Result / Rows</th>
+                      <th className="px-4 py-3">Latency</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-150">
+                    {batchResults.targets.map((tgt) => (
+                      <tr key={tgt.key} className="hover:bg-gray-50/80 transition">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span>{tgt.connectionType === 'mysql' ? '🐬' : tgt.connectionType === 'postgresql' ? '🐘' : tgt.connectionType === 'mongodb' ? '🍃' : '🔴'}</span>
+                            <span className="font-bold text-gray-900">{tgt.connectionName}</span>
+                            <span className="text-[10px] uppercase text-gray-500">({tgt.connectionType})</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono font-medium text-teal-800">
+                          {tgt.database}
+                        </td>
+                        <td className="px-4 py-3">
+                          {tgt.status === 'success' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
+                              <span>✓</span> Success
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-800">
+                              <span>✕</span> Error
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          {tgt.status === 'success' ? (
+                            <span className="font-medium">{tgt.message}</span>
+                          ) : (
+                            <span className="text-red-600 font-mono text-[11px] line-clamp-1" title={tgt.error}>
+                              {tgt.error}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-gray-500">
+                          {tgt.executionTime} ms
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setActiveResultKey(tgt.key)}
+                            className="px-2.5 py-1 text-xs font-semibold text-teal-700 hover:text-white bg-teal-50 hover:bg-teal-600 rounded border border-teal-200 hover:border-teal-600 transition cursor-pointer"
+                          >
+                            View Output &rarr;
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* TAB CONTENT: Specific Target Details */}
+            {activeResultKey !== 'summary' && (() => {
+              const activeTarget = batchResults.targets.find(t => t.key === activeResultKey);
+              if (!activeTarget) return null;
+
+              return (
+                <div className="p-4">
+                  {/* Target Details Header Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-150 gap-2 mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {activeTarget.connectionType === 'mysql' ? '🐬' : activeTarget.connectionType === 'postgresql' ? '🐘' : activeTarget.connectionType === 'mongodb' ? '🍃' : '🔴'}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-gray-900">{activeTarget.connectionName}</h4>
+                          <span className="text-xs text-gray-400">&gt;</span>
+                          <span className="text-xs font-mono font-bold text-teal-700">{activeTarget.database}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                          Executed in {activeTarget.executionTime} ms &middot; Status: {activeTarget.status.toUpperCase()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {activeTarget.status === 'success' && activeTarget.results?.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => exportTargetCSV(activeTarget)}
+                          className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        >
+                          <span>📥</span> Export CSV
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setActiveResultKey('summary')}
+                        className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition cursor-pointer"
+                      >
+                        Back to Overview
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* If Error */}
+                  {activeTarget.status === 'error' && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
+                      <p className="text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <span>❌</span> Database Query Execution Error
+                      </p>
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-all mt-1 bg-white/70 p-3 rounded-lg border border-red-200">
+                        {activeTarget.error}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* If Success with No Rows Returned or Affected Rows */}
+                  {activeTarget.status === 'success' && activeTarget.results?.length === 0 && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                      <p className="text-sm font-semibold text-gray-700">
+                        ✅ {activeTarget.message || 'Statement executed successfully. No rows returned.'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">Latency: {activeTarget.executionTime} ms</p>
+                    </div>
+                  )}
+
+                  {/* If Success with Tabular Data Rows */}
+                  {activeTarget.status === 'success' && activeTarget.results?.length > 0 && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-150 flex items-center justify-between text-xs">
+                        <span className="font-semibold text-gray-700">
+                          {activeTarget.results.length} rows returned
+                        </span>
+                        <span className="text-gray-400 font-mono text-[11px]">
+                          {activeTarget.executionTime} ms
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto max-h-[450px]">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-gray-100 border-b border-gray-200 sticky top-0 uppercase text-[10px] font-bold text-gray-600 tracking-wider">
+                            <tr>
+                              {activeTarget.columns.map((col, cIdx) => (
+                                <th key={cIdx} className="px-4 py-2.5 whitespace-nowrap bg-gray-100">
+                                  {col}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-150">
+                            {activeTarget.results.map((row, rIdx) => (
+                              <tr key={rIdx} className="hover:bg-gray-50/70 transition">
+                                {activeTarget.columns.map((col, cIdx) => (
+                                  <td key={cIdx} className="px-4 py-2.5 text-gray-700 whitespace-nowrap font-mono">
+                                    {row[col] === null ? (
+                                      <span className="text-gray-300 italic">null</span>
+                                    ) : (
+                                      String(row[col])
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Results Table (Single Mode) */}
+        {executionMode === 'single' && results.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm animate-fadeIn">
             <div className="px-4 py-3 border-b border-gray-100">
               <p className="text-sm font-medium text-gray-700">
                 Results — {results.length} rows
@@ -991,7 +1735,7 @@ export default function QueryEditor() {
                       {columns.map((col, j) => (
                         <td
                           key={j}
-                          className="px-4 py-3 text-gray-700 whitespace-nowrap"
+                          className="px-4 py-3 text-gray-700 whitespace-nowrap font-mono"
                         >
                           {row[col] === null ? (
                             <span className="text-gray-300 italic">null</span>
