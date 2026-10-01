@@ -797,7 +797,7 @@ export default function QueryEditor() {
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <span>⚡</span> Multi-Connection & Multi-DB
+              <span>⚡</span> All Connection Query
               {totalBatchTargetsCount > 0 && (
                 <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px] ml-0.5">
                   {totalBatchTargetsCount}
