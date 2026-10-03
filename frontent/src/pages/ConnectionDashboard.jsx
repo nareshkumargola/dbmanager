@@ -630,16 +630,22 @@ export default function ConnectionDashboard() {
     if (!textarea) return;
     const selectionEnd = textarea.selectionEnd;
     const textBeforeCursor = val.substring(0, selectionEnd);
-    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z_0-9]+)$/);
+    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z_0-9_$.]+)$/);
     if (lastWordMatch) {
-      const typedWord = lastWordMatch[1];
-      if (typedWord.length >= 2) {
-        const tables = tableDetails ? tableDetails.map(t => t.tableName || t.name || '') : [];
-        const allCandidates = [...sqlKeywords, ...tables].filter(Boolean);
-        const matched = allCandidates.filter(c => 
-          c.toLowerCase().startsWith(typedWord.toLowerCase()) && 
-          c.toLowerCase() !== typedWord.toLowerCase()
-        );
+      const typedWord = lastWordMatch[1].replace(/[`"']/g, '');
+      if (typedWord.length >= 1) {
+        const isTableContext = /\b(?:FROM|JOIN|UPDATE|INTO|TABLE)\s+[`"A-Za-z0-9_$.]*$/i.test(textBeforeCursor);
+        const objectTables = objects?.result?.tables || [];
+        const tables = [
+          ...objectTables.map(table => table.tableName || table.name || Object.values(table)[0] || ''),
+          ...(tableDetails || []).map(table => table.tableName || table.name || '')
+        ];
+        const allCandidates = (isTableContext ? tables : [...sqlKeywords, ...tables]).filter(Boolean);
+        const matched = Array.from(new Set(allCandidates)).filter(c => {
+          const candidate = String(c).toLowerCase();
+          const token = typedWord.toLowerCase();
+          return candidate !== token && (candidate.startsWith(token) || candidate.includes(token));
+        });
         if (matched.length > 0) {
           setSuggestions(matched.slice(0, 10));
           setSuggestionsActiveIndex(0);
@@ -2837,43 +2843,48 @@ export default function ConnectionDashboard() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {paginatedViews.map((v, idx) => (
-                            <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={v.name}>
-                                    <span>👁️</span> {v.name}
-                                  </h4>
-                                  <span className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded font-mono shrink-0">
-                                    VIEW
-                                  </span>
-                                </div>
-                                {v.viewOn && (
-                                  <p className="text-xs text-gray-500 font-mono mb-2">Base Collection: {v.viewOn}</p>
-                                )}
-                              </div>
+                          {paginatedViews.map((v, idx) => {
+                            const viewLabel = v.isMaterialized || v.type === 'MATERIALIZED VIEW' ? 'MATERIALIZED VIEW' : 'VIEW';
+                            const definitionCode = v.definition || v.pipeline || (v.isMaterialized ? `CREATE MATERIALIZED VIEW \`${v.name}\` AS ...` : `CREATE VIEW \`${v.name}\` AS ...`);
 
-                              <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-                                <button
-                                  type="button"
-                                  onClick={() => setDefinitionModal({ open: true, title: `View DDL: ${v.name}`, type: 'view', code: v.definition || v.pipeline || `CREATE VIEW \`${v.name}\` AS ...` })}
-                                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                                >
-                                  📜 View DDL
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const runViewSql = dbType === 'mongodb' ? `db.${v.name}.find()` : `SELECT * FROM \`${v.name}\` LIMIT 100;`;
-                                    openInNewQueryTab(runViewSql, `View: ${v.name}`);
-                                  }}
-                                  className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                                >
-                                  ⚡ Query View
-                                </button>
+                            return (
+                              <div key={idx} className="bg-white border border-gray-200 p-4 rounded-xl shadow-3xs flex flex-col justify-between hover:border-teal-400 transition">
+                                <div>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-sm font-bold text-gray-900 font-mono flex items-center gap-1.5 truncate" title={v.name}>
+                                      <span>👁️</span> {v.name}
+                                    </h4>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono shrink-0 ${v.isMaterialized ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'}`}>
+                                      {viewLabel}
+                                    </span>
+                                  </div>
+                                  {v.viewOn && (
+                                    <p className="text-xs text-gray-500 font-mono mb-2">Base Collection: {v.viewOn}</p>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDefinitionModal({ open: true, title: `View DDL: ${v.name}`, type: 'view', code: definitionCode })}
+                                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    📜 View DDL
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const runViewSql = dbType === 'mongodb' ? `db.${v.name}.find()` : `SELECT * FROM \`${v.name}\` LIMIT 100;`;
+                                      openInNewQueryTab(runViewSql, `View: ${v.name}`);
+                                    }}
+                                    className="px-3 py-1.5 bg-[#0d9da4] hover:bg-[#0b8a90] text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    ⚡ Query View
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                       {filteredViews.length > 0 && renderObjectPaginationControls(filteredViews.length, 'views')}

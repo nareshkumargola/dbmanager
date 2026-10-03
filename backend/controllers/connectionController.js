@@ -3,6 +3,7 @@ const { getConnection, testConnection, closeConnection } = require('../connectio
 const { saveHistory } = require('./queryHistoryController');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 const { logAuditTrail } = require('../utils/auditLogger');
+const { mergeViews } = require('../utils/viewUtils');
 
 const getObjectCounts = async (conn, type, database) => {
   const counts = { totalTables: 0, views: 0, procedures: 0, functions: 0, triggers: 0, indexes: 0, constraints: 0 };
@@ -38,6 +39,11 @@ const getObjectCounts = async (conn, type, database) => {
       FROM information_schema.tables
       WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
     `);
+    const matViewResult = await conn.query(`
+      SELECT COUNT(*) AS materialized_views
+      FROM pg_matviews
+      WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+    `);
     const routineResult = await conn.query(`
       SELECT p.prokind, COUNT(*) AS count FROM pg_proc p
       JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -47,7 +53,7 @@ const getObjectCounts = async (conn, type, database) => {
     const indexResult = await conn.query("SELECT COUNT(*) AS count FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema')");
     const constraintResult = await conn.query("SELECT COUNT(*) AS count FROM information_schema.table_constraints WHERE table_schema NOT IN ('pg_catalog', 'information_schema')");
     counts.totalTables = Number(tableResult.rows[0]?.total_tables || 0);
-    counts.views = Number(tableResult.rows[0]?.views || 0);
+    counts.views = Number(tableResult.rows[0]?.views || 0) + Number(matViewResult.rows[0]?.materialized_views || 0);
     routineResult.rows.forEach(row => {
       if (row.prokind === 'p') counts.procedures = Number(row.count || 0);
       if (row.prokind === 'f') counts.functions = Number(row.count || 0);
@@ -601,7 +607,7 @@ exports.getDatabaseObjects = async (req, res) => {
         });
       }
 
-      // Views
+      // Views + Materialized Views
       try {
         const viewsRes = await conn.query(`
           SELECT viewname AS name, schemaname AS schema, definition
@@ -609,7 +615,28 @@ exports.getDatabaseObjects = async (req, res) => {
           WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
           ORDER BY viewname
         `);
-        views = viewsRes.rows.map(v => ({ name: v.schema === 'public' ? v.name : `${v.schema}.${v.name}`, schema: v.schema, definition: v.definition }));
+        const materializedViewsRes = await conn.query(`
+          SELECT schemaname AS schema, matviewname AS name, definition
+          FROM pg_matviews
+          WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY matviewname
+        `);
+
+        const standardViews = viewsRes.rows.map(v => ({
+          name: v.schema === 'public' ? v.name : `${v.schema}.${v.name}`,
+          schema: v.schema,
+          definition: v.definition,
+          type: 'VIEW',
+          isMaterialized: false
+        }));
+        const materializedViews = materializedViewsRes.rows.map(v => ({
+          name: v.schema === 'public' ? v.name : `${v.schema}.${v.name}`,
+          schema: v.schema,
+          definition: v.definition,
+          type: 'MATERIALIZED VIEW',
+          isMaterialized: true
+        }));
+        views = mergeViews(standardViews, materializedViews);
       } catch (e) { views = []; }
 
       // Procedures
