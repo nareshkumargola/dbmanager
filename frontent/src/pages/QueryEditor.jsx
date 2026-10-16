@@ -763,8 +763,8 @@ export default function QueryEditor() {
             </h2>
             <p className="text-sm text-gray-500 mt-1 text-left">
               {executionMode === 'batch' 
-                ? 'Execute a single SQL script across multiple connections and multiple databases simultaneously.'
-                : 'Execute MySQL, PostgreSQL, MongoDB and Oracle queries — or press Ctrl+Enter to run.'}
+                ? 'Run one SQL script across selected connections and databases, review each result, and export successful results to CSV.'
+                : 'Choose a connection and database, run the selected statement or full script, and import CSV data into a table.'}
             </p>
           </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import SlowQueryPanel from '../components/SlowQueryPanel';
@@ -65,6 +65,7 @@ export default function ConnectionDashboard() {
 
   // Table data
   const [selectedTable, setSelectedTable] = useState(null);
+  const requestedTableOpenRef = useRef(null);
   const [tableData, setTableData] = useState([]);
   const [tableColumns, setTableColumns] = useState([]);
   const [tableLoading, setTableLoading] = useState(false);
@@ -874,7 +875,7 @@ export default function ConnectionDashboard() {
       }
     };
     initializeConnection();
-  }, [id, user]);
+  }, [id, user, database]);
 
   // Handle external requests to open a specific tab (e.g., slow query -> query editor)
   const location = useLocation();
@@ -1035,14 +1036,14 @@ export default function ConnectionDashboard() {
     }
   };
 
-  const fetchTableData = async (tableName) => {
+  const fetchTableData = useCallback(async (tableName) => {
     setTableLoading(true);
     setSelectedTable(tableName);
     setTablePage(1);
     setActiveTab('table');
     try {
       const res = await API.get(
-        `/connections/${id}/table/${tableName}${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`
+        `/connections/${id}/table/${encodeURIComponent(tableName)}${activeDb ? `?database=${encodeURIComponent(activeDb)}` : ''}`
       );
       setTableData(res.data.rows);
       setTableColumns(res.data.columns);
@@ -1051,7 +1052,17 @@ export default function ConnectionDashboard() {
     } finally {
       setTableLoading(false);
     }
-  };
+  }, [id, activeDb]);
+
+  useEffect(() => {
+    const requestedTable = new URLSearchParams(location.search).get('table');
+    if (!requestedTable || loading || !activeDb || activeDb !== database) return;
+
+    const requestKey = `${location.key}:${id}:${activeDb}:${requestedTable}`;
+    if (requestedTableOpenRef.current === requestKey) return;
+    requestedTableOpenRef.current = requestKey;
+    fetchTableData(requestedTable);
+  }, [location.key, location.search, loading, activeDb, database, id, fetchTableData]);
 
   // Row Action Operations (Copy, Edit, Insert, Delete, Open in Editor)
   const buildRowWhereClause = (row) => {

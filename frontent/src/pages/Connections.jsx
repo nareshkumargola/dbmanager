@@ -29,6 +29,11 @@ export default function Connections() {
   const [filterRole, setFilterRole] = useState('all');
   const [filterUser, setFilterUser] = useState('all');
   const [searchConnText, setSearchConnText] = useState('');
+  const [tableSearchQuery, setTableSearchQuery] = useState('');
+  const [tableSearchTerm, setTableSearchTerm] = useState('');
+  const [tableSearchResults, setTableSearchResults] = useState([]);
+  const [tableSearchLoading, setTableSearchLoading] = useState(false);
+  const [tableSearchError, setTableSearchError] = useState('');
 
   // Collect all unique users involved in connections
   const allUsersInConnections = useMemo(() => {
@@ -93,6 +98,84 @@ export default function Connections() {
       return true;
     });
   }, [connections, filterType, filterRole, filterUser, searchConnText]);
+
+  const visibleConnections = useMemo(() => {
+    if (!tableSearchTerm) return filteredConnections;
+    const matchingConnectionIds = new Set(tableSearchResults.map(result => result.connectionId));
+    return filteredConnections.filter(connection => matchingConnectionIds.has(connection._id));
+  }, [filteredConnections, tableSearchResults, tableSearchTerm]);
+
+  const searchTables = async (event) => {
+    event.preventDefault();
+    const term = tableSearchQuery.trim();
+    if (!term) {
+      setTableSearchError('Enter a table name to search.');
+      setTableSearchResults([]);
+      setTableSearchTerm('');
+      return;
+    }
+
+    setTableSearchLoading(true);
+    setTableSearchError('');
+    setTableSearchResults([]);
+    setTableSearchTerm('');
+
+    const matches = [];
+    const failures = [];
+    await Promise.all(connections.map(async connection => {
+      let databases;
+      try {
+        const response = await API.get(`/connections/${connection._id}/databases`);
+        databases = response.data.databases || [];
+        if (databases.length === 0 && connection.database) databases = [connection.database];
+      } catch {
+        failures.push(connection.name || connection._id);
+        return;
+      }
+
+      await Promise.all(databases.map(async databaseName => {
+        try {
+          let tableOffset = 0;
+          let hasMoreTables = true;
+          const tables = [];
+          while (hasMoreTables) {
+            const response = await API.get(
+              `/connections/${connection._id}/objects?database=${encodeURIComponent(databaseName)}&summary=true&tableLimit=1000&tableOffset=${tableOffset}`
+            );
+            const objects = response.data.result || {};
+            const pageTables = objects.tables || objects.collections || [];
+            tables.push(...pageTables);
+            tableOffset = (response.data.tableOffset || 0) + pageTables.length;
+            hasMoreTables = !!response.data.tablesHasMore;
+          }
+
+          tables.forEach(table => {
+            const name = typeof table === 'string'
+              ? table
+              : table.name || table.table_name || Object.values(table)[0];
+            if (typeof name === 'string' && name.toLowerCase().includes(term.toLowerCase())) {
+              matches.push({
+                connectionId: connection._id,
+                connectionName: connection.name,
+                connectionType: connection.type,
+                database: databaseName,
+                table: name
+              });
+            }
+          });
+        } catch {
+          failures.push(`${connection.name || connection._id} (${databaseName})`);
+        }
+      }));
+    }));
+
+    setTableSearchResults(matches);
+    setTableSearchTerm(term);
+    if (failures.length > 0) {
+      setTableSearchError(`Could not search ${failures.length} connection/database${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`);
+    }
+    setTableSearchLoading(false);
+  };
 
   // Edit Connection Modal States
   const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
@@ -635,17 +718,21 @@ export default function Connections() {
                   Filter Connections
                 </h3>
                 <span className="text-[11px] bg-teal-50 text-[#0d9da4] px-2.5 py-0.5 rounded-full font-bold">
-                  Showing {filteredConnections.length} of {connections.length} connections
+                  Showing {visibleConnections.length} of {connections.length} connections
                 </span>
               </div>
 
-              {(filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText) && (
+              {(filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText || tableSearchTerm) && (
                 <button
                   onClick={() => {
                     setFilterType('all');
                     setFilterRole('all');
                     setFilterUser('all');
                     setSearchConnText('');
+                    setTableSearchQuery('');
+                    setTableSearchTerm('');
+                    setTableSearchResults([]);
+                    setTableSearchError('');
                   }}
                   className="text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer flex items-center gap-1 bg-red-50 px-2.5 py-1 rounded-lg border border-red-100 transition-all"
                 >
@@ -728,6 +815,84 @@ export default function Connections() {
                 />
               </div>
             </div>
+
+            <form onSubmit={searchTables} className="mt-4 pt-4 border-t border-gray-100">
+              <label htmlFor="connections-table-search" className="block text-[11px] font-bold text-gray-600 mb-1">
+                Search tables across your connections:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="connections-table-search"
+                  type="search"
+                  placeholder="Enter a table or collection name..."
+                  value={tableSearchQuery}
+                  onChange={event => setTableSearchQuery(event.target.value)}
+                  className="min-w-0 flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs bg-gray-50/50 outline-none focus:border-teal-500 focus:bg-white text-gray-800"
+                />
+                <button
+                  type="submit"
+                  disabled={tableSearchLoading}
+                  className="px-4 py-2 bg-[#0d9da4] text-white text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-60 transition cursor-pointer"
+                >
+                  {tableSearchLoading ? 'Searching...' : 'Search Tables'}
+                </button>
+                {tableSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTableSearchQuery('');
+                      setTableSearchTerm('');
+                      setTableSearchResults([]);
+                      setTableSearchError('');
+                    }}
+                    className="px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {tableSearchError && (
+                <p role="status" className="mt-2 text-xs text-amber-700">{tableSearchError}</p>
+              )}
+              {tableSearchTerm && !tableSearchLoading && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {tableSearchResults.length
+                    ? `${tableSearchResults.length} matching table${tableSearchResults.length === 1 ? '' : 's'} found for "${tableSearchTerm}".`
+                    : 'No matching tables found.'}
+                </p>
+              )}
+            </form>
+          </div>
+        )}
+
+        {tableSearchResults.length > 0 && (
+          <div className="mb-6 overflow-hidden rounded-xl border border-teal-100 bg-white shadow-sm">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h4 className="text-xs font-bold text-gray-800">Matching tables</h4>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {tableSearchResults.map((result, index) => (
+                <div key={`${result.connectionId}-${result.database}-${result.table}-${index}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold text-teal-900">{result.table}</p>
+                    <p className="truncate text-[11px] text-gray-500">
+                      {result.connectionName} · {result.database} · {result.connectionType}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    title={`Open ${result.table}`}
+                    aria-label={`Open ${result.table} in ${result.connectionName}`}
+                    onClick={() => navigate(`/connections/${result.connectionId}/db/${encodeURIComponent(result.database)}?table=${encodeURIComponent(result.table)}`)}
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 text-[#0d9da4] hover:bg-teal-100 transition cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 6H19v5.5M19 6l-8 8m6-1v5.5A1.5 1.5 0 0115.5 20h-11A1.5 1.5 0 013 18.5v-11A1.5 1.5 0 014.5 6H10" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -748,11 +913,11 @@ export default function Connections() {
               + Add Connection
             </button>
           </div>
-        ) : filteredConnections.length === 0 ? (
+        ) : visibleConnections.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
             <p className="text-3xl mb-2">🔍</p>
             <p className="text-gray-800 font-bold mb-1">
-              No matching connections found
+              {tableSearchTerm ? 'No connections contain matching tables' : 'No matching connections found'}
             </p>
             <p className="text-gray-500 text-xs mb-4">
               No connections match your selected Database Type ({filterType}), Role ({filterRole}), or User filter.
@@ -763,6 +928,10 @@ export default function Connections() {
                 setFilterRole('all');
                 setFilterUser('all');
                 setSearchConnText('');
+                setTableSearchQuery('');
+                setTableSearchTerm('');
+                setTableSearchResults([]);
+                setTableSearchError('');
               }}
               className="px-4 py-2 bg-teal-50 text-[#0d9da4] border border-teal-200 font-bold text-xs rounded-lg hover:bg-teal-100 transition-all cursor-pointer"
             >
@@ -771,7 +940,7 @@ export default function Connections() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredConnections.map(conn => (
+            {visibleConnections.map(conn => (
               <div key={conn._id} className="flex items-stretch gap-3">
                 <div
                   onClick={() => navigate(`/connections/${conn._id}`)}
