@@ -3996,7 +3996,7 @@ export default function ConnectionDashboard() {
 
             {/* QUERY EDITOR */}
             {activeTab === 'query' && (
-              <div>
+              <div className="w-[90%] mx-auto">
                 {/* Query Tabs Header Bar */}
                 <div className="flex items-center justify-between gap-4 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
                   {/* Left Side: Tabs List & Add Button */}

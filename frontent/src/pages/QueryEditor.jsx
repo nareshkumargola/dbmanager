@@ -24,9 +24,122 @@ export default function QueryEditor() {
       </div>
     );
   }
-  const [query, setQuery] = useState(
-    location.state?.query || 'SELECT * FROM users;'
-  );
+  return <QueryEditorContent user={user} location={location} />;
+}
+
+function QueryEditorContent({ user, location }) {
+  const queryTabsStorageKey = `dms_query_editor_tabs_${user?.id || user?._id || 'guest'}`;
+  const activeQueryTabStorageKey = `${queryTabsStorageKey}_active`;
+  const [queryTabs, setQueryTabs] = useState(() => {
+    try {
+      const savedTabs = JSON.parse(localStorage.getItem(queryTabsStorageKey) || 'null');
+      if (Array.isArray(savedTabs) && savedTabs.length > 0) {
+        return savedTabs.map((tab, index) => ({
+          id: tab.id || `query-${index + 1}`,
+          name: tab.name || `Query ${index + 1}`,
+          query: index === 0 && location.state?.query ? location.state.query : (tab.query || '')
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to restore query editor tabs:', err);
+    }
+    return [{
+      id: 'query-1',
+      name: 'Query 1',
+      query: location.state?.query || 'SELECT * FROM users;'
+    }];
+  });
+  const [activeQueryTabId, setActiveQueryTabId] = useState(() => {
+    if (location.state?.query) return queryTabs[0]?.id || 'query-1';
+    try {
+      return localStorage.getItem(activeQueryTabStorageKey) || 'query-1';
+    } catch (err) {
+      console.error('Failed to restore active query tab:', err);
+      return 'query-1';
+    }
+  });
+  const activeQueryTab = queryTabs.find(tab => tab.id === activeQueryTabId) || queryTabs[0];
+  const resolvedActiveQueryTabId = activeQueryTab?.id || activeQueryTabId;
+  const query = activeQueryTab?.query || '';
+  const setQuery = (value) => {
+    setQueryTabs(previous => previous.map(tab => tab.id === resolvedActiveQueryTabId
+      ? { ...tab, query: typeof value === 'function' ? value(tab.query) : value }
+      : tab));
+  };
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSaveScriptModal, setShowSaveScriptModal] = useState(false);
+  const [showSavedQueriesModal, setShowSavedQueriesModal] = useState(false);
+  const [savedQueries, setSavedQueries] = useState([]);
+  const [scriptTitle, setScriptTitle] = useState('');
+  const [scriptDescription, setScriptDescription] = useState('');
+  const [savingScript, setSavingScript] = useState(false);
+  const [queryHistory, setQueryHistory] = useState(() => {
+    try {
+      const savedHistory = JSON.parse(localStorage.getItem(`dms_query_history_${user?.id || user?._id || 'guest'}`) || '[]');
+      return Array.isArray(savedHistory) ? savedHistory : [];
+    } catch (err) {
+      console.error('Failed to restore query history:', err);
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(queryTabsStorageKey, JSON.stringify(queryTabs));
+      localStorage.setItem(activeQueryTabStorageKey, resolvedActiveQueryTabId);
+    } catch (err) {
+      console.error('Failed to save query editor tabs:', err);
+    }
+  }, [queryTabs, resolvedActiveQueryTabId, queryTabsStorageKey, activeQueryTabStorageKey]);
+
+  useEffect(() => {
+    const fetchSavedQueries = async () => {
+      try {
+        const res = await API.get('/saved-queries');
+        setSavedQueries(res.data.queries || []);
+      } catch (err) {
+        console.error('Failed to load saved queries:', err);
+      }
+    };
+    fetchSavedQueries();
+  }, []);
+
+  const addQueryTab = () => {
+    const nextNumber = queryTabs.reduce((max, tab) => {
+      const match = tab.name.match(/^Query (\d+)$/);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0) + 1;
+    let id = `query-${nextNumber}`;
+    while (queryTabs.some(tab => tab.id === id)) id = `${id}-new`;
+    setQueryTabs(previous => [...previous, { id, name: `Query ${nextNumber}`, query: '' }]);
+    setActiveQueryTabId(id);
+    setResults([]);
+    setColumns([]);
+    setError('');
+    setMessage('');
+    setBatchResults(null);
+  };
+
+  const renameQueryTab = (tab) => {
+    const name = window.prompt('Enter a name for this query tab:', tab.name);
+    if (name?.trim()) {
+      setQueryTabs(previous => previous.map(item => item.id === tab.id ? { ...item, name: name.trim() } : item));
+    }
+  };
+
+  const removeQueryTab = (tabId, event) => {
+    event?.stopPropagation();
+    if (queryTabs.length < 2) return;
+    const remainingTabs = queryTabs.filter(tab => tab.id !== tabId);
+    setQueryTabs(remainingTabs);
+    if (activeQueryTabId === tabId) {
+      setActiveQueryTabId(remainingTabs[remainingTabs.length - 1].id);
+      setResults([]);
+      setColumns([]);
+      setError('');
+      setMessage('');
+      setBatchResults(null);
+    }
+  };
   const [results, setResults] = useState([]);
   const [columns, setColumns] = useState([]);
   const [error, setError] = useState('');
@@ -285,7 +398,7 @@ export default function QueryEditor() {
     document.body.removeChild(link);
   };
 
-  const runQuery = async (forceRunAll = false) => {
+  const runQuery = async (forceRunAll = false, queryOverride = null) => {
     setError('');
     setMessage('');
     setResults([]);
@@ -293,7 +406,7 @@ export default function QueryEditor() {
     setIndexRecommendation(null);
     setLoading(true);
 
-    let queryToRun = query;
+    let queryToRun = queryOverride ?? query;
     let isSelection = false;
 
     if (!forceRunAll && textareaRef.current) {
@@ -311,6 +424,7 @@ export default function QueryEditor() {
       setLoading(false);
       return;
     }
+    recordQueryHistory(queryToRun);
 
     // MULTI-CONNECTION & MULTI-DB BATCH RUNNER
     if (executionMode === 'batch') {
@@ -486,6 +600,94 @@ export default function QueryEditor() {
     'DROP', 'ALTER', 'ADD', 'SET', 'VALUES', 'INTO', 'SHOW', 'DATABASES', 'TABLES',
     'USE', 'INDEX'
   ];
+
+  const recordQueryHistory = (queryText) => {
+    const cleanQuery = queryText.trim();
+    if (!cleanQuery) return;
+    const historyKey = `dms_query_history_${user?.id || user?._id || 'guest'}`;
+    setQueryHistory(previous => {
+      const updated = [
+        { query: cleanQuery, timestamp: new Date().toISOString() },
+        ...previous.filter(item => item.query !== cleanQuery)
+      ].slice(0, 20);
+      try {
+        localStorage.setItem(historyKey, JSON.stringify(updated));
+      } catch (err) {
+        console.error('Failed to save query history:', err);
+      }
+      return updated;
+    });
+  };
+
+  const formatSQLQuery = () => {
+    if (!query.trim()) return;
+    const formatted = query.trim()
+      .replace(/\s+/g, ' ')
+      .replace(/\b(SELECT|FROM|WHERE|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|ON|AND|OR|GROUP BY|ORDER BY|LIMIT|OFFSET|HAVING|VALUES|SET|UPDATE|DELETE FROM)\b/gi, '\n$1')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+    setQuery(formatted);
+  };
+
+  const runExplain = () => {
+    const explainType = executionMode === 'single'
+      ? connectionType
+      : connections.find(connection => connection._id === selectedConnIds[0])?.type;
+    if (!query.trim() || !explainType || explainType === 'mongodb') return;
+    const originalQuery = query;
+    const explainQuery = `${explainType === 'oracle' ? 'EXPLAIN PLAN FOR ' : 'EXPLAIN '}${query.trim()}`;
+    setQuery(explainQuery);
+    runQuery(true, explainQuery);
+    setQuery(originalQuery);
+  };
+
+  const handleSaveScript = async () => {
+    if (!scriptTitle.trim() || !query.trim()) return;
+    setSavingScript(true);
+    try {
+      await API.post('/saved-queries', {
+        title: scriptTitle.trim(),
+        description: scriptDescription.trim(),
+        query,
+        connectionId: executionMode === 'single' ? selectedConnection || undefined : undefined,
+        database: executionMode === 'single' ? selectedDatabase || '' : ''
+      });
+      const res = await API.get('/saved-queries');
+      setSavedQueries(res.data.queries || []);
+      setMessage(`Script "${scriptTitle.trim()}" saved successfully.`);
+      setScriptTitle('');
+      setScriptDescription('');
+      setShowSaveScriptModal(false);
+    } catch (err) {
+      console.error('Failed to save query script:', err);
+      window.alert(err.response?.data?.message || `Failed to save script: ${err.message}`);
+    } finally {
+      setSavingScript(false);
+    }
+  };
+
+  const loadSavedQuery = (savedQuery) => {
+    setQuery(savedQuery.query || '');
+    setResults([]);
+    setColumns([]);
+    setBatchResults(null);
+    setError('');
+    setMessage(`Loaded saved script "${savedQuery.title}".`);
+    setShowSavedQueriesModal(false);
+  };
+
+  const deleteSavedQuery = async (queryId) => {
+    if (!window.confirm('Are you sure you want to delete this saved script?')) return;
+    try {
+      await API.delete(`/saved-queries/${queryId}`);
+      const res = await API.get('/saved-queries');
+      setSavedQueries(res.data.queries || []);
+      setMessage('Saved script deleted successfully.');
+    } catch (err) {
+      console.error('Failed to delete saved query:', err);
+      window.alert(err.response?.data?.message || 'Failed to delete saved script.');
+    }
+  };
 
   const handleTextareaChange = (val) => {
     setQuery(val);
@@ -740,6 +942,9 @@ export default function QueryEditor() {
       e.preventDefault();
       runQuery(false);
     }
+    if (e.key === 'Escape' && isExpanded) {
+      setIsExpanded(false);
+    }
   };
 
   return (
@@ -748,7 +953,7 @@ export default function QueryEditor() {
       {/* Navbar */}
       <Navbar backTo="/dashboard" backText="Dashboard" />
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="w-[90%] max-w-none mx-auto py-8">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -1207,11 +1412,58 @@ export default function QueryEditor() {
           </div>
         )}
 
+        {/* Query tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
+          {queryTabs.map(tab => (
+            <div
+              key={tab.id}
+              onClick={() => {
+                setActiveQueryTabId(tab.id);
+                setResults([]);
+                setColumns([]);
+                setError('');
+                setMessage('');
+                setBatchResults(null);
+              }}
+              onDoubleClick={() => renameQueryTab(tab)}
+              title="Double-click to rename this query tab"
+              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer shrink-0 ${
+                tab.id === activeQueryTabId
+                  ? 'bg-white text-gray-900 border-gray-200'
+                  : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <span>{tab.id === activeQueryTabId ? '●' : '📝'}</span>
+              <span>{tab.name}</span>
+              {queryTabs.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(event) => removeQueryTab(tab.id, event)}
+                  className="w-4 h-4 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-800 cursor-pointer"
+                  title="Close query tab"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addQueryTab}
+            title="Open a new query tab"
+            className="w-7 h-7 mb-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 cursor-pointer"
+          >
+            +
+          </button>
+        </div>
+
         {/* Query Box */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4">
+        <div className={`bg-white rounded-xl border border-gray-200 p-6 mb-4 ${
+          isExpanded ? 'fixed inset-4 z-50 overflow-y-auto shadow-2xl' : ''
+        }`}>
 
           {/* Query Toolbar */}
-          <div className="flex items-center justify-between border-b border-gray-200 pb-3 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3 mb-4">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1233,16 +1485,120 @@ export default function QueryEditor() {
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsExpanded(!isExpanded)}
-              title={isExpanded ? "Collapse Editor View" : "Expand Editor View"}
-              className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 rounded-lg transition shadow-xs flex items-center gap-1.5 text-xs font-bold"
-            >
-              <span>{isExpanded ? '↙️' : '↗️'}</span>
-              <span>{isExpanded ? 'Collapse' : 'Expand'}</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={formatSQLQuery}
+                disabled={!query.trim()}
+                title="Format SQL query"
+                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
+              >
+                🧹 Beautify
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptTitle(activeQueryTab?.name || '');
+                  setShowSaveScriptModal(true);
+                }}
+                disabled={!query.trim()}
+                title="Save script to your library"
+                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
+              >
+                💾 Save Script
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSavedQueriesModal(true)}
+                title="Open saved scripts library"
+                className="px-2.5 py-1.5 border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                📁 Saved Scripts ({savedQueries.length})
+              </button>
+              {(executionMode === 'single'
+                ? connectionType && connectionType !== 'mongodb'
+                : (() => {
+                  const selectedTypes = selectedConnIds.map(id => connections.find(conn => conn._id === id)?.type);
+                  return selectedTypes.length > 0 && new Set(selectedTypes).size === 1 && selectedTypes[0] !== 'mongodb';
+                })()) && (
+                <button
+                  type="button"
+                  onClick={runExplain}
+                  disabled={!query.trim() || loading}
+                  title="Explain query execution plan"
+                  className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-teal-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
+                >
+                  🔍 Explain Plan
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowHistory(previous => !previous)}
+                title="Toggle query history"
+                className={`px-2.5 py-1.5 border rounded-lg text-xs font-bold cursor-pointer ${
+                  showHistory ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                📜 History
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                title={isExpanded ? 'Exit fullscreen editor' : 'Open fullscreen editor'}
+                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                {isExpanded ? '↙️ Exit Fullscreen' : '↗️ Fullscreen'}
+              </button>
+            </div>
           </div>
+
+          {showHistory && (
+            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-gray-700">Recent Queries ({queryHistory.length})</h3>
+                {queryHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueryHistory([]);
+                      try {
+                        localStorage.removeItem(`dms_query_history_${user?.id || user?._id || 'guest'}`);
+                      } catch (err) {
+                        console.error('Failed to clear query history:', err);
+                      }
+                    }}
+                    className="text-[11px] font-semibold text-red-600 hover:underline cursor-pointer"
+                  >
+                    Clear history
+                  </button>
+                )}
+              </div>
+              {queryHistory.length === 0 ? (
+                <p className="text-xs text-gray-500">Queries you run will appear here.</p>
+              ) : (
+                <div className="max-h-48 space-y-1 overflow-y-auto">
+                  {queryHistory.map((item, index) => (
+                    <button
+                      key={`${item.timestamp}-${index}`}
+                      type="button"
+                      onClick={() => {
+                        setQuery(item.query);
+                        setResults([]);
+                        setColumns([]);
+                        setBatchResults(null);
+                        setError('');
+                        setShowHistory(false);
+                      }}
+                      className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-left hover:border-teal-400 cursor-pointer"
+                    >
+                      <code className="block truncate text-[11px] text-gray-700">{item.query}</code>
+                      <span className="text-[10px] text-gray-400">{new Date(item.timestamp).toLocaleString()}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Scoped styles for overlay syntax highlighter */}
           <style>{`
@@ -1334,7 +1690,7 @@ export default function QueryEditor() {
           `}</style>
 
           {/* Textarea Overlay Container */}
-          <div className={`sql-editor-container ${isExpanded ? 'h-[480px]' : 'h-[280px]'}`}>
+          <div className={`sql-editor-container ${isExpanded ? 'h-[calc(100vh-190px)]' : 'h-[280px]'}`}>
             {/* Gutter Line Numbers */}
             <div ref={lineCounterRef} className="sql-editor-gutter">
               {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
@@ -1749,6 +2105,104 @@ export default function QueryEditor() {
                 </tbody>
 
               </table>
+            </div>
+          </div>
+        )}
+
+        {showSaveScriptModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+              <h3 className="mb-1 text-lg font-bold text-gray-900">💾 Save Query Script</h3>
+              <p className="mb-4 text-xs text-gray-500">Save this script to reuse it across connections.</p>
+              <label className="mb-1 block text-xs font-bold text-gray-700">Script title</label>
+              <input
+                autoFocus
+                value={scriptTitle}
+                onChange={event => setScriptTitle(event.target.value)}
+                placeholder="e.g. Monthly active users"
+                className="mb-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+              />
+              <label className="mb-1 block text-xs font-bold text-gray-700">Description (optional)</label>
+              <textarea
+                rows={3}
+                value={scriptDescription}
+                onChange={event => setScriptDescription(event.target.value)}
+                placeholder="What does this script do?"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-teal-500"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveScriptModal(false)}
+                  className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveScript}
+                  disabled={savingScript || !scriptTitle.trim()}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-bold text-white hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {savingScript ? 'Saving...' : 'Save Script'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSavedQueriesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+              <div className="mb-4 flex items-center justify-between border-b border-gray-200 pb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">📁 Saved Scripts Library</h3>
+                  <p className="text-xs text-gray-500">{savedQueries.length} scripts in your library</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSavedQueriesModal(false)}
+                  className="rounded px-2 text-lg font-bold text-gray-400 hover:text-gray-800 cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+              {savedQueries.length === 0 ? (
+                <p className="py-12 text-center text-sm text-gray-500">No saved scripts yet. Save a query to see it here.</p>
+              ) : (
+                <div className="space-y-3 overflow-y-auto pr-1">
+                  {savedQueries.map(item => (
+                    <div key={item._id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-gray-900">{item.title}</h4>
+                          {item.description && <p className="mt-1 text-xs text-gray-500">{item.description}</p>}
+                          <p className="mt-1 text-[10px] text-gray-400">
+                            {item.database || 'Any database'}{item.connectionName ? ` · ${item.connectionName}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => loadSavedQuery(item)}
+                            className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-teal-700 cursor-pointer"
+                          >
+                            Open in Editor
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteSavedQuery(item._id)}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      <pre className="mt-3 max-h-28 overflow-auto rounded-lg border border-gray-200 bg-white p-3 text-[11px] text-gray-700">{item.query}</pre>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
