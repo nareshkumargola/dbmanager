@@ -1,12 +1,14 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import { useNavbar } from '../context/NavbarContext';
 
 export default function Layout() {
   const { navbarConfig } = useNavbar();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className={`min-h-screen flex flex-col ${isDashboard ? 'bg-[#0b1c24]' : 'bg-gray-50 dark:bg-gray-900'}`}>
       <Navbar
         backTo={navbarConfig.backTo}
         backText={navbarConfig.backText}
