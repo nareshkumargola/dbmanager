@@ -15,27 +15,14 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
 
-  // 3D Mouseover Tilt & Parallax state
+  // 3D Mouseover Tilt state
   const [tilt, setTilt] = useState({ x: 0, y: 0, glareX: 50, glareY: 50, isHovered: false });
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const cardRef = useRef(null);
   const inputRefs = useRef([]);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Window-level mouse parallax for ambient depth
-  useEffect(() => {
-    const handleWindowMouseMove = (e) => {
-      const normX = (e.clientX / window.innerWidth - 0.5) * 2; // -1 to 1
-      const normY = (e.clientY / window.innerHeight - 0.5) * 2; // -1 to 1
-      setMousePos({ x: normX, y: normY });
-    };
-
-    window.addEventListener('mousemove', handleWindowMouseMove);
-    return () => window.removeEventListener('mousemove', handleWindowMouseMove);
-  }, []);
-
-  // Card-specific 3D tilt calculations
+  // Card-specific 3D tilt calculations on mouseover
   const handleCardMouseMove = (e) => {
     if (!cardRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
@@ -45,9 +32,9 @@ export default function Login() {
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
 
-    // Subtle 3D tilt angle (up to 9 degrees)
-    const rotateX = ((y - centerY) / centerY) * -9;
-    const rotateY = ((x - centerX) / centerX) * 9;
+    // Smooth 3D tilt angle (up to 8 degrees)
+    const rotateX = ((y - centerY) / centerY) * -8;
+    const rotateY = ((x - centerX) / centerX) * 8;
 
     const glareX = (x / rect.width) * 100;
     const glareY = (y / rect.height) * 100;
@@ -209,93 +196,46 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full relative overflow-hidden bg-[#0c141f] text-left font-sans flex items-center justify-center select-none">
-      {/* Dynamic Ambient Background Glows */}
-      <div 
-        className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-[#0d9da4]/15 blur-[120px] pointer-events-none transition-transform duration-700 ease-out"
-        style={{
-          transform: `translate(${mousePos.x * 25}px, ${mousePos.y * 25}px)`,
-        }}
-      />
-      <div 
-        className="absolute bottom-1/4 right-1/4 w-[450px] h-[450px] rounded-full bg-[#00e5be]/10 blur-[130px] pointer-events-none transition-transform duration-700 ease-out"
-        style={{
-          transform: `translate(${mousePos.x * -20}px, ${mousePos.y * -20}px)`,
-        }}
-      />
+    <div 
+      className="min-h-screen w-full relative overflow-hidden bg-[#0c141f] text-left font-sans flex items-center justify-center lg:justify-end select-none"
+      style={{
+        backgroundImage: "url('/login_3d_clean_bg.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
+      {/* Subtle Ambient Vignette & Shadow Overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#0c141f]/30 pointer-events-none" />
 
-      {/* Main Container */}
-      <div className="w-full max-w-[1400px] mx-auto px-6 sm:px-10 lg:px-16 py-8 relative z-10 flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-8">
+      {/* Main Responsive Wrapper */}
+      <div className="w-full max-w-[1440px] mx-auto px-6 sm:px-12 lg:px-20 py-8 relative z-10 flex items-center justify-center lg:justify-end">
         
-        {/* LEFT COLUMN: 3D Database Illustration & Brand Messaging */}
+        {/* RIGHT SIDE: Interactive 3D Login Card (NO BORDERS) */}
         <div 
-          className="w-full lg:w-[55%] flex flex-col justify-between transition-transform duration-500 ease-out"
-          style={{
-            transform: `translate3d(${mousePos.x * -10}px, ${mousePos.y * -6}px, 0)`,
-          }}
-        >
-          {/* Top Brand Header */}
-          <div className="mb-6 sm:mb-8">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight flex items-baseline gap-1">
-              <span>Allatone</span>
-              <span className="text-[#00e5be] text-4xl leading-none">.</span>
-            </h1>
-            <p className="text-[11px] sm:text-xs font-bold uppercase tracking-[0.22em] text-[#00e5be]/80 mt-1">
-              DATABASE MONITORING SYSTEM
-            </p>
-          </div>
-
-          {/* 3D Scene Illustration Image with Subtle Glow and Parallax */}
-          <div className="relative w-full max-w-[580px] mx-auto lg:mx-0 group">
-            <div className="absolute inset-0 bg-[#00e5be]/10 blur-2xl rounded-3xl -z-10 group-hover:bg-[#00e5be]/20 transition-all duration-700" />
-            <img 
-              src="/login_3d_left.png" 
-              alt="Allatone Database 3D Infrastructure" 
-              className="w-full h-auto object-contain rounded-2xl drop-shadow-[0_20px_40px_rgba(0,0,0,0.6)] transition-transform duration-700 hover:scale-[1.01]"
-              style={{
-                filter: 'drop-shadow(0 0 25px rgba(0, 229, 190, 0.2))',
-              }}
-            />
-          </div>
-
-          {/* Bottom Brand Punchline */}
-          <div className="mt-8 sm:mt-10 flex items-start gap-3">
-            <div className="w-1 h-10 rounded-full bg-[#00e5be] shadow-[0_0_12px_#00e5be] shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-white tracking-wide">
-                Monitor &bull; Manage &bull; Keep It Running
-              </h3>
-              <p className="text-xs text-gray-400 mt-0.5 font-normal">
-                Real-time insights for a healthier database.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: 3D Interactive Mouseover Login / OTP Card */}
-        <div 
-          className="w-full lg:w-[45%] flex items-center justify-center lg:justify-end"
+          className="w-full max-w-[420px]"
           style={{ perspective: '1200px' }}
         >
           <div
             ref={cardRef}
             onMouseMove={handleCardMouseMove}
             onMouseLeave={handleCardMouseLeave}
-            className="w-full max-w-[440px] bg-white rounded-[32px] p-8 sm:p-9 relative overflow-hidden transition-all duration-200 ease-out select-text"
+            className="w-full bg-white rounded-[32px] p-7 sm:p-9 relative overflow-hidden transition-all duration-200 ease-out select-text border-0"
             style={{
+              border: 'none',
+              outline: 'none',
               transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale3d(${tilt.isHovered ? '1.02, 1.02, 1.02' : '1, 1, 1'})`,
               transformStyle: 'preserve-3d',
               boxShadow: tilt.isHovered 
-                ? '0 30px 80px -15px rgba(0,0,0,0.45), 0 0 60px rgba(0, 229, 190, 0.35), 0 0 0 1px rgba(255,255,255,0.8)' 
-                : '0 20px 60px -15px rgba(0,0,0,0.35), 0 0 40px rgba(13, 157, 164, 0.25), 0 0 0 1px rgba(255,255,255,0.6)',
-              backdropFilter: 'blur(20px)',
+                ? '0 30px 80px -15px rgba(0,0,0,0.5), 0 0 60px rgba(0, 229, 190, 0.35)' 
+                : '0 20px 60px -15px rgba(0,0,0,0.4), 0 0 40px rgba(13, 157, 164, 0.25)',
             }}
           >
             {/* Dynamic 3D Glare Reflection on Mouseover */}
             <div 
-              className="absolute inset-0 pointer-events-none transition-opacity duration-300"
+              className="absolute inset-0 pointer-events-none transition-opacity duration-300 rounded-[32px]"
               style={{
-                background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.05) 50%, transparent 80%)`,
+                background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.05) 50%, transparent 80%)`,
                 opacity: tilt.isHovered ? 0.75 : 0,
               }}
             />
@@ -327,12 +267,12 @@ export default function Login() {
             </div>
 
             {!requiresOtp ? (
-              /* STEP 1: LOGIN FORM VIEW */
+              /* STEP 1: LOGIN FORM VIEW (NO BORDERS) */
               <div className="relative z-10" style={{ transform: 'translateZ(30px)' }}>
                 {/* Brand Header */}
                 <div className="flex items-center gap-3 mb-6">
                   {/* 3D Cyan Cylinder Database Icon */}
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#00e5be]/20 to-[#0d9da4]/30 border border-[#00e5be]/40 flex items-center justify-center shadow-sm">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#00e5be]/20 to-[#0d9da4]/30 flex items-center justify-center shadow-sm border-0">
                     <svg className="w-6 h-6 text-[#0d9da4]" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M12 2C6.48 2 2 3.34 2 5v4c0 1.66 4.48 3 10 3s10-1.34 10-3V5c0-1.66-4.48-3-10-3zm0 2c4.42 0 8 .9 8 1.5S16.42 7 12 7 4 6.1 4 5.5 7.58 4 12 4zM2 11v4c0 1.66 4.48 3 10 3s10-1.34 10-3v-4c-2.05 1.05-5.67 1.7-10 1.7s-7.95-.65-10-1.7zm0 6v4c0 1.66 4.48 3 10 3s10-1.34 10-3v-4c-2.05 1.05-5.67 1.7-10 1.7s-7.95-.65-10-1.7z" />
                     </svg>
@@ -352,19 +292,19 @@ export default function Login() {
                 <h3 className="text-2xl font-bold text-gray-900 mb-1.5 tracking-tight">
                   Sign In
                 </h3>
-                <p className="text-[12.5px] text-gray-500 leading-relaxed mb-6 font-normal">
+                <p className="text-[12px] text-gray-500 leading-relaxed mb-6 font-normal">
                   A centralized administration portal to monitor live replication streams, execute secure queries, audit procedure logs, and manage system backups.
                 </p>
 
                 {error && (
-                  <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold">
+                  <div className="bg-rose-50 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold border-0">
                     {error}
                   </div>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Email Address Field */}
-                  <div className="bg-[#f1f5f9]/80 hover:bg-[#f1f5f9] focus-within:bg-white focus-within:border-[#00e5be] focus-within:ring-2 focus-within:ring-[#00e5be]/20 rounded-2xl px-4 py-2.5 border border-gray-200/80 transition-all flex items-center gap-3">
+                  {/* Email Address Field (NO BORDER) */}
+                  <div className="bg-[#f1f5f9]/90 hover:bg-[#f1f5f9] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#00e5be]/40 rounded-2xl px-4 py-2.5 border-0 transition-all flex items-center gap-3">
                     <div className="text-gray-400 shrink-0">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -381,13 +321,13 @@ export default function Login() {
                         value={form.email}
                         onChange={handleChange}
                         required
-                        className="w-full bg-transparent text-[13px] text-gray-900 placeholder-gray-400 outline-none font-medium truncate"
+                        className="w-full bg-transparent text-[13px] text-gray-900 placeholder-gray-400 outline-none border-0 font-medium truncate"
                       />
                     </div>
                   </div>
 
-                  {/* Password Field */}
-                  <div className="bg-[#f1f5f9]/80 hover:bg-[#f1f5f9] focus-within:bg-white focus-within:border-[#00e5be] focus-within:ring-2 focus-within:ring-[#00e5be]/20 rounded-2xl px-4 py-2.5 border border-gray-200/80 transition-all flex items-center gap-3">
+                  {/* Password Field (NO BORDER) */}
+                  <div className="bg-[#f1f5f9]/90 hover:bg-[#f1f5f9] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#00e5be]/40 rounded-2xl px-4 py-2.5 border-0 transition-all flex items-center gap-3">
                     <div className="text-gray-400 shrink-0">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -404,13 +344,13 @@ export default function Login() {
                         value={form.password}
                         onChange={handleChange}
                         required
-                        className="w-full bg-transparent text-[13px] text-gray-900 placeholder-gray-400 outline-none font-medium"
+                        className="w-full bg-transparent text-[13px] text-gray-900 placeholder-gray-400 outline-none border-0 font-medium"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-gray-400 hover:text-gray-600 transition p-1 cursor-pointer shrink-0"
+                      className="text-gray-400 hover:text-gray-600 transition p-1 cursor-pointer shrink-0 border-0 bg-transparent"
                       title={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
@@ -436,11 +376,11 @@ export default function Login() {
                     </Link>
                   </div>
 
-                  {/* Submit Button */}
+                  {/* Submit Button (NO BORDER) */}
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3.5 px-6 rounded-full text-white font-bold text-sm shadow-[0_10px_25px_rgba(0,191,165,0.35)] hover:shadow-[0_15px_30px_rgba(0,191,165,0.5)] hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#00c9a7] to-[#00a896] disabled:opacity-60 cursor-pointer mt-3"
+                    className="w-full py-3.5 px-6 rounded-full text-white font-bold text-sm shadow-[0_10px_25px_rgba(0,191,165,0.35)] hover:shadow-[0_15px_30px_rgba(0,191,165,0.5)] hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#00c9a7] to-[#00a896] disabled:opacity-60 cursor-pointer mt-3 border-0"
                   >
                     {loading ? (
                       <span>Signing in…</span>
@@ -464,10 +404,10 @@ export default function Login() {
                 </div>
               </div>
             ) : (
-              /* STEP 2: OTP VERIFICATION VIEW */
+              /* STEP 2: OTP VERIFICATION VIEW (NO BORDERS) */
               <div className="relative z-10" style={{ transform: 'translateZ(30px)' }}>
                 {/* Shield Badge Icon */}
-                <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#0d9da4] mb-4 shadow-sm">
+                <div className="w-12 h-12 rounded-2xl bg-teal-50 flex items-center justify-center text-[#0d9da4] mb-4 shadow-sm border-0">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                   </svg>
@@ -481,13 +421,13 @@ export default function Login() {
                 </p>
 
                 {infoMsg && (
-                  <div className="bg-teal-50 border border-teal-200 text-teal-800 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold flex items-center gap-2">
+                  <div className="bg-teal-50 text-teal-800 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold flex items-center gap-2 border-0">
                     <span>✉️</span> {infoMsg}
                   </div>
                 )}
 
                 {error && (
-                  <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold">
+                  <div className="bg-rose-50 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold border-0">
                     {error}
                   </div>
                 )}
@@ -507,10 +447,10 @@ export default function Login() {
                         onKeyDown={(e) => handleDigitKeyDown(idx, e)}
                         onPaste={handleOtpPaste}
                         autoFocus={idx === 0}
-                        className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-extrabold font-mono rounded-xl border outline-none transition-all shadow-sm ${
+                        className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-extrabold font-mono rounded-xl outline-none transition-all shadow-sm border-0 ${
                           digit
-                            ? 'border-[#00e5be] bg-teal-50/50 text-[#0d9da4] ring-2 ring-teal-100'
-                            : 'border-gray-200 bg-gray-50/80 text-gray-900 focus:border-[#00e5be] focus:bg-white focus:ring-2 focus:ring-teal-100'
+                            ? 'bg-teal-50/80 text-[#0d9da4] ring-2 ring-[#00e5be]'
+                            : 'bg-gray-100/90 text-gray-900 focus:bg-white focus:ring-2 focus:ring-[#00e5be]'
                         }`}
                       />
                     ))}
@@ -547,7 +487,7 @@ export default function Login() {
                       type="button"
                       onClick={handleResendOtp}
                       disabled={timer > 0 || resending}
-                      className={`font-bold transition-colors cursor-pointer ${
+                      className={`font-bold transition-colors cursor-pointer border-0 bg-transparent ${
                         timer > 0 || resending
                           ? 'text-gray-300 cursor-not-allowed'
                           : 'text-[#00a896] hover:text-[#00e5be] hover:underline'
@@ -561,7 +501,7 @@ export default function Login() {
                   <button
                     type="submit"
                     disabled={loading || otpDigits.join('').length !== 6}
-                    className="w-full py-3.5 px-6 rounded-full text-white font-bold text-sm shadow-[0_10px_25px_rgba(0,191,165,0.35)] hover:shadow-[0_15px_30px_rgba(0,191,165,0.5)] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#00c9a7] to-[#00a896] disabled:opacity-50 cursor-pointer mb-5"
+                    className="w-full py-3.5 px-6 rounded-full text-white font-bold text-sm shadow-[0_10px_25px_rgba(0,191,165,0.35)] hover:shadow-[0_15px_30px_rgba(0,191,165,0.5)] transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-[#00c9a7] to-[#00a896] disabled:opacity-50 cursor-pointer mb-5 border-0"
                   >
                     {loading ? (
                       <span>Verifying OTP…</span>
@@ -581,7 +521,7 @@ export default function Login() {
                         setError('');
                         setInfoMsg('');
                       }}
-                      className="text-xs text-gray-500 hover:text-gray-800 font-semibold cursor-pointer transition hover:underline"
+                      className="text-xs text-gray-500 hover:text-gray-800 font-semibold cursor-pointer transition hover:underline border-0 bg-transparent"
                     >
                       &larr; Back to Login
                     </button>
