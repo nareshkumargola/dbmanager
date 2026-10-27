@@ -2,6 +2,7 @@ const { getConnection } = require('../connections/connectionManager');
 const Connection = require('../models/connectionModel');
 const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
 const Alert = require('../models/alertModel');
+const { getOracleMonitoringMetrics } = require('../utils/oracleMonitoringUtils');
 
 // ─── HELPER: Group snapshots by hour ──────────────────
 const groupByHour = (snapshots) => {
@@ -248,33 +249,7 @@ exports.getMonitoringData = async (req, res) => {
     }
 
     else if (type === 'oracle') {
-      const sizeResult = await conn.execute(`
-        SELECT ROUND(SUM(bytes) / 1024 / 1024, 2) AS SIZEMB FROM user_segments
-      `);
-      const tablesResult = await conn.execute(`
-        SELECT COUNT(*) AS COUNT FROM user_tables
-      `);
-      
-      let activeConnections = 1;
-      try {
-        const connResult = await conn.execute(`
-          SELECT COUNT(*) AS COUNT FROM v$session WHERE status = 'ACTIVE'
-        `);
-        activeConnections = connResult.rows[0]?.COUNT || connResult.rows[0]?.count || 1;
-      } catch (err) {
-        // Fallback
-      }
-
-      data = {
-        type: 'oracle',
-        activeConnections,
-        maxConnections: 150,
-        totalTables: tablesResult.rows[0]?.COUNT || tablesResult.rows[0]?.count || 0,
-        sizeMB: sizeResult.rows[0]?.SIZEMB || sizeResult.rows[0]?.sizemb || 0,
-        slowQueries: 0,
-        queriesPerSecond: 0.1,
-        uptime: 3600
-      };
+      data = await getOracleMonitoringMetrics(conn);
     }
 
     res.status(200).json({ success: true, data, timestamp: new Date() });
@@ -381,20 +356,44 @@ exports.getTableDetails = async (req, res) => {
       tableData = collData;
     } else if (type === 'oracle') {
       const tables = await conn.execute(`
-        SELECT 
-          table_name,
-          num_rows,
-          ROUND((blocks * 8192) / 1024 / 1024, 2) AS size_mb
-        FROM user_tables
-        ORDER BY num_rows DESC NULLS LAST
+        WITH table_segments AS (
+          SELECT table_name, table_name AS segment_name FROM user_tables
+          UNION ALL
+          SELECT table_name, partition_name AS segment_name FROM user_tab_partitions
+          UNION ALL
+          SELECT table_name, subpartition_name AS segment_name FROM user_tab_subpartitions
+          UNION ALL
+          SELECT table_name, segment_name FROM user_lobs WHERE segment_name IS NOT NULL
+        ),
+        table_sizes AS (
+          SELECT ts.table_name, SUM(us.bytes) AS size_bytes
+          FROM table_segments ts
+          JOIN user_segments us ON us.segment_name = ts.segment_name
+          GROUP BY ts.table_name
+        )
+        SELECT t.table_name, t.num_rows, NVL(s.size_bytes, 0) AS size_bytes
+        FROM user_tables t
+        LEFT JOIN table_sizes s ON s.table_name = t.table_name
+        ORDER BY NVL(s.size_bytes, 0) DESC, t.table_name
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `);
       const rows = tables.rows || [];
-      tableData = rows.map(t => ({
-        table: t.TABLE_NAME || t.table_name || Object.values(t)[0],
-        rows: parseInt(t.NUM_ROWS !== undefined ? t.NUM_ROWS : (t.num_rows !== undefined ? t.num_rows : Object.values(t)[1] || 0)),
-        sizeMB: parseFloat(t.SIZE_MB !== undefined ? t.SIZE_MB : (t.size_mb !== undefined ? t.size_mb : Object.values(t)[2] || 0)),
-      }));
+      tableData = [];
+      for (const tableRow of rows) {
+        const tableName = tableRow.TABLE_NAME || tableRow.table_name;
+        const countResult = await conn.execute(
+          `SELECT COUNT(*) AS ROW_COUNT FROM "${String(tableName).replace(/"/g, '""')}"`
+        );
+        const rowCount = countResult.rows[0]?.ROW_COUNT ?? countResult.rows[0]?.row_count;
+        const sizeBytes = Number(tableRow.SIZE_BYTES ?? tableRow.size_bytes ?? 0);
+        tableData.push({
+          table: tableName,
+          rows: Number(rowCount),
+          estimatedRows: tableRow.NUM_ROWS ?? tableRow.num_rows ?? null,
+          sizeMB: Number((sizeBytes / 1024 / 1024).toFixed(4)),
+          sizeBytes,
+        });
+      }
     }
 
     res.status(200).json({ success: true, tables: tableData, timestamp: new Date() });
@@ -563,33 +562,7 @@ exports.getMonitoringHistory = async (req, res) => {
         },
       };
     } else if (type === 'oracle') {
-      const sizeResult = await conn.execute(`
-        SELECT ROUND(SUM(bytes) / 1024 / 1024, 2) AS SIZEMB FROM user_segments
-      `);
-      const tablesResult = await conn.execute(`
-        SELECT COUNT(*) AS COUNT FROM user_tables
-      `);
-      
-      let activeConnections = 1;
-      try {
-        const connResult = await conn.execute(`
-          SELECT COUNT(*) AS COUNT FROM v$session WHERE status = 'ACTIVE'
-        `);
-        activeConnections = connResult.rows[0]?.COUNT || connResult.rows[0]?.count || 1;
-      } catch (err) {
-        // Fallback
-      }
-
-      currentData = {
-        type: 'oracle',
-        activeConnections,
-        maxConnections: 150,
-        totalTables: tablesResult.rows[0]?.COUNT || tablesResult.rows[0]?.count || 0,
-        sizeMB: sizeResult.rows[0]?.SIZEMB || sizeResult.rows[0]?.sizemb || 0,
-        slowQueries: 0,
-        queriesPerSecond: 0.1,
-        uptime: 3600
-      };
+      currentData = await getOracleMonitoringMetrics(conn);
     }
 
     // Save current snapshot

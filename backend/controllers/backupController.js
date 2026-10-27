@@ -6,6 +6,12 @@ const { ObjectId } = require('mongodb');
 const Connection = require('../models/connectionModel');
 const { mysqlPool } = require('../config/db');
 const { createBackup, backupDir } = require('../utils/backup');
+const {
+  createOracleSqlBackup,
+  parseOracleSqlBackup,
+  isSafeOracleIdentifier,
+  quoteOracleIdentifier
+} = require('../utils/oracleBackupUtils');
 
 const parseMongoTypes = (doc) => {
   if (!doc) return doc;
@@ -235,8 +241,8 @@ exports.takeBackup = async (req, res) => {
       if (!connection) {
         return res.status(404).json({ message: 'Connection not found!' });
       }
-      if (connection.type !== 'mysql' && connection.type !== 'mongodb' && connection.type !== 'postgresql') {
-        return res.status(400).json({ message: 'Backup is only available for MySQL, MongoDB and PostgreSQL connections.' });
+      if (connection.type !== 'mysql' && connection.type !== 'mongodb' && connection.type !== 'postgresql' && connection.type !== 'oracle') {
+        return res.status(400).json({ message: 'Backup is not supported for this connection type.' });
       }
 
       const database = req.body.database || req.query.database;
@@ -251,7 +257,32 @@ exports.takeBackup = async (req, res) => {
         }
       }
 
-      if (connection.type === 'mongodb') {
+      if (
+        connection.type === 'oracle' &&
+        req.user.role !== 'admin' &&
+        connection.user.toString() !== req.user.id &&
+        !connection.allowedUsers?.some(user => user.toString() === req.user.id)
+      ) {
+        return res.status(403).json({ message: 'You do not have access to this connection!' });
+      }
+
+      if (connection.type === 'oracle') {
+        if (database && ![connection.database, connection.username].includes(database)) {
+          return res.status(400).json({ message: 'Oracle backup can only target the connected service and schema.' });
+        }
+        const selectedTables = selections && Object.keys(selections).length
+          ? Object.values(selections).flat()
+          : undefined;
+        if (selectedTables && selectedTables.length === 0) {
+          return res.status(400).json({ message: 'Select at least one Oracle table to back up.' });
+        }
+        const { getConnection } = require('../connections/connectionManager');
+        const { conn } = await getConnection(connection);
+        const backup = await createOracleSqlBackup(conn, connection.username, selectedTables);
+        fileName = `backup_oracle_${connection.username}_${Date.now()}.sql`;
+        filePath = path.join(backupDir, fileName);
+        fs.writeFileSync(filePath, backup.sql, 'utf8');
+      } else if (connection.type === 'mongodb') {
         const { getConnection } = require('../connections/connectionManager');
         const { conn } = await getConnection(connection);
 
@@ -707,8 +738,64 @@ exports.restoreBackup = async (req, res) => {
       if (!connectionDoc) {
         return res.status(404).json({ message: 'Connection not found!' });
       }
+      if (connectionDoc.type === 'oracle') {
+        if (
+          req.user.role !== 'admin' &&
+          connectionDoc.user.toString() !== req.user.id &&
+          !connectionDoc.allowedUsers?.some(user => user.toString() === req.user.id)
+        ) {
+          return res.status(403).json({ message: 'You do not have access to this connection!' });
+        }
+        if (req.query.replaceSchema !== 'true') {
+          return res.status(400).json({ message: 'Oracle restore replaces tables in the connected schema. Confirm replaceSchema=true to continue.' });
+        }
+        if (req.query.database && ![connectionDoc.database, connectionDoc.username].includes(req.query.database)) {
+          return res.status(400).json({ message: 'Oracle restore can only target the connected service and schema.' });
+        }
+
+        const { manifest, statements: oracleStatements } = parseOracleSqlBackup(fileContent);
+        if (manifest.owner.toUpperCase() !== connectionDoc.username.toUpperCase()) {
+          return res.status(400).json({ message: 'Backup schema does not match the connected Oracle user.' });
+        }
+
+        const { getConnection } = require('../connections/connectionManager');
+        const { conn } = await getConnection(connectionDoc);
+        const currentTablesResult = await conn.execute('SELECT table_name FROM user_tables');
+        const tablesToReplace = new Set(manifest.tables.map(table => table.toUpperCase()));
+        const currentTables = currentTablesResult.rows
+          .map(row => row.TABLE_NAME || row.table_name)
+          .filter(table => isSafeOracleIdentifier(table) && tablesToReplace.has(table.toUpperCase()));
+        let executedStatements = 0;
+        try {
+          for (const table of currentTables) {
+            await conn.execute(`DROP TABLE ${quoteOracleIdentifier(table)} CASCADE CONSTRAINTS PURGE`);
+          }
+          for (const statement of oracleStatements) {
+            await conn.execute(statement, [], { autoCommit: true });
+            executedStatements += 1;
+          }
+        } catch (restoreError) {
+          restoreError.message = `Oracle restore stopped after ${executedStatements} imported SQL statements. Oracle DDL auto-commits, so review the schema before retrying. ${restoreError.message}`;
+          throw restoreError;
+        }
+
+        fs.unlink(req.file.path, () => {});
+        try {
+          const { logAuditTrail } = require('../utils/auditLogger');
+          await logAuditTrail(req.query.connectionId, req.user.id, 'RESTORE_BACKUP', `Replaced Oracle schema tables for ${manifest.owner} from ${req.file.originalname}.`);
+        } catch (auditErr) {
+          console.error('Audit trail logging failed:', auditErr.message);
+        }
+        return res.status(200).json({
+          success: true,
+          message: `Restored ${manifest.tables.length} tables into Oracle schema ${manifest.owner}.`,
+          statements: executedStatements,
+          tables: manifest.tables.length
+        });
+      }
+
       if (connectionDoc.type !== 'mysql' && connectionDoc.type !== 'postgresql') {
-        return res.status(400).json({ message: 'Restore is only available for MySQL and PostgreSQL connections.' });
+        return res.status(400).json({ message: 'Restore is only available for MySQL, PostgreSQL, MongoDB and Oracle connections.' });
       }
 
       if (connectionDoc.type === 'postgresql') {

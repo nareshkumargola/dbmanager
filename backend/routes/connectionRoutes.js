@@ -4,6 +4,7 @@ const connectionController = require('../controllers/connectionController');
 const mysqlUserController = require('../controllers/mysqlUserController');
 const mongoUserController = require('../controllers/mongoUserController');
 const pgUserController = require('../controllers/pgUserController');
+const oracleUserController = require('../controllers/oracleUserController');
 const { protect, adminOnly, checkPermission } = require('../middlewares/authMiddleware');
 
 // Saare routes protected
@@ -52,6 +53,14 @@ router.post('/:id/pg-users', protect, pgUserController.createPGUser);
 router.delete('/:id/pg-users/:username', protect, pgUserController.deletePGUser);
 router.put('/:id/pg-users/:username/password', protect, pgUserController.updatePGUserPassword);
 router.put('/:id/pg-users/:username/roles', protect, pgUserController.updatePGUserRoles);
+
+// Oracle user management
+router.get('/:id/oracle-users', protect, checkPermission('userManagement'), oracleUserController.listUsers);
+router.get('/:id/oracle-users/:username/roles', protect, checkPermission('userManagement'), oracleUserController.getRoles);
+router.post('/:id/oracle-users', protect, checkPermission('userManagement'), oracleUserController.createUser);
+router.put('/:id/oracle-users/:username/roles', protect, checkPermission('userManagement'), oracleUserController.updateRoles);
+router.put('/:id/oracle-users/:username/password', protect, checkPermission('userManagement'), oracleUserController.updatePassword);
+router.delete('/:id/oracle-users/:username', protect, checkPermission('userManagement'), oracleUserController.deleteUser);
 
 // Shared audit logs
 router.get('/:id/audit-logs', protect, checkPermission('auditLogs'), connectionController.getConnectionAuditLogs);

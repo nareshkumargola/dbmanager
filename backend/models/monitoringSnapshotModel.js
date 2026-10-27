@@ -12,7 +12,7 @@ const monitoringSnapshotSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['mysql', 'postgresql', 'mongodb'],
+    enum: ['mysql', 'postgresql', 'mongodb', 'oracle'],
     required: true,
   },
 

@@ -130,7 +130,7 @@ export default function ConnectionBackup() {
     if (!db.loaded) {
       setTablesLoading(prev => ({ ...prev, [dbName]: true }));
       try {
-        const res = await API.get(`/connections/${id}/objects?database=${dbName}`);
+        const res = await API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`);
         if (res.data?.success) {
           const type = res.data.type;
           let tableNames = [];
@@ -178,7 +178,7 @@ export default function ConnectionBackup() {
     if (!db.loaded) {
       setTablesLoading(prev => ({ ...prev, [dbName]: true }));
       try {
-        const res = await API.get(`/connections/${id}/objects?database=${dbName}`);
+        const res = await API.get(`/connections/${id}/objects?database=${encodeURIComponent(dbName)}`);
         if (res.data?.success) {
           const type = res.data.type;
           let tableNames = [];
@@ -295,7 +295,9 @@ export default function ConnectionBackup() {
     }
 
     const isMongo = connection?.type === 'mongodb';
-    const confirmMsg = `Are you sure you want to import this backup file into the database "${importDbName}"? This will overwrite existing tables/collections if they match.`;
+    const confirmMsg = connection?.type === 'oracle'
+      ? `Restore this Oracle backup into schema "${connection.username}"? Existing tables contained in the backup will be dropped and recreated. Other tables will remain.`
+      : `Are you sure you want to import this backup file into the database "${importDbName}"? This will overwrite existing tables/collections if they match.`;
     if (!window.confirm(confirmMsg)) return;
 
     setImportLoading(true);
@@ -305,11 +307,13 @@ export default function ConnectionBackup() {
       const formData = new FormData();
       formData.append('sqlFile', importFile);
       const res = await API.post(
-        `/backup/restore?connectionId=${id}&database=${encodeURIComponent(importDbName.trim())}`,
+        `/backup/restore?connectionId=${id}&database=${encodeURIComponent(importDbName.trim())}${connection?.type === 'oracle' ? '&replaceSchema=true' : ''}`,
         formData
       );
       if (isMongo) {
         setBackupMsg(`Import successfully completed! Restored ${res.data.collections} collections and ${res.data.documents} documents into database "${importDbName}".`);
+      } else if (connection?.type === 'oracle') {
+        setBackupMsg(`Oracle restore completed! Recreated ${res.data.tables} tables in schema "${connection.username}".`);
       } else {
         setBackupMsg(`Import successfully completed! Executed ${res.data.statements} SQL statements into database "${importDbName}".`);
       }
@@ -398,9 +402,13 @@ export default function ConnectionBackup() {
         <div className="w-[90%] mx-auto py-8 space-y-6">
           
           <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-xs">
-            <h2 className="text-lg font-bold text-gray-900">Server Backup & Restore</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              {connection?.type === 'oracle' ? 'Oracle Schema Backup & Restore' : 'Server Backup & Restore'}
+            </h2>
             <p className="text-xs text-gray-400 mt-1 leading-normal">
-              Manage database dumps for this server connection. Select specific databases and tables/collections to download a custom backup file, or upload a script to restore tables.
+              {connection?.type === 'oracle'
+                ? 'Export selected table definitions and rows as SQL. Restore replaces only matching tables in this connection user schema. BLOB/BFILE or unsupported columns, standalone indexes, views, sequences, and PL/SQL objects are not included; use Oracle Data Pump for a full-fidelity backup.'
+                : 'Manage database dumps for this server connection. Select specific databases and tables/collections to download a custom backup file, or upload a script to restore tables.'}
             </p>
           </div>
 

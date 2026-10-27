@@ -17,21 +17,6 @@ export default function ConnectionMonitor() {
   const { user } = useAuth();
   const { id } = useParams();
 
-  if (user?.role !== 'admin' && user?.permissions && !user.permissions.monitor) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
-          <p className="text-4xl mb-4">🚫</p>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-sm text-gray-500 mb-6">You do not have permission to access database Server Monitoring features.</p>
-          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
-            Go to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   const [connectionName, setConnectionName] = useState('');
   const [dbType, setDbType] = useState('');
   const [connectionHost, setConnectionHost] = useState('localhost');
@@ -54,6 +39,7 @@ export default function ConnectionMonitor() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('metrics');
   const [activeToast, setActiveToast] = useState(null);
+  const canManageMonitoring = user?.role === 'admin' || user?.permissions?.monitor === true;
 
   // Fetch connection info first
   useEffect(() => {
@@ -149,13 +135,13 @@ export default function ConnectionMonitor() {
         });
         const newPoint = {
           hour: time,
-          activeConnections: newData.activeConnections || 0,
-          queriesPerSecond: newData.queriesPerSecond || 0,
-          slowQueries: newData.slowQueries || 0,
-          sizeMB: newData.sizeMB || 0,
-          bytesSent: newData.bytesSent || 0,
-          bytesReceived: newData.bytesReceived || 0,
-          totalTables: newData.totalTables || 0,
+          activeConnections: newData.activeConnections ?? null,
+          queriesPerSecond: newData.queriesPerSecond ?? null,
+          slowQueries: newData.slowQueries ?? null,
+          sizeMB: newData.sizeMB ?? 0,
+          bytesSent: newData.bytesSent ?? null,
+          bytesReceived: newData.bytesReceived ?? null,
+          totalTables: newData.totalTables ?? 0,
         };
         const updated = [...prev, newPoint];
         return updated.slice(-15); // Keep last 15 ticks for real-time tracking
@@ -237,6 +223,7 @@ export default function ConnectionMonitor() {
       )
     )
     : monitorHistory;
+  const hasMetric = (metric) => monitorData?.[metric] !== null && monitorData?.[metric] !== undefined;
 
   const downloadMonitoringPDF = async () => {
     if (!monitorData) {
@@ -263,9 +250,9 @@ export default function ConnectionMonitor() {
             ${displayedHistory.map((hour, idx) => `
               <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f9f9f9'};">
                 <td style="border: 1px solid #ddd; padding: 6px; font-weight: 500;">${hour.hour}</td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.activeConnections}</td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.queriesPerSecond || 0}</td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.slowQueries || 0}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hasMetric('activeConnections') ? hour.activeConnections ?? 0 : 'N/A'}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hasMetric('queriesPerSecond') ? hour.queriesPerSecond ?? 0 : 'N/A'}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hasMetric('slowQueries') ? hour.slowQueries ?? 0 : 'N/A'}</td>
                 <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.totalTables || hour.totalCollections || 0}</td>
                 <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${hour.sizeMB || 0}</td>
               </tr>
@@ -319,19 +306,19 @@ export default function ConnectionMonitor() {
         </tr>
         <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Active Connections</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.activeConnections} / ${monitorData.maxConnections}</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('activeConnections') ? monitorData.activeConnections : 'N/A'} / ${hasMetric('maxConnections') ? monitorData.maxConnections : 'N/A'}</td>
         </tr>
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Connection Usage %</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('activeConnections') && hasMetric('maxConnections') ? `${Math.round((monitorData.activeConnections / monitorData.maxConnections) * 100)}%` : 'N/A'}</td>
         </tr>
         <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Queries / Ops Per Second</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.queriesPerSecond || 0}</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('queriesPerSecond') ? monitorData.queriesPerSecond : 'N/A'}</td>
         </tr>
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Slow Queries</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.slowQueries || 0}</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('slowQueries') ? monitorData.slowQueries : 'N/A'}</td>
         </tr>
         <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Database Size</strong></td>
@@ -343,19 +330,19 @@ export default function ConnectionMonitor() {
         </tr>
         <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Server Uptime</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${Math.floor((monitorData.uptime || 0) / 3600)}h ${Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('uptime') ? `${Math.floor((monitorData.uptime || 0) / 3600)}h ${Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m` : 'N/A'}</td>
         </tr>
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Sent</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('bytesSent') ? `${((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB` : 'N/A'}</td>
         </tr>
         <tr style="background: #f9f9f9;">
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Network Traffic Received</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('bytesReceived') ? `${((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB` : 'N/A'}</td>
         </tr>
         <tr>
           <td style="border: 1px solid #ddd; padding: 8px;"><strong>Cache / Buffer Pool Hit Rate</strong></td>
-          <td style="border: 1px solid #ddd; padding: 8px;">${monitorData.cacheHitRate || 99}%</td>
+          <td style="border: 1px solid #ddd; padding: 8px;">${hasMetric('cacheHitRate') ? `${monitorData.cacheHitRate}%` : 'N/A'}</td>
         </tr>
       </table>
 
@@ -516,7 +503,7 @@ export default function ConnectionMonitor() {
           >
             🚨 Active Alerts
           </button>
-          <button
+          {canManageMonitoring && <button
             onClick={() => setActiveTab('settings')}
             className={`pb-2.5 px-4 text-xs font-bold border-b-2 transition flex items-center gap-1.5 ${
               activeTab === 'settings'
@@ -526,7 +513,7 @@ export default function ConnectionMonitor() {
             style={activeTab === 'settings' ? { borderColor: '#0d9da4' } : {}}
           >
             ⚙️ Alert Settings
-          </button>
+          </button>}
         </div>
 
         {error && (
@@ -555,10 +542,10 @@ export default function ConnectionMonitor() {
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Connections</p>
                 <div className="mb-2">
-                  <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections}</p>
-                  <p className="text-xs text-gray-400">max: {monitorData.maxConnections}</p>
+                  <p className="text-2xl font-bold text-gray-900">{monitorData.activeConnections ?? 'N/A'}</p>
+                  <p className="text-xs text-gray-400">max: {monitorData.maxConnections ?? 'N/A'}</p>
                 </div>
-                <div className="space-y-1">
+                {hasMetric('activeConnections') && hasMetric('maxConnections') && <div className="space-y-1">
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Usage</span>
                     <span className={`font-bold ${
@@ -576,32 +563,33 @@ export default function ConnectionMonitor() {
                     />
                   </div>
                 </div>
+                }
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">QPS / Ops</p>
-                <p className="text-2xl font-bold text-gray-900">{monitorData.queriesPerSecond || 0}</p>
+                <p className="text-2xl font-bold text-gray-900">{monitorData.queriesPerSecond ?? 'N/A'}</p>
                 <p className="text-xs text-gray-400 mt-1">Queries / Second</p>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Slow Queries</p>
                 <p className={`text-2xl font-bold ${monitorData.slowQueries > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
-                  {monitorData.slowQueries || 0}
+                  {monitorData.slowQueries ?? 'N/A'}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">Total recorded</p>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
-                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Size</p>
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">{dbType === 'oracle' ? 'Schema Size' : 'Server Size'}</p>
                 <p className="text-2xl font-bold text-gray-900">{monitorData.sizeMB}</p>
-                <p className="text-xs text-gray-400 mt-1">MB (All databases)</p>
+                <p className="text-xs text-gray-400 mt-1">{dbType === 'oracle' ? 'MB (Current schema)' : 'MB (All databases)'}</p>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">{dbType === 'mongodb' ? 'Total Collections' : 'Total Tables'}</p>
                 <p className="text-2xl font-bold text-gray-900">{monitorData.totalTables || monitorData.totalCollections || 0}</p>
-                <p className="text-xs text-gray-400 mt-1">Across all schemas</p>
+                <p className="text-xs text-gray-400 mt-1">{dbType === 'oracle' ? 'In current schema' : 'Across all schemas'}</p>
               </div>
             </div>
 
@@ -609,19 +597,19 @@ export default function ConnectionMonitor() {
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Server Uptime</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {Math.floor((monitorData.uptime || 0) / 86400)}d {Math.floor(((monitorData.uptime || 0) % 86400) / 3600)}h {Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m
+                  {monitorData.uptime === null || monitorData.uptime === undefined ? 'N/A' : `${Math.floor((monitorData.uptime || 0) / 86400)}d ${Math.floor(((monitorData.uptime || 0) % 86400) / 3600)}h ${Math.floor(((monitorData.uptime || 0) % 3600) / 60)}m`}
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Sent</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB
+                  {monitorData.bytesSent === null || monitorData.bytesSent === undefined ? 'N/A' : `${((monitorData.bytesSent || 0) / 1024 / 1024).toFixed(2)} MB`}
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-xs">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Network Traffic Received</p>
                 <p className="text-lg font-bold text-gray-900">
-                  {((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB
+                  {monitorData.bytesReceived === null || monitorData.bytesReceived === undefined ? 'N/A' : `${((monitorData.bytesReceived || 0) / 1024 / 1024).toFixed(2)} MB`}
                 </p>
               </div>
             </div>
@@ -632,18 +620,19 @@ export default function ConnectionMonitor() {
                 <p className="text-xs text-gray-400 mt-0.5">Higher is better. Measures database reading efficiency from memory vs disk.</p>
               </div>
               <div className="text-right">
-                <span className="text-2xl font-bold text-gray-900">{monitorData.cacheHitRate || 99}%</span>
+                <span className="text-2xl font-bold text-gray-900">{monitorData.cacheHitRate === null || monitorData.cacheHitRate === undefined ? 'N/A' : `${monitorData.cacheHitRate}%`}</span>
               </div>
             </div>
 
             {/* Hourly Trend charts */}
-            {monitorHistory && monitorHistory.length > 1 && (
+            {monitorData && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/* 1. Active Connections */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
                     📈 Active Connections Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
+                  {!hasMetric('activeConnections') && <p className="text-sm text-gray-400 mb-2">N/A</p>}
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
                       <defs>
@@ -678,6 +667,7 @@ export default function ConnectionMonitor() {
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
                     ⚡ Queries Per Second Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
+                  {!hasMetric('queriesPerSecond') && <p className="text-sm text-gray-400 mb-2">N/A</p>}
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
                       <defs>
@@ -712,6 +702,7 @@ export default function ConnectionMonitor() {
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
                     ⚠️ Slow Queries Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
+                  {!hasMetric('slowQueries') && <p className="text-sm text-gray-400 mb-2">N/A</p>}
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
                       <defs>
@@ -744,7 +735,7 @@ export default function ConnectionMonitor() {
                 {/* 4. Database Size */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    💾 Server Size (MB) ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
+                    💾 {dbType === 'oracle' ? 'Schema Size' : 'Server Size'} (MB) ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -778,7 +769,7 @@ export default function ConnectionMonitor() {
                 {/* 5. Total Tables */}
                 <div className="bg-white rounded-2xl border border-gray-250 p-5 shadow-xs">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
-                    📋 Total Tables Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
+                    📋 {dbType === 'mongodb' ? 'Total Collections' : 'Total Tables'} Trend ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
@@ -814,6 +805,7 @@ export default function ConnectionMonitor() {
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">
                     🌐 Network Traffic (MB) ({range === 'current' ? (currentHourFilter === 'live' ? '⚡ Live Feed' : `Last ${currentHourFilter} Hour${currentHourFilter > 1 ? 's' : ''}`) : (range === 'custom' ? 'Custom Range' : range)})
                   </h3>
+                  {!hasMetric('bytesSent') || !hasMetric('bytesReceived') ? <p className="text-sm text-gray-400 mb-2">N/A</p> : null}
                   <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={displayedHistory}>
                       <defs>
@@ -909,11 +901,11 @@ export default function ConnectionMonitor() {
                       {displayedHistory.map((hour, i) => (
                         <tr key={i} className="hover:bg-gray-50 align-middle">
                           <td className="px-4 py-2.5 text-gray-700 font-medium">{hour.hour}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.activeConnections}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.queriesPerSecond || 0}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.slowQueries || 0}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hasMetric('activeConnections') ? hour.activeConnections ?? 0 : 'N/A'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hasMetric('queriesPerSecond') ? hour.queriesPerSecond ?? 0 : 'N/A'}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hasMetric('slowQueries') ? hour.slowQueries ?? 0 : 'N/A'}</td>
                           <td className="px-4 py-2.5 text-right text-gray-700">{hour.totalTables || hour.totalCollections || 0}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.sizeMB || 0}</td>
+                          <td className="px-4 py-2.5 text-right text-gray-700">{hour.sizeMB ?? 0}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -931,7 +923,7 @@ export default function ConnectionMonitor() {
           <AlertLogsList connectionId={id} />
         )}
 
-        {activeTab === 'settings' && (
+        {activeTab === 'settings' && canManageMonitoring && (
           <AlertSettingsTab connectionId={id} />
         )}
       </div>

@@ -1,9 +1,19 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Navbar from './Navbar';
 import { useNavbar } from '../context/NavbarContext';
 
 export default function Layout() {
   const { navbarConfig } = useNavbar();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard';
+
+  if (isDashboard) {
+    return (
+      <div className="min-h-screen bg-[#f4f7fb] flex flex-col">
+        <Outlet />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

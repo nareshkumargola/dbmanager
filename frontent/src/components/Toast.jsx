@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-export default function Toast({ toast, onClose }) {
+export default function Toast({ toast, onClose, placement = 'bottom-right' }) {
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => {
@@ -12,9 +12,12 @@ export default function Toast({ toast, onClose }) {
   if (!toast) return null;
 
   const isError = toast.type === 'error';
+  const positionClasses = placement === 'top-right'
+    ? 'fixed top-16 right-6 animate-slide-in-up'
+    : 'fixed bottom-6 right-6 animate-slide-in-up';
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-slide-in-up transition-all duration-300">
+    <div className={`${positionClasses} z-50 transition-all duration-300`}>
       <div
         className={`flex items-center gap-3.5 px-5 py-3.5 rounded-2xl shadow-2xl border text-white max-w-md text-left ${
           isError

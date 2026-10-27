@@ -702,8 +702,8 @@ export default function UserManagement() {
                                   className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
                                 />
                                 <div>
-                                  <span className="text-xs font-bold text-gray-900 block">📊 System Monitor</span>
-                                  <span className="text-[11px] text-gray-500 block">View real-time connection vitals & stats</span>
+                                  <span className="text-xs font-bold text-gray-900 block">📊 Monitor Controls</span>
+                                  <span className="text-[11px] text-gray-500 block">Manage alert settings and resolve alerts</span>
                                 </div>
                               </label>
 

@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar';
 import MySQLUsersPanel from '../components/MySQLUsersPanel';
 import MongoDBUsersPanel from '../components/MongoDBUsersPanel';
 import PostgreSQLUsersPanel from '../components/PostgreSQLUsersPanel';
+import OracleUsersPanel from '../components/OracleUsersPanel';
 
 export default function ConnectionUsers() {
   const { id } = useParams();
@@ -43,6 +44,7 @@ export default function ConnectionUsers() {
     if (type === 'mongodb') return '🍃';
     if (type === 'mysql') return '🐬';
     if (type === 'postgresql') return '🐘';
+    if (type === 'oracle') return '🔴';
     return '🗄️';
   };
 
@@ -75,9 +77,11 @@ export default function ConnectionUsers() {
           <MySQLUsersPanel connectionId={id} />
         ) : connectionType === 'postgresql' ? (
           <PostgreSQLUsersPanel connectionId={id} />
+        ) : connectionType === 'oracle' ? (
+          <OracleUsersPanel connectionId={id} />
         ) : (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
-            ❌ User Management is only supported for MySQL, MongoDB and PostgreSQL connection types.
+            ❌ User Management is only supported for MySQL, MongoDB, PostgreSQL, and Oracle connections.
           </div>
         )}
       </div>

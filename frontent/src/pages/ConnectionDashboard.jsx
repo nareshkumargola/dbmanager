@@ -134,6 +134,8 @@ export default function ConnectionDashboard() {
       { id: 'tab-1', name: 'Query 1', query: '', results: [], columns: [], error: '', msg: '', loading: false }
     ];
   });
+  const queryTabsScrollRef = useRef(null);
+  const fullscreenQueryTabsScrollRef = useRef(null);
 
   const [activeQueryTabId, setActiveQueryTabId] = useState(() => {
     try {
@@ -211,6 +213,15 @@ export default function ConnectionDashboard() {
   const queryLoading = activeQueryTab.loading;
   const queryError = activeQueryTab.error;
   const queryMsg = activeQueryTab.msg;
+
+  useEffect(() => {
+    [queryTabsScrollRef.current, fullscreenQueryTabsScrollRef.current].forEach(container => {
+      const activeTab = Array.from(container?.children || []).find(
+        tab => tab.dataset.queryTabId === activeQueryTabId
+      );
+      activeTab?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    });
+  }, [activeQueryTabId, isQueryMaximized]);
 
   const setQuery = (val) => {
     setQueryTabs(prev => prev.map(t => t.id === activeQueryTabId ? { ...t, query: typeof val === 'function' ? val(t.query) : val } : t));
@@ -929,6 +940,7 @@ export default function ConnectionDashboard() {
       const initialTables = objRes.data.result?.tables || [];
       setDatabaseTableOffset(initialTableOffset + initialTables.length);
       setDatabaseTablesHasMore(objRes.data.tablesHasMore || objRes.data.result?.tablesHasMore || false);
+      await loadTableDetails(false, dbName);
     } catch (err) {
       console.error('Failed to select database:', err);
       setError('Data load failed - check database connection');
@@ -1011,13 +1023,13 @@ export default function ConnectionDashboard() {
     }
   };
 
-  const loadTableDetails = async (append = false) => {
-    if (!activeDb || tableDetailsLoading) return;
+  const loadTableDetails = async (append = false, databaseName = activeDb) => {
+    if (!databaseName || tableDetailsLoading) return;
     const offset = append ? tableDetailsOffset : 0;
     setTableDetailsLoading(true);
     try {
       const res = await API.get(
-        `/monitor/${id}/tables?limit=50&offset=${offset}&database=${encodeURIComponent(activeDb)}`
+        `/monitor/${id}/tables?limit=50&offset=${offset}&database=${encodeURIComponent(databaseName)}`
       );
       const loadedTables = res.data.tables || [];
       setTableDetails(prev => append ? [...prev, ...loadedTables] : loadedTables);
@@ -1455,7 +1467,7 @@ export default function ConnectionDashboard() {
               ${tableDetails.map((table, i) => `
                 <tr style="${i % 2 === 0 ? 'background: #f9f9f9;' : ''}">
                   <td style="border: 1px solid #ddd; padding: 6px;">${table.table}</td>
-                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${table.rows.toLocaleString()}</td>
+                  <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${table.rows !== null && table.rows !== undefined && Number.isFinite(Number(table.rows)) ? Number(table.rows).toLocaleString() : 'N/A'}</td>
                   <td style="border: 1px solid #ddd; padding: 6px; text-align: right;">${table.sizeMB}</td>
                 </tr>
               `).join('')}
@@ -1807,6 +1819,7 @@ export default function ConnectionDashboard() {
   );
 
   const formatTableSize = (sizeMB, unit) => {
+    if (sizeMB === null || sizeMB === undefined || !Number.isFinite(Number(sizeMB))) return 'N/A';
     const val = parseFloat(sizeMB || 0);
     switch (unit) {
       case 'Bytes':
@@ -1833,8 +1846,8 @@ export default function ConnectionDashboard() {
       const rawObj = rawList.find(t => (typeof t === 'object' && (t.name === tableName || t.table_name === tableName || Object.values(t)[0] === tableName)));
       return {
         name: tableName,
-        rows: detail ? detail.rows : (rawObj?.rows || rawObj?.count || 0),
-        sizeMB: detail ? detail.sizeMB : (rawObj?.sizeMB || 0.01)
+        rows: detail ? detail.rows : (rawObj?.rows ?? rawObj?.count ?? null),
+        sizeMB: detail ? detail.sizeMB : (rawObj?.sizeMB ?? null)
       };
     });
   };
@@ -2330,10 +2343,10 @@ export default function ConnectionDashboard() {
                             <span className="text-xs font-extrabold text-gray-700 font-mono">{t.table}</span>
                             <span className="text-gray-300 text-xs">—</span>
                             <span className="text-xs font-bold text-gray-500 font-mono">
-                              {t.rows !== undefined ? t.rows.toLocaleString() : '0'} rows
+                              {t.rows !== null && t.rows !== undefined && Number.isFinite(Number(t.rows)) ? Number(t.rows).toLocaleString() : 'N/A'} rows
                             </span>
                             <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold font-mono ml-1">
-                              {t.sizeMB !== undefined ? `${t.sizeMB} MB` : t.size || 'N/A'}
+                              {t.sizeMB !== null && t.sizeMB !== undefined && Number.isFinite(Number(t.sizeMB)) ? `${t.sizeMB} MB` : t.size || 'N/A'}
                             </span>
                           </div>
                           
@@ -2724,7 +2737,7 @@ export default function ConnectionDashboard() {
                                   title="Click to sort by Row Count"
                                 >
                                   <div className="flex items-center gap-1.5">
-                                    <span>Est. Rows</span>
+                                    <span>Rows</span>
                                     <span className="text-[11px]">
                                       {tablesListSortCol === 'rows'
                                         ? tablesListSortDir === 'asc' ? '🔼' : '🔽'
@@ -2763,7 +2776,7 @@ export default function ConnectionDashboard() {
                                     {t.name}
                                   </td>
                                   <td className="px-4 py-3 text-xs font-mono text-gray-600">
-                                    {t.rows.toLocaleString()} rows
+                                    {t.rows !== null && t.rows !== undefined && Number.isFinite(Number(t.rows)) ? Number(t.rows).toLocaleString() : 'N/A'} rows
                                   </td>
                                   <td className="px-4 py-3 text-xs font-mono">
                                     <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
@@ -3998,14 +4011,16 @@ export default function ConnectionDashboard() {
             {activeTab === 'query' && (
               <div className="w-[90%] mx-auto">
                 {/* Query Tabs Header Bar */}
-                <div className="flex items-center justify-between gap-4 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
+                <div className="flex items-center gap-0 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
                   {/* Left Side: Tabs List & Add Button */}
-                  <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pb-1">
+                  <div className="w-1/2 flex-none min-w-0 flex items-center gap-1.5 pb-1">
+                    <div ref={queryTabsScrollRef} className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {queryTabs.map((tab) => {
                       const isActive = tab.id === activeQueryTabId;
                       return (
                         <div
                           key={tab.id}
+                          data-query-tab-id={tab.id}
                           onClick={() => setActiveQueryTabId(tab.id)}
                           className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs shrink-0 select-none ${
                             isActive
@@ -4046,8 +4061,9 @@ export default function ConnectionDashboard() {
                         </div>
                       );
                     })}
-                    
-                    {/* Add New Tab Button */}
+                    </div>
+
+                    {/* Keep the add button visible while the tab list scrolls. */}
                     <button
                       type="button"
                       onClick={addQueryTab}
@@ -4059,7 +4075,7 @@ export default function ConnectionDashboard() {
                   </div>
 
                   {/* Right Side: Execution Controls */}
-                  <div className="flex items-center gap-1.5 pb-1 select-none">
+                  <div className="w-1/2 flex-none min-w-0 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pb-1 select-none [&>*]:shrink-0">
                     {/* Interactive Role Mode Button & Privileges Modal Trigger */}
                     {(() => {
                       const effectiveMode = user?.accessMode || (user?.role === 'readwrite' ? 'readwrite' : user?.role === 'read' ? 'read' : 'read');
@@ -4489,12 +4505,13 @@ export default function ConnectionDashboard() {
                           {/* Left Side: Fullscreen Editor Panel */}
                           <div className="flex-1 flex flex-col min-w-0">
                         {/* Query Tabs Bar (Fullscreen) */}
-                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
+                        <div ref={fullscreenQueryTabsScrollRef} className="flex items-center gap-1.5 overflow-x-auto pb-1 select-none scrollbar-none" style={{ marginBottom: '-1px' }}>
                           {queryTabs.map((tab) => {
                             const isActive = tab.id === activeQueryTabId;
                             return (
                               <div
                                 key={tab.id}
+                                data-query-tab-id={tab.id}
                                 onClick={() => setActiveQueryTabId(tab.id)}
                                 className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer transition-all duration-150 shadow-3xs ${
                                   isActive

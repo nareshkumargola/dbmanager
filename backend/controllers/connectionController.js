@@ -4,6 +4,8 @@ const { saveHistory } = require('./queryHistoryController');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 const { logAuditTrail } = require('../utils/auditLogger');
 const { mergeViews } = require('../utils/viewUtils');
+const { splitOracleStatements } = require('../utils/oracleQueryUtils');
+const BinlogState = require('../models/binlogStateModel');
 
 const getObjectCounts = async (conn, type, database) => {
   const counts = { totalTables: 0, views: 0, procedures: 0, functions: 0, triggers: 0, indexes: 0, constraints: 0 };
@@ -775,7 +777,7 @@ exports.getDatabaseObjects = async (req, res) => {
       let tables = [], views = [], procedures = [], functions = [], triggers = [], indexes = [], constraints = [];
       try {
         const r = await conn.execute(`SELECT table_name FROM user_tables ORDER BY table_name OFFSET ${tableOffset} ROWS FETCH NEXT ${tableLimit} ROWS ONLY`);
-        tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: 0.01 }));
+        tables = r.rows.map(row => ({ table_name: row.TABLE_NAME || row.table_name || Object.values(row)[0], name: row.TABLE_NAME || row.table_name || Object.values(row)[0], sizeMB: null }));
       } catch (e) {}
 
       if (summaryOnly) {
@@ -1100,8 +1102,23 @@ exports.runQuery = async (req, res) => {
     }
 
     else if (type === 'oracle') {
-      const result = await conn.execute(query, [], { autoCommit: true });
-      results = result.rows || { success: true, rowsAffected: result.rowsAffected };
+      const statements = splitOracleStatements(query);
+      if (statements.length === 0) {
+        throw new Error('Oracle query does not contain an executable statement.');
+      }
+
+      let totalRowsAffected = 0;
+      let lastResult;
+
+      for (const statement of statements) {
+        lastResult = await conn.execute(statement, [], { autoCommit: true });
+        totalRowsAffected += lastResult.rowsAffected || 0;
+      }
+
+      results = lastResult?.rows || { success: true, rowsAffected: totalRowsAffected };
+      if (!lastResult?.rows) {
+        results.affectedRows = totalRowsAffected;
+      }
     }
 
     const executionTime = Date.now() - startTime;
@@ -1448,6 +1465,9 @@ exports.getDatabases = async (req, res) => {
         .map(d => d.name)
         .filter(d => !['admin', 'local', 'config'].includes(d));
     }
+    else if (type === 'oracle') {
+      databases = [connection.database || connection.username].filter(Boolean);
+    }
 
     if (req.user.role !== 'admin') {
       const User = require('../models/userModel');
@@ -1545,8 +1565,34 @@ exports.startBinlogMonitoring = async (req, res) => {
       return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
+    if (connection.type === 'oracle') {
+      const { startOracleLogMiner } = require('../services/oracleLogMiner');
+      const logMinerStatus = await startOracleLogMiner(connection);
+      await BinlogState.findOneAndUpdate(
+        { connectionId: connection._id },
+        {
+          $set: {
+            logFile: 'oracle-logminer',
+            position: logMinerStatus.startScn,
+            cursor: null,
+            mode: 'real',
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true, new: true }
+      );
+      return res.status(200).json({
+        success: true,
+        logFile: 'oracle-logminer',
+        position: logMinerStatus.startScn,
+        logBinEnabled: true,
+        mode: 'real',
+        message: `Oracle LogMiner ready (${logMinerStatus.logMode}, ${logMinerStatus.logFileCount} redo logs).`
+      });
+    }
+
     if (connection.type !== 'mysql' && connection.type !== 'postgresql' && connection.type !== 'mongodb') {
-      return res.status(400).json({ message: 'Log monitoring is only supported for MySQL, PostgreSQL, and MongoDB connections!' });
+      return res.status(400).json({ message: 'Log monitoring is only supported for MySQL, PostgreSQL, MongoDB and Oracle connections!' });
     }
 
     if (connection.type === 'postgresql' || connection.type === 'mongodb') {
@@ -1783,7 +1829,7 @@ const parseSQLDiff = (statement, eventType) => {
 };
 
 // Internal poller accessible by HTTP controller and Socket.io setup
-exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode, userId) => {
+exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode, userId, cursor = null) => {
   const Connection = require('../models/connectionModel');
   const { getConnection } = require('../connections/connectionManager');
 
@@ -1794,6 +1840,14 @@ exports.pollBinlogEventsInternal = async (connectionId, logFile, position, mode,
 
   const startPos = parseInt(position) || 4;
   const activeFile = logFile || '';
+
+  if (connection.type === 'oracle') {
+    if (mode !== 'real') {
+      throw new Error('Oracle LogMiner cannot run in simulation mode.');
+    }
+    const { pollOracleLogMiner } = require('../services/oracleLogMiner');
+    return pollOracleLogMiner(connection, startPos, cursor, userId);
+  }
 
   if (mode === 'simulation' || activeFile.startsWith('mock-')) {
     const events = [];
@@ -2237,7 +2291,7 @@ exports.getBinlogEvents = async (req, res) => {
       return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
-    const result = await exports.pollBinlogEventsInternal(id, logFile, position, mode, req.user.id);
+    const result = await exports.pollBinlogEventsInternal(id, logFile, position, mode, req.user.id, req.query.cursor ? JSON.parse(req.query.cursor) : null);
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ message: 'Error retrieving binlog events', error: err.message });

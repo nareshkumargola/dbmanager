@@ -471,13 +471,15 @@ export default function Connections() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/query', { state: { batchMode: true } })}
-              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 text-sm font-medium rounded-lg transition shadow-sm flex items-center gap-2"
-              title="Open All Connection Query"
-            >
-              <span>💻</span> All Connection Query
-            </button>
+            {!showForm && (
+              <button
+                onClick={() => navigate('/query', { state: { batchMode: true } })}
+                className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 text-sm font-medium rounded-lg transition shadow-sm flex items-center gap-2"
+                title="Open All Connection Query"
+              >
+                <span>💻</span> All Connection Query
+              </button>
+            )}
             {hasPermission('connections') && (
               <button
                 onClick={() => { setShowForm(!showForm); setTestResult(null); }}
@@ -1020,46 +1022,44 @@ export default function Connections() {
 
                 {/* Action Button Cards Outside on the Right Side */}
                 <div className="flex gap-2 shrink-0 items-center">
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql') && hasPermission('userManagement') && (
+                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('userManagement') && (
                     <button
                       onClick={() => navigate(`/connections/${conn._id}/users`)}
                       className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Manage MySQL Users" : conn.type === 'mongodb' ? "Manage MongoDB Users" : "Manage PostgreSQL Users"}
+                      title={conn.type === 'mysql' ? "Manage MySQL Users" : conn.type === 'mongodb' ? "Manage MongoDB Users" : conn.type === 'oracle' ? "Manage Oracle Users" : "Manage PostgreSQL Users"}
                     >
                       <span className="text-xl">👤</span>
                       <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Users Manage</span>
                     </button>
                   )}
 
-                  {hasPermission('monitor') && (
-                    <button
-                      onClick={() => navigate(`/connections/${conn._id}/monitor`)}
-                      className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title="Monitor Database Server"
-                    >
-                      <span className="text-xl">📊</span>
-                      <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Monitor</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => navigate(`/connections/${conn._id}/monitor`)}
+                    className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
+                    title="Monitor Database Server"
+                  >
+                    <span className="text-xl">📊</span>
+                    <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Monitor</span>
+                  </button>
 
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql') && hasPermission('binlog') && (
+                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('binlog') && (
                     <button
                       onClick={() => navigate(`/connections/${conn._id}/binlog`)}
                       className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Monitor MySQL Binlogs" : (conn.type === 'postgresql' ? "Monitor PostgreSQL WAL" : "Monitor MongoDB Oplog")}
+                      title={conn.type === 'mysql' ? "Monitor MySQL Binlogs" : conn.type === 'postgresql' ? "Monitor PostgreSQL WAL" : conn.type === 'oracle' ? "Monitor Oracle Redo / LogMiner" : "Monitor MongoDB Oplog"}
                     >
                       <span className="text-xl">📡</span>
                       <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">
-                        {conn.type === 'mysql' ? 'Binlog Monitor' : (conn.type === 'postgresql' ? 'WAL Monitor' : 'Oplog Monitor')}
+                        {conn.type === 'mysql' ? 'Binlog Monitor' : conn.type === 'postgresql' ? 'WAL Monitor' : conn.type === 'oracle' ? 'Redo Monitor' : 'Oplog Monitor'}
                       </span>
                     </button>
                   )}
 
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql') && hasPermission('backup') && (
+                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('backup') && (
                     <button
                       onClick={() => navigate(`/connections/${conn._id}/backup`)}
                       className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Backup & Restore MySQL Server" : conn.type === 'mongodb' ? "Backup & Restore MongoDB" : "Backup & Restore PostgreSQL"}
+                      title={conn.type === 'mysql' ? "Backup & Restore MySQL Server" : conn.type === 'mongodb' ? "Backup & Restore MongoDB" : conn.type === 'oracle' ? "Backup & Restore Oracle Schema" : "Backup & Restore PostgreSQL"}
                     >
                       <span className="text-xl">💾</span>
                       <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Backup / Restore</span>

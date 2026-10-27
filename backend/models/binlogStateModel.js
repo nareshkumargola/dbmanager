@@ -15,6 +15,10 @@ const binlogStateSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  cursor: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
   mode: {
     type: String,
     enum: ['real', 'simulation'],

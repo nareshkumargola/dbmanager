@@ -54,6 +54,13 @@ export default function ConnectionBinlog() {
     window.addEventListener('mouseup', onMouseUp);
   };
   const [error, setError] = useState('');
+  const logSource = connectionType === 'mongodb'
+    ? 'Oplog'
+    : connectionType === 'postgresql'
+      ? 'WAL'
+      : connectionType === 'oracle'
+        ? 'Redo / LogMiner'
+        : 'Binlog';
 
   useEffect(() => {
     const fetchConnectionAndDatabases = async () => {
@@ -110,7 +117,7 @@ export default function ConnectionBinlog() {
         backText="Connections"
         extraLeft={
           <span className="text-sm font-medium text-gray-900">
-            📡 {connectionName} ({connectionType === 'mongodb' ? 'Oplog' : (connectionType === 'postgresql' ? 'WAL' : 'Binlog')} Monitor)
+            📡 {connectionName} ({logSource} Monitor)
           </span>
         }
       />
@@ -126,7 +133,7 @@ export default function ConnectionBinlog() {
             <span className="text-[10px] text-gray-400 font-mono font-medium">{sidebarWidth}px</span>
           </div>
           <p className="text-[10px] text-gray-400 px-3 pt-2 leading-normal shrink-0">
-            Select a database to filter {connectionType === 'mongodb' ? 'oplogs' : (connectionType === 'postgresql' ? 'Write-Ahead logs (WAL)' : 'binary logs')}.
+            Select a database/schema to filter {logSource} events.
           </p>
           
           {error && (

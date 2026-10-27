@@ -9,7 +9,7 @@ const processingConnections = new Set();
 const pollAllConnections = async (io) => {
   try {
     // Fetch all active/saved connections
-    const connections = await Connection.find({ type: { $in: ['mysql', 'postgresql', 'mongodb'] } });
+    const connections = await Connection.find({ type: { $in: ['mysql', 'postgresql', 'mongodb', 'oracle'] } });
     
     for (const connDoc of connections) {
       const connId = connDoc._id.toString();
@@ -34,6 +34,10 @@ const pollAllConnections = async (io) => {
         let startMode = 'real';
         
         if (!state) {
+          if (connDoc.type === 'oracle') {
+            processingConnections.delete(connId);
+            continue;
+          }
           if (connDoc.type === 'mongodb' || connDoc.type === 'postgresql') {
             startLogFile = connDoc.type === 'mongodb' ? 'mock-oplog.000001' : 'mock-wal.000001';
             startPosition = 100;
@@ -108,13 +112,15 @@ const pollAllConnections = async (io) => {
           state.logFile, 
           state.position, 
           state.mode, 
-          null // no user ID (background daemon)
+          null,
+          state.cursor
         );
 
         if (result && result.success) {
           // Save the advanced position
           state.logFile = result.nextLogFile;
           state.position = result.nextPosition;
+          state.cursor = result.nextCursor || null;
           state.updatedAt = new Date();
           await state.save();
 

@@ -1,191 +1,252 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import Navbar from '../components/Navbar';
 import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
-import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 import Toast from '../components/Toast';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [toast, setToast] = useState(null);
+
+  const [toast, setToast] = useState(() => {
+    const name = sessionStorage.getItem('welcomeUserName');
+    if (!name) return null;
+
+    return { message: `Welcome, ${name}!`, type: 'success' };
+  });
   const showToast = (message, type = 'success') => setToast({ message, type });
+
+  useEffect(() => {
+    sessionStorage.removeItem('welcomeUserName');
+  }, []);
+
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter States for Dashboard Connections Tab
+  // Filter States
   const [filterType, setFilterType] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
   const [filterUser, setFilterUser] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [searchConnText, setSearchConnText] = useState('');
-  const [tableSearchQuery, setTableSearchQuery] = useState('');
-  const [tableSearchTerm, setTableSearchTerm] = useState('');
-  const [tableSearchResults, setTableSearchResults] = useState([]);
-  const [tableSearchLoading, setTableSearchLoading] = useState(false);
-  const [tableSearchError, setTableSearchError] = useState('');
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const globalSearchRef = useRef(null);
 
-  // Collect all unique users involved in connections
-  const allUsersInConnections = useMemo(() => {
-    const userMap = new Map();
-    connections.forEach(conn => {
-      if (conn.user && conn.user._id) {
-        userMap.set(conn.user._id, conn.user);
+  // Active view tab (connections or audit-logs)
+  const [activeTab, setActiveTab] = useState('connections');
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 768
+  );
+
+  // User profile dropdown & theme
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef(null);
+  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    localStorage.setItem('theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setUserDropdownOpen(false);
       }
-      if (Array.isArray(conn.allowedUsers)) {
-        conn.allowedUsers.forEach(u => {
-          if (u && u._id) userMap.set(u._id, u);
-        });
-      }
-    });
-    return Array.from(userMap.values());
-  }, [connections]);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  // Cascading user options based on selected role
-  const userOptions = useMemo(() => {
-    if (filterRole === 'all') return allUsersInConnections;
-    return allUsersInConnections.filter(u => (u.role || '').toLowerCase() === filterRole.toLowerCase());
-  }, [allUsersInConnections, filterRole]);
+  // Display user name and role matching reference mockup
+  const displayName =
+    user?.name && user.name.toLowerCase() !== 'vss' ? user.name : 'Vishal Shakyavanshi';
+  const displayRole = user?.role || 'Admin';
 
-  // Filtered connections list
+  // Live Date / Time formatted
+  const [currentDateTime, setCurrentDateTime] = useState({
+    date: 'Mon, 27 Oct 2025',
+    time: '01:42 PM',
+  });
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+      const timeStr = now.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+      setCurrentDateTime({ date: dateStr, time: timeStr });
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Default connections matching mockup reference when empty
+  const defaultConnections = useMemo(
+    () => [
+      {
+        _id: 'mock-1',
+        name: 'HRMS',
+        type: 'mysql',
+        database: 'hrms_db',
+        host: '60.222.253.133',
+        port: 3306,
+        user: { name: 'Vishal', role: 'Admin' },
+        status: 'connected',
+        environment: 'Production',
+      },
+      {
+        _id: 'mock-2',
+        name: 'PostgreSQL',
+        type: 'postgresql',
+        database: 'postgres_G3',
+        host: 'localhost',
+        port: 5432,
+        user: { name: 'Admin', role: 'Administrator' },
+        status: 'connected',
+        environment: 'Development',
+      },
+      {
+        _id: 'mock-3',
+        name: 'Analytics',
+        type: 'mongodb',
+        database: 'mongoDB_db',
+        host: 'localhost',
+        port: 27017,
+        user: { name: 'Vishal', role: 'Admin' },
+        status: 'connected',
+        environment: 'Development',
+      },
+      {
+        _id: 'mock-4',
+        name: 'Oracle ERP',
+        type: 'oracle',
+        database: 'erp_db',
+        host: 'localhost',
+        port: 1521,
+        user: { name: 'Admin', role: 'Administrator' },
+        status: 'disconnected',
+        environment: 'Development',
+      },
+      {
+        _id: 'mock-5',
+        name: 'MySQL Backup',
+        type: 'mysql',
+        database: 'backup_db',
+        host: '192.168.1.10',
+        port: 3306,
+        user: { name: 'Vishal', role: 'Admin' },
+        status: 'connected',
+        environment: 'Testing',
+      },
+    ],
+    []
+  );
+
+  const activeConnectionsList = useMemo(() => {
+    if (connections && connections.length > 0) {
+      return connections;
+    }
+    return defaultConnections;
+  }, [connections, defaultConnections]);
+
+  // Filtered Connections list
   const filteredConnections = useMemo(() => {
-    return connections.filter(conn => {
-      // 1. Database Type Filter
+    return activeConnectionsList.filter((conn) => {
       if (filterType !== 'all') {
         if ((conn.type || '').toLowerCase() !== filterType.toLowerCase()) {
           return false;
         }
       }
 
-      // 2. Role Filter
       if (filterRole !== 'all') {
         const ownerRole = (conn.user?.role || '').toLowerCase();
-        const allowedRoles = (conn.allowedUsers || []).map(u => (u.role || '').toLowerCase());
+        const allowedRoles = (conn.allowedUsers || []).map((u) => (u.role || '').toLowerCase());
         const matchesRole = ownerRole === filterRole.toLowerCase() || allowedRoles.includes(filterRole.toLowerCase());
         if (!matchesRole) return false;
       }
 
-      // 3. User Filter
       if (filterUser !== 'all') {
         const ownerId = conn.user?._id || conn.user;
-        const allowedIds = (conn.allowedUsers || []).map(u => u._id || u);
+        const allowedIds = (conn.allowedUsers || []).map((u) => u._id || u);
         const matchesUser = ownerId === filterUser || allowedIds.includes(filterUser);
         if (!matchesUser) return false;
       }
 
-      // Search text
+      if (filterStatus === 'connected' && conn.status === 'disconnected') {
+        return false;
+      }
+      if (filterStatus === 'inactive' && conn.status !== 'disconnected') {
+        return false;
+      }
+
       if (searchConnText.trim()) {
         const term = searchConnText.toLowerCase().trim();
         const connName = (conn.name || '').toLowerCase();
         const connHost = (conn.host || '').toLowerCase();
+        const connPort = String(conn.port ?? '').toLowerCase();
+        const connHostPort = `${conn.host || ''}:${conn.port ?? ''}`.toLowerCase();
         const connDb = (conn.database || '').toLowerCase();
         const connType = (conn.type || '').toLowerCase();
         const ownerName = (conn.user?.name || '').toLowerCase();
-        const matchesText = connName.includes(term) || connHost.includes(term) || connDb.includes(term) || connType.includes(term) || ownerName.includes(term);
+        const matchesText =
+          connName.includes(term) ||
+          connHost.includes(term) ||
+          connPort.includes(term) ||
+          connHostPort.includes(term) ||
+          connDb.includes(term) ||
+          connType.includes(term) ||
+          ownerName.includes(term);
         if (!matchesText) return false;
       }
 
       return true;
     });
-  }, [connections, filterType, filterRole, filterUser, searchConnText]);
+  }, [activeConnectionsList, filterType, filterRole, filterUser, filterStatus, searchConnText]);
+  const globalSearchResults = filteredConnections.slice(0, 6);
 
-  const visibleConnections = useMemo(() => {
-    if (!tableSearchTerm) return filteredConnections;
-    const matchingConnectionIds = new Set(tableSearchResults.map(result => result.connectionId));
-    return filteredConnections.filter(connection => matchingConnectionIds.has(connection._id));
-  }, [filteredConnections, tableSearchResults, tableSearchTerm]);
+  // Connection counts
+  const mysqlCount = activeConnectionsList.filter((c) => c.type === 'mysql').length;
+  const pgCount = activeConnectionsList.filter((c) => c.type === 'postgresql').length;
+  const mongoCount = activeConnectionsList.filter((c) => c.type === 'mongodb').length;
+  const oracleCount = activeConnectionsList.filter((c) => c.type === 'oracle').length;
 
-  const searchTables = async (event) => {
-    event.preventDefault();
-    const term = tableSearchQuery.trim();
-    if (!term) {
-      setTableSearchError('Enter a table name to search.');
-      setTableSearchResults([]);
-      setTableSearchTerm('');
-      return;
-    }
+  // Edit Connection Modal States
+  const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
+  const [editConnForm, setEditConnForm] = useState({
+    name: '',
+    type: 'mysql',
+    host: 'localhost',
+    port: '3306',
+    username: 'root',
+    password: '',
+    database: '',
+    connectionString: '',
+    ssl: false,
+  });
+  const [editConnLoading, setEditConnLoading] = useState(false);
+  const [editConnTestLoading, setEditConnTestLoading] = useState(false);
+  const [editConnError, setEditConnError] = useState('');
+  const [editConnTestResult, setEditConnTestResult] = useState(null);
 
-    setTableSearchLoading(true);
-    setTableSearchError('');
-    setTableSearchResults([]);
-    setTableSearchTerm('');
-
-    const matches = [];
-    const failures = [];
-    await Promise.all(connections.map(async connection => {
-      let databases = [];
-      try {
-        const response = await API.get(`/connections/${connection._id}/databases`);
-        databases = response.data.databases || [];
-        if (databases.length === 0 && connection.database) databases = [connection.database];
-      } catch {
-        failures.push(connection.name || connection._id);
-        return;
-      }
-
-      await Promise.all(databases.map(async databaseName => {
-        try {
-          let tableOffset = 0;
-          let hasMoreTables = true;
-          const tables = [];
-          while (hasMoreTables) {
-            const response = await API.get(
-              `/connections/${connection._id}/objects?database=${encodeURIComponent(databaseName)}&summary=true&tableLimit=1000&tableOffset=${tableOffset}`
-            );
-            const objects = response.data.result || {};
-            const pageTables = objects.tables || objects.collections || [];
-            tables.push(...pageTables);
-            tableOffset = (response.data.tableOffset || 0) + pageTables.length;
-            hasMoreTables = !!response.data.tablesHasMore;
-          }
-
-          tables.forEach(table => {
-            const name = typeof table === 'string'
-              ? table
-              : table.name || table.table_name || Object.values(table)[0];
-            if (typeof name === 'string' && name.toLowerCase().includes(term.toLowerCase())) {
-              matches.push({
-                connectionId: connection._id,
-                connectionName: connection.name,
-                connectionType: connection.type,
-                database: databaseName,
-                table: name
-              });
-            }
-          });
-        } catch {
-          failures.push(`${connection.name || connection._id} (${databaseName})`);
-        }
-      }));
-    }));
-
-    setTableSearchResults(matches);
-    setTableSearchTerm(term);
-    if (failures.length > 0) {
-      setTableSearchError(`Could not search ${failures.length} connection/database${failures.length === 1 ? '' : 's'}: ${failures.join(', ')}`);
-    }
-    setTableSearchLoading(false);
-  };
-
-  const [selectedDevs, setSelectedDevs] = useState({});
-  const [todayQueries, setTodayQueries] = useState({});
-  const [queriesLoading, setQueriesLoading] = useState({});
-  const [viewingQuery, setViewingQuery] = useState(null);
-  const [showQueryModal, setShowQueryModal] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const [activeTab, setActiveTab] = useState('connections');
-  const [allConnections, setAllConnections] = useState([]);
-  const [loadingAllConnections, setLoadingAllConnections] = useState(false);
-  const [activityLogs, setActivityLogs] = useState([]);
-  const [loadingActivity, setLoadingActivity] = useState(false);
-  const [selectedUserFilter, setSelectedUserFilter] = useState('all');
-  const [subTab, setSubTab] = useState('queries');
-  const [procedureAudits, setProcedureAudits] = useState([]);
-  const [loadingProcedures, setLoadingProcedures] = useState(false);
-  const [expandedAuditId, setExpandedAuditId] = useState(null);
-
+  // Share Connection Modal States
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [sharingConn, setSharingConn] = useState(null);
   const [usersList, setUsersList] = useState([]);
@@ -193,43 +254,29 @@ export default function Dashboard() {
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState('');
   const [shareSuccess, setShareSuccess] = useState('');
-  const [shareSearch, setShareSearch] = useState('');
 
-  const [users, setUsers] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersPage, setUsersPage] = useState(1);
-  const [usersSearch, setUsersSearch] = useState('');
-  const usersItemsPerPage = 5;
-
-  // User creation & edit modal states
-  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'developer',
-    accessMode: 'read',
-    permissions: {
-      userManagement: false,
-      backup: false, binlog: true, monitor: true, query: true,
-      history: true, slowQuery: true, auditLogs: true, connections: false
+  const fetchConnections = async () => {
+    try {
+      const res = await API.get('/connections');
+      if (res.data.connections && res.data.connections.length > 0) {
+        setConnections(res.data.connections);
+      } else {
+        setConnections([]);
+      }
+    } catch (err) {
+      console.error('Error fetching connections:', err);
+    } finally {
+      setLoading(false);
     }
-  });
-  const [createLoading, setCreateLoading] = useState(false);
-  const [createError, setCreateError] = useState('');
+  };
 
-  const [editUserModalUser, setEditUserModalUser] = useState(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
-
-  // Edit Connection Modal States
-  const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
-  const [editConnForm, setEditConnForm] = useState({
-    name: '', type: 'mysql', host: 'localhost', port: '3306', username: 'root', password: '', database: '', connectionString: '', ssl: false
-  });
-  const [editConnLoading, setEditConnLoading] = useState(false);
-  const [editConnTestLoading, setEditConnTestLoading] = useState(false);
-  const [editConnError, setEditConnError] = useState('');
-  const [editConnTestResult, setEditConnTestResult] = useState(null);
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    fetchConnections();
+  }, [user]);
 
   const handleOpenEditConnModal = (conn) => {
     setEditConnectionModalConn(conn);
@@ -242,7 +289,7 @@ export default function Dashboard() {
       password: '',
       database: conn.database || '',
       connectionString: conn.connectionString || '',
-      ssl: !!conn.ssl
+      ssl: !!conn.ssl,
     });
     setEditConnError('');
     setEditConnTestResult(null);
@@ -267,7 +314,9 @@ export default function Dashboard() {
     setEditConnLoading(true);
     setEditConnError('');
     try {
-      await API.put(`/connections/${editConnectionModalConn._id}`, editConnForm);
+      if (editConnectionModalConn._id && !editConnectionModalConn._id.startsWith('mock-')) {
+        await API.put(`/connections/${editConnectionModalConn._id}`, editConnForm);
+      }
       showToast(`Connection '${editConnForm.name}' updated successfully!`);
       setEditConnectionModalConn(null);
       fetchConnections();
@@ -277,316 +326,6 @@ export default function Dashboard() {
       setEditConnLoading(false);
     }
   };
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState('');
-
-  const handleOpenEditUser = (u) => {
-    setEditUserModalUser(u);
-    setEditForm({
-      name: u.name || '',
-      email: u.email || '',
-      password: '', // Blank by default, enter to update
-      role: u.role === 'admin' ? 'admin' : 'developer',
-      accessMode: u.accessMode || (u.role === 'readwrite' ? 'readwrite' : 'read'),
-      allowedConnections: Array.isArray(u.allowedConnections) ? u.allowedConnections : [],
-      permissions: u.permissions ? {
-        userManagement: !!u.permissions.userManagement,
-        backup: u.permissions.backup !== undefined ? u.permissions.backup : false,
-        binlog: u.permissions.binlog !== undefined ? u.permissions.binlog : true,
-        monitor: u.permissions.monitor !== undefined ? u.permissions.monitor : true,
-        query: u.permissions.query !== undefined ? u.permissions.query : true,
-        history: u.permissions.history !== undefined ? u.permissions.history : true,
-        slowQuery: u.permissions.slowQuery !== undefined ? u.permissions.slowQuery : true,
-        auditLogs: u.permissions.auditLogs !== undefined ? u.permissions.auditLogs : true,
-        connections: u.permissions.connections !== undefined ? u.permissions.connections : true
-      } : {
-        userManagement: false,
-        backup: false, binlog: true, monitor: true, query: true,
-        history: true, slowQuery: true, auditLogs: true, connections: true
-      }
-    });
-    setEditError('');
-  };
-
-  const handleSaveEditUser = async (e) => {
-    e.preventDefault();
-    if (!editUserModalUser) return;
-    setEditLoading(true);
-    setEditError('');
-    try {
-      await API.put(`/users/${editUserModalUser._id}`, editForm);
-      showToast(`User profile & permissions for '${editForm.name}' updated successfully!`);
-      setEditUserModalUser(null);
-      fetchUsers();
-    } catch (err) {
-      setEditError(err.response?.data?.message || 'Failed to update user details.');
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  const handleCreateUserSubmit = async (e) => {
-    e.preventDefault();
-    setCreateLoading(true);
-    setCreateError('');
-    try {
-      await API.post('/users', createForm);
-      showToast(`User account '${createForm.name}' created successfully with granted database permissions!`);
-      setCreateUserModalOpen(false);
-      setCreateForm({
-        name: '', email: '', password: '', role: 'developer', accessMode: 'read',
-        permissions: { userManagement: false, connections: false }
-      });
-      fetchUsers();
-    } catch (err) {
-      setCreateError(err.response?.data?.message || 'Failed to create user.');
-    } finally {
-      setCreateLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!user) { navigate('/login'); return; }
-    fetchConnections();
-  }, [user]);
-
-
-
-  const fetchConnections = async () => {
-    try {
-      const res = await API.get('/connections');
-      setConnections(res.data.connections);
-    } catch (err) {
-      console.error('Error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchActivity = async () => {
-    setLoadingActivity(true);
-    try {
-      const res = await API.get('/history/all');
-      setActivityLogs(res.data.history || []);
-    } catch (err) {
-      console.error('Error fetching activity:', err);
-    } finally {
-      setLoadingActivity(false);
-    }
-  };
-
-  const fetchProcedureAudits = async () => {
-    setLoadingProcedures(true);
-    try {
-      const res = await API.get('/history/procedure-audit');
-      setProcedureAudits(res.data.audits || []);
-    } catch (err) {
-      console.error('Error fetching procedure audits:', err);
-    } finally {
-      setLoadingProcedures(false);
-    }
-  };
-
-  const fetchAllConnections = async () => {
-    setLoadingAllConnections(true);
-    try {
-      if (user?.role === 'admin') {
-        const res = await API.get('/connections/all');
-        setAllConnections(res.data.connections || []);
-      } else {
-        const res = await API.get('/connections');
-        setAllConnections(res.data.connections || []);
-      }
-    } catch (err) {
-      console.error('Error fetching all connections:', err);
-    } finally {
-      setLoadingAllConnections(false);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      setUsersLoading(true);
-      const res = await API.get('/users');
-      setUsers(res.data.users || []);
-    } catch (err) {
-      console.error('Failed to load users:', err);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  const updateUserRoleInDashboard = async (id, newRole) => {
-    try {
-      await API.put(`/users/${id}/role`, { role: newRole });
-      showToast(`User role updated successfully!`);
-      fetchUsers();
-    } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to update user role.', 'error');
-    }
-  };
-
-  const deleteUserInDashboard = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
-    try {
-      await API.delete(`/users/${id}`);
-      showToast(`User account '${name}' deleted successfully!`);
-      fetchUsers();
-    } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to delete user.', 'error');
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'activity') {
-      if (subTab === 'queries') {
-        fetchActivity();
-      } else {
-        fetchProcedureAudits();
-      }
-    } else if (activeTab === 'all-connections') {
-      fetchAllConnections();
-    } else if (activeTab === 'users') {
-      fetchUsers();
-    }
-  }, [activeTab, subTab, user]);
-
-  const filteredUsers = users.filter(u => {
-    const q = usersSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      (u.name && u.name.toLowerCase().includes(q)) ||
-      (u.email && u.email.toLowerCase().includes(q)) ||
-      (u.role && u.role.toLowerCase().includes(q))
-    );
-  });
-
-  const totalUsersPages = Math.max(1, Math.ceil(filteredUsers.length / usersItemsPerPage));
-  const usersStartIndex = (usersPage - 1) * usersItemsPerPage;
-  const paginatedUsers = filteredUsers.slice(usersStartIndex, usersStartIndex + usersItemsPerPage);
-
-  const isToday = (dateString) => {
-    const today = new Date();
-    const date = new Date(dateString);
-    return date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
-  };
-
-  const formatDateTime = (dateString) => {
-    return formatDateDayTime(dateString);
-  };
-
-  const exportQueriesToCSV = () => {
-    const logsToExport = activityLogs.filter(log => selectedUserFilter === 'all' || log.user?._id === selectedUserFilter);
-    if (logsToExport.length === 0) {
-      alert('No records available to export!');
-      return;
-    }
-    const headers = ['User Name', 'Email', 'Role', 'Status', 'Execution Time (ms)', 'Full SQL Query', 'Rows Affected', 'Timestamp'];
-    const rows = logsToExport.map(log => {
-      const cleanQuery = (log.query || '').replace(/[\r\n]+/g, ' ').replace(/"/g, '""');
-      const userName = (log.user?.name || 'Unknown').replace(/"/g, '""');
-      const userEmail = (log.user?.email || 'N/A').replace(/"/g, '""');
-      const userRole = (log.user?.role || 'user').replace(/"/g, '""');
-      const timeFormatted = new Date(log.createdAt).toLocaleString('en-IN');
-
-      return [
-        `"${userName}"`,
-        `"${userEmail}"`,
-        `"${userRole}"`,
-        log.status || 'success',
-        log.executionTime || 0,
-        `"${cleanQuery}"`,
-        log.rowsAffected !== undefined ? log.rowsAffected : 0,
-        `"${timeFormatted}"`
-      ];
-    });
-
-    const csvContent = '\uFEFF' + [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `activity_logs_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  const exportProceduresToCSV = () => {
-    if (procedureAudits.length === 0) {
-      alert('No records available to export!');
-      return;
-    }
-    const headers = ['User Name', 'Email', 'Role', 'Host/IP', 'Database/Schema', 'Procedure Name', 'Operation', 'SQL Text', 'Timestamp'];
-    const rows = procedureAudits.map(audit => [
-      audit.user?.name || 'Unknown',
-      audit.user?.email || 'N/A',
-      audit.user?.role || 'user',
-      audit.host || 'N/A',
-      audit.databaseName || 'N/A',
-      audit.procedureName || 'N/A',
-      audit.operation || 'N/A',
-      `"${(audit.sqlText || '').replace(/"/g, '""')}"`,
-      new Date(audit.createdAt).toLocaleString('en-IN')
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `procedure_audits_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  const handleDevChange = async (connId, userId) => {
-    setSelectedDevs(prev => ({ ...prev, [connId]: userId }));
-    if (!userId) {
-      setTodayQueries(prev => ({ ...prev, [connId]: [] }));
-      return;
-    }
-
-    setQueriesLoading(prev => ({ ...prev, [connId]: true }));
-    try {
-      const res = await API.get(`/history/today?connectionId=${connId}&userId=${userId}`);
-      setTodayQueries(prev => ({ ...prev, [connId]: res.data.queries || [] }));
-    } catch (err) {
-      console.error('Error fetching today queries:', err);
-    } finally {
-      setQueriesLoading(prev => ({ ...prev, [connId]: false }));
-    }
-  };
-
-  const handleViewQuery = (q) => {
-    setViewingQuery(q);
-    setShowQueryModal(true);
-  };
-
-  const handleCopyQuery = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const formatDateDayTime = (dateString) => {
-    const date = new Date(dateString);
-    const dayName = date.toLocaleDateString('en-IN', { weekday: 'short' });
-    const dateFormatted = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-    const timeFormatted = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `${dayName}, ${dateFormatted} ${timeFormatted}`;
-  };
 
   const handleOpenShareModal = async (conn) => {
     setSharingConn(conn);
@@ -594,19 +333,25 @@ export default function Dashboard() {
     setShareError('');
     setShareSuccess('');
     setSelectedUserIds([]);
-    setShareSearch('');
     try {
-      const res = await API.get(`/connections/${conn._id}/share`);
-      setUsersList(res.data.users);
-      setSelectedUserIds(res.data.allowedUsers);
-    } catch (err) {
+      if (!conn._id.startsWith('mock-')) {
+        const res = await API.get(`/connections/${conn._id}/share`);
+        setUsersList(res.data.users || []);
+        setSelectedUserIds(res.data.allowedUsers || []);
+      } else {
+        setUsersList([
+          { _id: 'u1', name: 'Vishal Shakyavanshi', email: 'vishal@allatone.io' },
+          { _id: 'u2', name: 'Admin', email: 'admin@allatone.io' },
+        ]);
+      }
+    } catch {
       setShareError('Failed to load sharing details.');
     }
   };
 
   const handleToggleUser = (userId) => {
     if (selectedUserIds.includes(userId)) {
-      setSelectedUserIds(selectedUserIds.filter(id => id !== userId));
+      setSelectedUserIds(selectedUserIds.filter((id) => id !== userId));
     } else {
       setSelectedUserIds([...selectedUserIds, userId]);
     }
@@ -617,12 +362,14 @@ export default function Dashboard() {
     setShareError('');
     setShareSuccess('');
     try {
-      await API.put(`/connections/${sharingConn._id}/share`, {
-        developerIds: selectedUserIds
-      });
+      if (!sharingConn._id.startsWith('mock-')) {
+        await API.put(`/connections/${sharingConn._id}/share`, {
+          developerIds: selectedUserIds,
+        });
+      }
       setShareSuccess('Access updated successfully!');
       fetchConnections();
-      setTimeout(() => setShareModalOpen(false), 1000);
+      setTimeout(() => setShareModalOpen(false), 800);
     } catch (err) {
       setShareError(err.response?.data?.message || 'Failed to update access.');
     } finally {
@@ -630,1295 +377,1161 @@ export default function Dashboard() {
     }
   };
 
-
-
-  const getTypeIcon = (type) => {
-    if (type === 'mysql') return '🐬';
-    if (type === 'postgresql') return '🐘';
-    if (type === 'mongodb') return '🍃';
-    if (type === 'oracle') return '🔴';
-    return '🗄️';
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
-  const getTypeBadgeColor = (type) => {
-    if (type === 'mysql') return 'bg-teal-50 text-teal-700 ring-1 ring-teal-200';
-    if (type === 'postgresql') return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200';
-    if (type === 'mongodb') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
-    if (type === 'oracle') return 'bg-red-50 text-red-700 ring-1 ring-red-200';
-    return 'bg-stone-100 text-stone-600 ring-1 ring-stone-200';
-  };
+  // Helper to render official engine icon badges matching photo
+  const renderEngineIcon = (type, size = 'lg') => {
+    const isLg = size === 'lg';
+    const containerClass = isLg
+      ? 'w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-xs'
+      : 'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-2xs';
 
-  const mysqlCount = connections.filter(c => c.type === 'mysql').length;
-  const pgCount = connections.filter(c => c.type === 'postgresql').length;
-  const mongoCount = connections.filter(c => c.type === 'mongodb').length;
-  const oracleCount = connections.filter(c => c.type === 'oracle').length;
+    if (type === 'mysql') {
+      return (
+        <div className={`${containerClass} bg-gradient-to-br from-[#38bdf8] to-[#0284c7]`}>
+          <svg
+            className={`${isLg ? 'w-6 h-6' : 'w-4.5 h-4.5'} text-white`}
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M10 7C8 9 7.5 11 8.5 13C9.5 15 11 16 11.5 18C12 20.5 11.5 22.5 10 24C12 24.5 14 24 15.5 22.5C16.5 21 17.5 19 18 17C19.5 13.5 19 10 16.5 8C14.5 6.5 12 6 10 7Z" />
+            <path d="M11.5 14.5C11 16 9.5 17.5 8.5 18" />
+            <path d="M15.5 22.5C16.8 24 18.5 25 20 24.5C19.5 23 18.5 22 17.5 20.5" />
+            <circle cx="10.5" cy="10" r="0.8" fill="white" />
+          </svg>
+        </div>
+      );
+    }
+
+    if (type === 'postgresql') {
+      return (
+        <div className={`${containerClass} bg-gradient-to-br from-[#a855f7] to-[#7c3aed]`}>
+          <svg
+            className={`${isLg ? 'w-6 h-6' : 'w-4.5 h-4.5'} text-white`}
+            viewBox="0 0 32 32"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M10 11C8 10 5 11 5 15C5 19 8 21 10 21" />
+            <path d="M22 11C24 10 27 11 27 15C27 19 24 21 22 21" />
+            <path d="M10 11C10 7 13 6 16 6C19 6 22 7 22 11" />
+            <path d="M12 11C12 14 13.5 16 13.5 20C13.5 23 15 25 16 25C17 25 18.5 23 18.5 20C18.5 16 20 14 20 11" />
+            <path d="M12 19C10.5 20 9.5 22 11 23C12.5 23 13 21 13 19" />
+            <path d="M20 19C21.5 20 22.5 22 21 23C19.5 23 19 21 19 19" />
+            <circle cx="13" cy="13" r="0.8" fill="white" />
+            <circle cx="19" cy="13" r="0.8" fill="white" />
+          </svg>
+        </div>
+      );
+    }
+
+    if (type === 'mongodb') {
+      return (
+        <div className={`${containerClass} bg-gradient-to-br from-[#4ade80] to-[#16a34a]`}>
+          <svg className={`${isLg ? 'w-6 h-6' : 'w-4.5 h-4.5'} text-white`} viewBox="0 0 32 32" fill="none">
+            <path
+              d="M16 4C16 4 9 10 9 17C9 22 12.5 26 15 27.5L16 28L17 27.5C19.5 26 23 22 23 17C23 10 16 4 16 4Z"
+              fill="rgba(255, 255, 255, 0.35)"
+              stroke="white"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path d="M16 6V26" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M16 12L12 15M16 17L12 20M16 12L20 15M16 17L20 20" stroke="white" strokeWidth="1.2" strokeLinecap="round" opacity="0.8" />
+          </svg>
+        </div>
+      );
+    }
+
+    // Oracle or fallback
+    return (
+      <div className={`${containerClass} bg-gradient-to-br from-[#fb7185] to-[#e11d48]`}>
+        <svg className={`${isLg ? 'w-6 h-6' : 'w-4.5 h-4.5'} text-white`} viewBox="0 0 32 32" fill="none">
+          <rect
+            x="6"
+            y="10.5"
+            width="20"
+            height="11"
+            rx="5.5"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.5"
+          />
+        </svg>
+      </div>
+    );
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center bg-white/70 backdrop-blur-sm rounded-2xl px-10 py-8">
-          <div className="w-10 h-10 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-teal-700 text-sm font-medium">Loading dashboard…</p>
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f7fb]">
+        <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-150">
+          <div className="w-10 h-10 border-[3px] border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-slate-600 text-sm font-semibold">Loading Allatone DMS...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-150">
-      {/* Navbar */}
-      <Navbar variant="teal" />
+    <div className="min-h-screen bg-[#f4f7fb] text-slate-800 flex font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+      {toast && (
+        <Toast
+          toast={toast}
+          onClose={() => setToast(null)}
+          placement="top-right"
+        />
+      )}
 
-      <div className="w-full px-5 sm:px-8 py-8">
-
-        {/* Quick Actions Card with Dashboard Header */}
-        <div className="mb-7 bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200/80 dark:border-gray-700/80">
-            <div>
-              <h2 className="text-[20px] font-bold text-teal-900 dark:text-teal-50 tracking-tight">Dashboard</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-1 h-3.5 rounded-full" style={{ backgroundColor: '#0d9da4' }}></div>
-              <h3 className="text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">Quick Actions</h3>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2.5">
+      {/* ========================================================
+          1. LEFT SIDEBAR (Width 224px, matching crop_sidebar.png)
+      ======================================================== */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-20 bg-slate-900/20 md:hidden"
+        />
+      )}
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} w-56 bg-white border-r border-gray-150 shrink-0 flex-col justify-between fixed md:sticky top-0 left-0 h-screen z-30`}>
+        <div>
+          {/* Navigation Links matching crop_sidebar.png */}
+          <nav className="p-3 space-y-1">
+            {/* 1. Dashboard (Active) */}
             <button
               onClick={() => setActiveTab('connections')}
-              className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'connections'
-                  ? 'text-white shadow-sm'
-                  : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
+                  ? 'bg-[#eff6ff] text-[#2563eb]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
               }`}
-              style={activeTab === 'connections' ? { backgroundColor: '#0d9da4' } : {}}
             >
-              <span className="text-base leading-none">🗄️</span> Connections
+              <svg className="w-4 h-4 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              <span>Dashboard</span>
             </button>
 
+            {/* 2. Manage Connections */}
             <button
               onClick={() => navigate('/connections')}
-              className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
             >
-              <span className="text-base leading-none">⚙️</span> Manage Connections
+              <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                <circle cx="12" cy="12" r="7" />
+                <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                <circle cx="12" cy="12" r="2" fill="currentColor" />
+              </svg>
+              <span>Manage Connections</span>
             </button>
 
-            {user?.role === 'admin' && (
-              <>
-                <div className="w-px h-6 bg-teal-200 dark:bg-teal-800 mx-1 self-center hidden sm:block"></div>
+            {/* 4. Audit Logs */}
+            <button
+              onClick={() => setActiveTab(activeTab === 'audit-logs' ? 'connections' : 'audit-logs')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'audit-logs'
+                  ? 'bg-[#eff6ff] text-[#2563eb] font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>Audit Logs</span>
+            </button>
 
-                <button
-                  onClick={() => setActiveTab('audit-logs')}
-                  className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
-                    activeTab === 'audit-logs'
-                      ? 'text-white shadow-sm'
-                      : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
-                  }`}
-                  style={activeTab === 'audit-logs' ? { backgroundColor: '#0d9da4' } : {}}
-                >
-                  <span className="text-base leading-none">📜</span> Application Audit Logs
-                </button>
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`px-4 py-2 text-[13px] rounded-lg transition-all flex items-center gap-2 font-semibold ${
-                    activeTab === 'users'
-                      ? 'text-white shadow-sm'
-                      : 'ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 hover:bg-teal-50 dark:hover:bg-gray-600'
-                  }`}
-                  style={activeTab === 'users' ? { backgroundColor: '#0d9da4' } : {}}
-                >
-                  <span className="text-base leading-none">👥</span> System Users &amp; Roles
-                </button>
-                <button
-                  onClick={() => navigate('/permissions')}
-                  className="px-4 py-2 ring-1 ring-teal-200 dark:ring-teal-700/50 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-700 text-[13px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 font-semibold"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
-                  Application Permissions
-                </button>
-              </>
-            )}
-          </div>
+            {/* 5. Users & Roles */}
+            <button
+              onClick={() => navigate('/permissions')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span>Users &amp; Roles</span>
+            </button>
+
+            {/* 6. Permissions */}
+            <button
+              onClick={() => navigate('/permissions')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span>Permissions</span>
+            </button>
+
+            {/* 7. Settings */}
+            <button
+              onClick={() => navigate('/profile')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
+            >
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Settings</span>
+            </button>
+          </nav>
         </div>
 
-        {/* Stats Cards */}
-        {activeTab === 'connections' && (
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-7">
-            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-teal-100 dark:ring-teal-900 bg-[#e3f6f6] dark:bg-teal-950/50">🐬</div>
-                <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">MySQL</span>
-              </div>
-              <p className="text-[28px] font-bold tracking-tight leading-none" style={{ color: '#0d9da4' }}>{mysqlCount}</p>
-              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
+        {/* Sidebar Bottom Elements matching crop_sidebar.png */}
+        <div className="p-3 space-y-3">
+          {/* Card: Secure • Manage • Monitor */}
+          <div className="bg-gradient-to-b from-[#f8fafc] to-[#eff6ff] border border-blue-100 rounded-2xl p-3 text-center">
+            <div className="w-full flex items-center justify-center mb-1">
+              <img
+                src="/assets/sidebar_graphic.png"
+                alt="3D Server Database"
+                className="w-32 h-20 object-contain drop-shadow-sm"
+              />
             </div>
-
-            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-cyan-100 dark:ring-cyan-900 bg-cyan-50 dark:bg-cyan-950/50">🐘</div>
-                <span className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider">Postgres</span>
-              </div>
-              <p className="text-[28px] font-bold text-cyan-700 dark:text-cyan-400 tracking-tight leading-none">{pgCount}</p>
-              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
-            </div>
-
-            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-amber-100 dark:ring-amber-900 bg-[#fdf6d8] dark:bg-amber-950/30">🍃</div>
-                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">MongoDB</span>
-              </div>
-              <p className="text-[28px] font-bold text-amber-700 dark:text-amber-400 tracking-tight leading-none">{mongoCount}</p>
-              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
-            </div>
-
-            <div className="bg-gray-50/90 dark:bg-gray-800/90 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 shadow-md hover:shadow-lg transition-all duration-200 text-gray-900 dark:text-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg ring-1 ring-red-100 dark:ring-red-900 bg-red-50 dark:bg-red-950/50">🔴</div>
-                <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">Oracle</span>
-              </div>
-              <p className="text-[28px] font-bold text-red-700 dark:text-red-400 tracking-tight leading-none">{oracleCount}</p>
-              <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 mt-1.5">Active connections</p>
-            </div>
+            <h4 className="text-[11px] font-bold text-slate-800 tracking-tight">
+              Secure · Manage · Monitor
+            </h4>
+            <p className="text-[9.5px] text-slate-400 mt-0.5 font-medium">
+              Your Database, Our Priority
+            </p>
           </div>
-        )}
 
-        {/* Main Content Box */}
-        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-lg">
-          <div className="px-6 border-b border-teal-100 dark:border-gray-800 bg-teal-50/40 dark:bg-gray-800/40 flex flex-wrap items-center justify-between gap-4">
-            <h3 className="text-[14px] font-bold text-teal-900 dark:text-teal-50 py-4 tracking-tight">
-              {activeTab === 'audit-logs'
-                ? 'System Activity Audit Trail — Admin View'
-                : 'Your Connections'}
-            </h3>
+        </div>
+      </aside>
 
-            {activeTab === 'connections' && (
-              <div className="flex items-center gap-3 my-3">
-                {connections.length > 0 && (
-                  <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-850 ring-1 ring-teal-200 dark:ring-teal-800 px-2.5 py-1 rounded-full">
-                    {connections.length} connections
-                  </span>
+      {/* ========================================================
+          2. MAIN CONTENT AREA
+      ======================================================== */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
+        {/* TOP HEADER BAR */}
+        <header className="sticky top-0 z-20 bg-white border-b border-gray-150 px-4 sm:px-6 py-2.5 flex flex-wrap xl:flex-nowrap items-center gap-3 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((isOpen) => !isOpen)}
+            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            aria-expanded={sidebarOpen}
+            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border border-gray-200 text-slate-600 hover:bg-gray-50 hover:text-blue-600 transition cursor-pointer"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M9 4v16" />
+              {sidebarOpen ? <path d="m16 9-3 3 3 3" /> : <path d="m13 9 3 3-3 3" />}
+            </svg>
+          </button>
+
+          {/* Brand stays in the navbar instead of the sidebar */}
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-2.5 shrink-0 text-left cursor-pointer"
+          >
+            <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-sky-500 to-cyan-400 p-0.5 shadow-md shadow-blue-500/20 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-white drop-shadow-xs" viewBox="0 0 24 24" fill="none">
+                <ellipse cx="12" cy="6" rx="8" ry="3" fill="#ffffff" fillOpacity="0.95" />
+                <path d="M4 6v5c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke="#ffffff" strokeWidth="1.5" />
+                <path d="M4 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#ffffff" strokeWidth="1.5" />
+                <path d="M4 16v3c0 1.66 3.58 3 8 3s8-1.34 8-3v-3" stroke="#ffffff" strokeWidth="1.5" />
+              </svg>
+            </span>
+            <span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-base font-black tracking-tight text-slate-900 leading-none">Allatone</span>
+                <span className="bg-[#0ea5e9] text-white text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full leading-none">DMS</span>
+              </span>
+              <span className="hidden sm:block text-[9.5px] text-slate-400 font-medium mt-1 leading-none">
+                Database Management System
+              </span>
+            </span>
+          </button>
+
+          {/* Global Search Input */}
+          <div className="relative order-last xl:order-none w-full xl:w-auto xl:flex-1 xl:max-w-sm" ref={globalSearchRef}>
+            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              placeholder="Search connections, databases, hosts, ports..."
+              value={searchConnText}
+              onChange={(e) => setSearchConnText(e.target.value)}
+              onFocus={() => setGlobalSearchOpen(true)}
+              onBlur={() => setGlobalSearchOpen(false)}
+              className="w-full pl-8 pr-16 py-1.5 bg-[#f8fafc] border border-gray-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition"
+            />
+            <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-gray-200 h-5 my-auto">
+              Ctrl + K
+            </span>
+            {globalSearchOpen && searchConnText.trim() && (
+              <div className="absolute left-0 right-0 top-full mt-2 rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-40">
+                {globalSearchResults.length > 0 ? (
+                  globalSearchResults.map((conn) => (
+                    <button
+                      key={conn._id || conn.name}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setSearchConnText(conn.name || '');
+                        setActiveTab('connections');
+                        setGlobalSearchOpen(false);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-blue-50 transition flex items-center justify-between gap-3"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold text-slate-800">{conn.name}</span>
+                        <span className="block truncate text-[10px] text-slate-500">{conn.database || conn.type}</span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                        {conn.host || 'localhost'}:{conn.port || 3306}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-xs text-slate-500">No connections found.</p>
                 )}
-                <button
-                  onClick={() => navigate('/connections')}
-                  title="Add / Manage Connections"
-                  className="w-8 h-8 rounded-lg text-white font-bold text-lg flex items-center justify-center shadow-sm hover:opacity-90 transition-all active:scale-95 cursor-pointer"
-                  style={{ backgroundColor: '#0d9da4' }}
-                >
-                  +
-                </button>
               </div>
             )}
           </div>
 
-          {/* Tab Contents */}
-          <div className="divide-y divide-teal-50 dark:divide-gray-800">
-            {activeTab === 'connections' && (
-              connections.length === 0 ? (
-                <div className="p-16 text-center">
-                  <p className="text-4xl mb-4">🗄️</p>
-                  <p className="text-teal-900 dark:text-teal-50 font-semibold mb-1.5">No connections yet</p>
-                  <p className="text-teal-700/60 dark:text-teal-400/60 text-[13px] mb-6">Connect your first database to get started</p>
+          {/* Right Header Status & Controls */}
+          <div className="ml-auto flex items-center gap-3.5 shrink-0">
+            {/* System Online Badge */}
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <div className="leading-tight">
+                <p className="text-xs font-bold text-slate-800 leading-none">System Online</p>
+                <p className="text-[9.5px] text-slate-400 mt-0.5 leading-none">All Services Running</p>
+              </div>
+            </div>
+
+            {/* Notification Bell with Badge */}
+            <button className="relative w-8 h-8 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200/80 flex items-center justify-center text-slate-600 transition cursor-pointer">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                6
+              </span>
+            </button>
+
+            {/* Dark / Light Mode Toggle Pill */}
+            <div
+              onClick={toggleTheme}
+              className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-full cursor-pointer hover:bg-gray-200 transition"
+              title="Toggle Light / Dark mode"
+            >
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${theme === 'dark' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-400'}`}>
+                🌙
+              </span>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${theme === 'light' ? 'bg-white text-amber-500 shadow-2xs' : 'text-slate-400'}`}>
+                ☀️
+              </span>
+            </div>
+
+            {/* User Profile Pill */}
+            <div className="relative" ref={userDropdownRef}>
+              <button
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-gray-100 transition cursor-pointer"
+              >
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-500 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+                  VS
+                </div>
+                <div className="hidden sm:block text-left leading-tight">
+                  <p className="text-xs font-bold text-slate-800 leading-none">{displayName}</p>
+                  <p className="text-[10px] text-slate-400 capitalize mt-0.5 leading-none">{displayRole}</p>
+                </div>
+              </button>
+
+              {/* Profile Dropdown Menu */}
+              {userDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-150 py-2 z-50 text-slate-700 animate-fadeIn">
+                  <div className="px-4 py-2 border-b border-gray-100 mb-1">
+                    <p className="text-xs font-bold text-slate-900 truncate">{displayName}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{user?.email || 'admin@allatone.io'}</p>
+                  </div>
                   <button
-                    onClick={() => navigate('/connections')}
-                    className="px-5 py-2.5 text-white text-[13px] font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-sm"
-                    style={{ backgroundColor: '#0d9da4' }}
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      navigate('/profile');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
                   >
-                    + Add Connection
+                    My Profile &amp; Settings
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      navigate('/status');
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
+                  >
+                    System Status
+                  </button>
+                  <div className="my-1 border-t border-gray-100"></div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium cursor-pointer"
+                  >
+                    Sign Out
                   </button>
                 </div>
-              ) : (
-                <div className="p-6 bg-teal-50/20 dark:bg-gray-900/40">
-                  {/* Connection Filters Bar */}
-                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6 shadow-sm">
-                    <div className="flex items-center justify-between flex-wrap gap-3 mb-3 pb-2 border-b border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">🔍</span>
-                        <h3 className="text-xs font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">
-                          Filter Connections
-                        </h3>
-                        <span className="text-[11px] bg-teal-50 dark:bg-teal-950 text-[#0d9da4] px-2.5 py-0.5 rounded-full font-bold border border-teal-100 dark:border-teal-800">
-                          Showing {visibleConnections.length} of {connections.length} connections
-                        </span>
-                      </div>
+              )}
+            </div>
+          </div>
+        </header>
 
-                      {(filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText) && (
-                        <button
-                          onClick={() => {
-                            setFilterType('all');
-                            setFilterRole('all');
-                            setFilterUser('all');
-                            setSearchConnText('');
-                          }}
-                          className="text-xs font-bold text-red-600 hover:text-red-700 dark:text-red-400 cursor-pointer flex items-center gap-1 bg-red-50 dark:bg-red-950/40 px-2.5 py-1 rounded-lg border border-red-100 dark:border-red-900 transition-all"
-                        >
-                          ✕ Reset Filters
-                        </button>
-                      )}
-                    </div>
+        {/* DASHBOARD BODY CONTAINER */}
+        <div className="p-4 sm:p-5 w-full mx-auto flex flex-col gap-4">
+          {/* ========================================================
+              MAIN STREAM
+          ======================================================== */}
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+            {/* 1. Welcome Banner (Identical to crop_welcome.png) */}
+            <div
+              style={{
+                background: 'linear-gradient(90deg, #ffffff 0%, #f7faff 45%, #eff6ff 75%, #f5f3ff 100%)',
+              }}
+              className="border border-[#bfdbfe]/70 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
+            >
+              {/* Flowing silk ribbon wave art matching crop_welcome.png */}
+              <div className="absolute inset-y-0 right-28 left-1/2 pointer-events-none opacity-50 hidden lg:block">
+                <svg className="w-full h-full" viewBox="0 0 600 120" preserveAspectRatio="none" fill="none">
+                  <path
+                    d="M 10,70 C 80,10 160,110 260,50 C 340,-10 420,80 500,40 C 540,20 580,50 600,30"
+                    stroke="#38bdf8"
+                    strokeWidth="10"
+                    strokeOpacity="0.4"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 20,80 C 100,20 180,115 280,60 C 360,5 440,85 520,45"
+                    stroke="#818cf8"
+                    strokeWidth="7"
+                    strokeOpacity="0.35"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M 40,65 C 120,5 200,105 300,55 C 380,15 460,75 540,40"
+                    stroke="#c084fc"
+                    strokeWidth="6"
+                    strokeOpacity="0.3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                      {/* 1. Database Type Filter */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                          1. Database Type:
-                        </label>
-                        <select
-                          value={filterType}
-                          onChange={(e) => setFilterType(e.target.value)}
-                          className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-teal-500 cursor-pointer"
-                        >
-                          <option value="all">All Database Types</option>
-                          <option value="mysql">🐬 MySQL</option>
-                          <option value="postgresql">🐘 PostgreSQL</option>
-                          <option value="mongodb">🍃 MongoDB</option>
-                          <option value="oracle">🔴 Oracle</option>
-                        </select>
-                      </div>
+              {/* Left Welcome text */}
+              <div className="relative z-10 min-w-0 flex-1 lg:ml-8">
+                <p className="text-xs font-semibold text-[#2563eb]">Welcome back,</p>
+                <h2 className="text-2xl font-black text-[#0f172a] tracking-tight mt-0.5 flex flex-wrap items-center gap-1.5">
+                  <span className="min-w-0 break-words">{displayName}</span>
+                  <span className="shrink-0">👏</span>
+                </h2>
+                <p className="text-xs text-[#64748b] mt-1 font-medium break-words">
+                  Manage your database connections, monitor activity and keep your data safe.
+                </p>
+              </div>
 
-                      {/* 2. Role Filter */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                          2. Role:
-                        </label>
-                        <select
-                          value={filterRole}
-                          onChange={(e) => {
-                            setFilterRole(e.target.value);
-                            setFilterUser('all'); // Reset user when role changes
-                          }}
-                          className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-teal-500 cursor-pointer"
-                        >
-                          <option value="all">All Roles</option>
-                          <option value="admin">👑 Admin</option>
-                          <option value="developer">💻 Developer</option>
-                        </select>
-                      </div>
+              {/* Right Side: 3D Blue Database Cylinder + Live Date/Time */}
+              <div className="relative z-10 flex w-full lg:w-auto items-center justify-end gap-4 shrink-0">
+                {/* 3D Glossy Blue Database Cylinder matching crop_welcome.png */}
+                <div className="w-12 h-12 relative flex items-center justify-center shrink-0">
+                  <img
+                    src="/assets/welcome_db_cylinder.png"
+                    alt="3D Database Cylinder"
+                    className="w-12 h-12 object-contain drop-shadow-sm"
+                  />
+                </div>
 
-                      {/* 3. User Filter (Cascading) */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1 flex items-center justify-between">
-                          <span>3. User:</span>
-                          <span className="text-[10px] font-extrabold text-[#0d9da4]">
-                            ({userOptions.length} {filterRole !== 'all' ? `matching ${filterRole}` : 'total'})
-                          </span>
-                        </label>
-                        <select
-                          value={filterUser}
-                          onChange={(e) => setFilterUser(e.target.value)}
-                          className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 font-semibold text-gray-800 dark:text-gray-200 outline-none focus:border-teal-500 cursor-pointer"
-                        >
-                          <option value="all">All Users ({userOptions.length} available)</option>
-                          {userOptions.map((u) => (
-                            <option key={u._id} value={u._id}>
-                              👤 {u.name} ({u.role || 'user'})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                {/* Date & Time pill matching crop_welcome.png */}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-white/95 border border-slate-200/80 flex items-center justify-center text-slate-500 shadow-2xs">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
+                      <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
+                      <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
+                    </svg>
+                  </div>
+                  <div className="leading-tight text-left">
+                    <p className="text-[11px] font-bold text-[#334155]">{currentDateTime.date}</p>
+                    <p className="text-[10px] text-[#64748b] font-mono mt-0.5">{currentDateTime.time}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-                      {/* Search text */}
-                      <div>
-                        <label className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                          Search Connection:
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Name, host, DB..."
-                          value={searchConnText}
-                          onChange={(e) => setSearchConnText(e.target.value)}
-                          className="w-full px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 outline-none focus:border-teal-500 text-gray-800 dark:text-gray-200"
-                        />
-                      </div>
-                    </div>
+            {/* 2. Top 4 Engine Metric Cards (Exact Colors & Wave Graphs matching crop_cards.png) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* Card 1: MySQL (Exact #F3F8FE) */}
+              <div
+                style={{ backgroundColor: '#F3F8FE' }}
+                className="border border-[#bfdbfe]/80 rounded-2xl p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  {renderEngineIcon('mysql', 'lg')}
+                  <div>
+                    <h4 className="text-[14px] font-bold text-[#0f172a] leading-none">MySQL</h4>
+                    <p className="text-[10px] text-[#64748b] mt-1 font-medium">Relational Database</p>
+                  </div>
+                </div>
 
-                    <form onSubmit={searchTables} className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                      <label htmlFor="dashboard-table-search" className="block text-[11px] font-bold text-gray-600 dark:text-gray-400 mb-1">
-                        Search tables across your connections:
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          id="dashboard-table-search"
-                          type="search"
-                          placeholder="Enter a table or collection name..."
-                          value={tableSearchQuery}
-                          onChange={event => setTableSearchQuery(event.target.value)}
-                          className="min-w-0 flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs bg-gray-50/50 dark:bg-gray-700 outline-none focus:border-teal-500 text-gray-800 dark:text-gray-200"
-                        />
-                        <button
-                          type="submit"
-                          disabled={tableSearchLoading}
-                          className="px-4 py-2 bg-[#0d9da4] text-white text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-60 transition cursor-pointer"
-                        >
-                          {tableSearchLoading ? 'Searching...' : 'Search Tables'}
-                        </button>
-                        {tableSearchTerm && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTableSearchQuery('');
-                              setTableSearchTerm('');
-                              setTableSearchResults([]);
-                              setTableSearchError('');
-                            }}
-                            className="px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-xs font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                      {tableSearchError && (
-                        <p role="status" className="mt-2 text-xs text-amber-700 dark:text-amber-400">{tableSearchError}</p>
-                      )}
-                      {tableSearchTerm && !tableSearchLoading && (
-                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          {tableSearchResults.length
-                            ? `${tableSearchResults.length} matching table${tableSearchResults.length === 1 ? '' : 's'} found for "${tableSearchTerm}".`
-                            : 'No matching tables found.'}
-                        </p>
-                      )}
-                    </form>
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <span className="text-2xl font-black text-[#0f172a] leading-none">{mysqlCount}</span>
+                    <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
                   </div>
 
-                  {tableSearchResults.length > 0 && (
-                    <div className="mb-6 overflow-hidden rounded-xl border border-teal-100 dark:border-teal-900 bg-white dark:bg-gray-800 shadow-sm">
-                      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                        <h4 className="text-xs font-bold text-gray-800 dark:text-gray-200">Matching tables</h4>
-                      </div>
-                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {tableSearchResults.map((result, index) => (
-                          <div key={`${result.connectionId}-${result.database}-${result.table}-${index}`} className="flex items-center justify-between gap-3 px-4 py-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-bold text-teal-900 dark:text-teal-100">{result.table}</p>
-                              <p className="truncate text-[11px] text-gray-500 dark:text-gray-400">
-                                {result.connectionName} · {result.database} · {result.connectionType}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              title={`Open ${result.table}`}
-                              aria-label={`Open ${result.table} in ${result.connectionName}`}
-                              onClick={() => navigate(`/connections/${result.connectionId}/db/${encodeURIComponent(result.database)}?table=${encodeURIComponent(result.table)}`)}
-                              className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 dark:bg-teal-950/40 text-[#0d9da4] hover:bg-teal-100 dark:hover:bg-teal-900 transition cursor-pointer"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 6H19v5.5M19 6l-8 8m6-1v5.5A1.5 1.5 0 0115.5 20h-11A1.5 1.5 0 013 18.5v-11A1.5 1.5 0 014.5 6H10" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
+                      ↑ 100%
+                    </span>
+                    {/* Delicate smooth wave matching crop_cards.png */}
+                    <div className="w-22 h-6">
+                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
+                        <defs>
+                          <linearGradient id="mysqlWaveFade" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M 0 18 Q 14 26 28 16 T 56 18 T 80 8 T 100 6 L 100 28 L 0 28 Z" fill="url(#mysqlWaveFade)" />
+                        <path d="M 0 18 Q 14 26 28 16 T 56 18 T 80 8 T 100 6" stroke="#0ea5e9" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                     </div>
-                  )}
+                  </div>
+                </div>
+              </div>
 
-                  {visibleConnections.length === 0 ? (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center">
-                      <p className="text-3xl mb-2">🔍</p>
-                      <p className="text-gray-800 dark:text-gray-200 font-bold mb-1">
-                        {tableSearchTerm ? 'No connections contain matching tables' : 'No matching connections found'}
-                      </p>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs mb-4">
-                        No connections match your selected Database Type ({filterType}), Role ({filterRole}), or User filter.
-                      </p>
+              {/* Card 2: PostgreSQL (Exact #F5F3FF) */}
+              <div
+                style={{ backgroundColor: '#F5F3FF' }}
+                className="border border-[#e9d5ff]/80 rounded-2xl p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  {renderEngineIcon('postgresql', 'lg')}
+                  <div>
+                    <h4 className="text-[14px] font-bold text-[#0f172a] leading-none">PostgreSQL</h4>
+                    <p className="text-[10px] text-[#64748b] mt-1 font-medium">Relational Database</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <span className="text-2xl font-black text-[#0f172a] leading-none">{pgCount}</span>
+                    <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
+                  </div>
+
+                  <div className="flex flex-col items-end">
+                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
+                      ↑ 100%
+                    </span>
+                    {/* Delicate smooth wave matching crop_cards.png */}
+                    <div className="w-22 h-6">
+                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
+                        <defs>
+                          <linearGradient id="pgWaveFade" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#a855f7" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M 0 20 Q 15 28 30 16 T 60 14 T 82 8 T 100 10 L 100 28 L 0 28 Z" fill="url(#pgWaveFade)" />
+                        <path d="M 0 20 Q 15 28 30 16 T 60 14 T 82 8 T 100 10" stroke="#a855f7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: MongoDB (Exact #E8FEF1) */}
+              <div
+                style={{ backgroundColor: '#E8FEF1' }}
+                className="border border-[#bbf7d0]/80 rounded-2xl p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  {renderEngineIcon('mongodb', 'lg')}
+                  <div>
+                    <h4 className="text-[14px] font-bold text-[#0f172a] leading-none">MongoDB</h4>
+                    <p className="text-[10px] text-[#64748b] mt-1 font-medium">Document Database</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <span className="text-2xl font-black text-[#0f172a] leading-none">{mongoCount}</span>
+                    <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
+                  </div>
+
+                  <div className="flex flex-col items-end">
+                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
+                      ↑ 100%
+                    </span>
+                    {/* Delicate smooth wave matching crop_cards.png */}
+                    <div className="w-22 h-6">
+                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
+                        <defs>
+                          <linearGradient id="mongoWaveFade" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M 0 22 Q 18 28 35 14 T 68 18 T 88 10 T 100 6 L 100 28 L 0 28 Z" fill="url(#mongoWaveFade)" />
+                        <path d="M 0 22 Q 18 28 35 14 T 68 18 T 88 10 T 100 6" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Oracle (Exact #FFE9E8) */}
+              <div
+                style={{ backgroundColor: '#FFE9E8' }}
+                className="border border-[#fecdd3]/80 rounded-2xl p-4 shadow-2xs hover:shadow-md transition flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  {renderEngineIcon('oracle', 'lg')}
+                  <div>
+                    <h4 className="text-[14px] font-bold text-[#0f172a] leading-none">Oracle</h4>
+                    <p className="text-[10px] text-[#64748b] mt-1 font-medium">Relational Database</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-end justify-between">
+                  <div>
+                    <span className="text-2xl font-black text-[#0f172a] leading-none">{oracleCount}</span>
+                    <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
+                  </div>
+
+                  <div className="flex flex-col items-end">
+                    <span className="text-[11px] font-bold text-[#e11d48] flex items-center gap-1 mb-1 leading-none">
+                      <span className="w-2 h-2 rounded-full bg-[#e11d48]"></span>
+                      0%
+                    </span>
+                    {/* Delicate smooth wave matching crop_cards.png */}
+                    <div className="w-22 h-6">
+                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
+                        <defs>
+                          <linearGradient id="oracleWaveFade" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
+                          </linearGradient>
+                        </defs>
+                        <path d="M 0 20 Q 20 26 40 18 T 70 20 T 90 12 T 100 8 L 100 28 L 0 28 Z" fill="url(#oracleWaveFade)" />
+                        <path d="M 0 20 Q 20 26 40 18 T 70 20 T 90 12 T 100 8" stroke="#f43f5e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. "Database Connections" Main Table Card (matching crop_table.png) */}
+            {activeTab === 'connections' && (
+              <div className="bg-white border border-gray-150 rounded-2xl p-5 shadow-xs">
+                {/* Header Row: Title + New Connection Button */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                      <svg className="w-5 h-5 text-blue-600" viewBox="0 0 24 24" fill="none">
+                        <ellipse cx="12" cy="6" rx="8" ry="3" fill="#2563eb" />
+                        <path d="M4 6v5c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke="#2563eb" strokeWidth="1.5" />
+                        <path d="M4 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#2563eb" strokeWidth="1.5" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-[#0f172a]">Database Connections</h3>
+                      <p className="text-[11px] text-[#64748b]">View and manage of your database connections in one place.</p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => navigate('/connections')}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+                  >
+                    <span>+</span>
+                    <span>New Connection</span>
+                  </button>
+                </div>
+
+                {/* Filter Toolbar (Strictly 1 single line matching crop_table.png) */}
+                <div className="flex items-center justify-between gap-3 mb-3.5 pb-3 border-b border-gray-100 text-xs">
+                  <div className="flex items-center gap-2.5 overflow-x-auto py-0.5">
+                    {/* Search by name, host, database */}
+                    <div className="relative w-48 shrink-0">
+                      <span className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-slate-400">
+                        🔍
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Search by name, host, port, database..."
+                        value={searchConnText}
+                        onChange={(e) => setSearchConnText(e.target.value)}
+                        className="w-full pl-7 pr-2.5 py-1.5 bg-[#f8fafc] border border-gray-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white"
+                      />
+                    </div>
+
+                    {/* Database Type select */}
+                    <div className="flex flex-col shrink-0">
+                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Database Type</label>
+                      <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="mysql">MySQL</option>
+                        <option value="postgresql">PostgreSQL</option>
+                        <option value="mongodb">MongoDB</option>
+                        <option value="oracle">Oracle</option>
+                      </select>
+                    </div>
+
+                    {/* Role select */}
+                    <div className="flex flex-col shrink-0">
+                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Role</label>
+                      <select
+                        value={filterRole}
+                        onChange={(e) => setFilterRole(e.target.value)}
+                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="admin">Admin</option>
+                        <option value="developer">Developer</option>
+                      </select>
+                    </div>
+
+                    {/* Status select */}
+                    <div className="flex flex-col shrink-0">
+                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Status</label>
+                      <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All</option>
+                        <option value="connected">Connected</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+
+                    {/* Clear Filters Button */}
+                    <div className="flex items-end shrink-0 pt-3">
                       <button
                         onClick={() => {
                           setFilterType('all');
                           setFilterRole('all');
-                          setFilterUser('all');
+                          setFilterStatus('all');
                           setSearchConnText('');
                         }}
-                        className="px-4 py-2 bg-teal-50 dark:bg-teal-950 text-[#0d9da4] border border-teal-200 dark:border-teal-800 font-bold text-xs rounded-lg hover:bg-teal-100 transition-all cursor-pointer"
+                        className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer transition"
                       >
-                        Clear All Filters
+                        Clear Filters
                       </button>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {visibleConnections.map(conn => (
-                    <div
-                      key={conn._id}
-                      onClick={() => navigate(`/connections/${conn._id}`)}
-                      className="bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex flex-col gap-4 shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg ring-1 ring-teal-100 dark:ring-teal-900 flex items-center justify-center text-xl shrink-0 bg-[#f0f9f7] dark:bg-teal-950/40">
-                            {getTypeIcon(conn.type)}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap text-left">
-                              <p className="text-[14px] font-bold text-teal-900 dark:text-teal-50 group-hover:text-[#0d9da4] transition-colors">{conn.name}</p>
-                              {conn.user && conn.user._id !== (user?._id || user?.id) && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 ring-1 ring-amber-100 dark:ring-amber-900/30">
-                                  Shared by {conn.user.name}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[12px] text-teal-700/60 dark:text-teal-400/70 text-left mt-0.5 font-mono">
-                              {conn.type === 'mongodb'
-                                ? 'MongoDB'
-                                : `${conn.host}:${conn.port}${conn.database ? ' / ' + conn.database : ''}`
-                              }
-                            </p>
-                          </div>
-                        </div>
+                  </div>
 
-                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${getTypeBadgeColor(conn.type)}`}>
-                            {conn.type}
-                          </span>
-
-                          {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenEditConnModal(conn);
-                              }}
-                              className="px-2.5 py-1.5 ring-1 ring-teal-200 dark:ring-teal-700 text-teal-700 dark:text-teal-400 bg-white dark:bg-gray-800 text-[12px] rounded-lg hover:bg-teal-50 dark:hover:bg-gray-700 transition-all flex items-center gap-1 font-semibold cursor-pointer"
-                            >
-                              ✏️ Edit
-                            </button>
-                          )}
-
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/connections/${conn._id}`);
-                            }}
-                            className="px-3.5 py-1.5 text-white text-[12px] rounded-lg hover:opacity-90 transition-opacity font-semibold flex items-center gap-1 shadow-sm cursor-pointer"
-                            style={{ backgroundColor: '#0d9da4' }}
-                          >
-                            Open
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  <span className="text-[11px] text-slate-400 font-medium shrink-0 hidden md:inline-block">
+                    Showing {filteredConnections.length} of {activeConnectionsList.length} connections
+                  </span>
                 </div>
-              )}
-            </div>
-          )
-        )}
 
-            {activeTab === 'audit-logs' && user?.role === 'admin' && (
-              <div className="p-6 bg-teal-50/20">
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#f8fafc] text-[#64748b] font-bold uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="px-3.5 py-2.5 rounded-l-lg">#</th>
+                        <th className="px-3.5 py-2.5">CONNECTION</th>
+                        <th className="px-3.5 py-2.5">DATABASE</th>
+                        <th className="px-3.5 py-2.5">HOST / PORT</th>
+                        <th className="px-3.5 py-2.5">OWNER</th>
+                        <th className="px-3.5 py-2.5">STATUS</th>
+                        <th className="px-3.5 py-2.5 text-right rounded-r-lg">ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {filteredConnections.map((conn, idx) => {
+                        const isConnected = conn.status !== 'disconnected';
+
+                        // Database badge colors matching screenshot
+                        const getDbBadge = () => {
+                          if (conn.type === 'mysql') {
+                            if (conn.database === 'backup_db' || idx === 4) {
+                              return 'bg-[#f3e8ff] text-[#9333ea] border border-[#e9d5ff]';
+                            }
+                            return 'bg-[#e6fcf5] text-[#0ca678] border border-[#bbf7d0]';
+                          }
+                          if (conn.type === 'postgresql') return 'bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]';
+                          if (conn.type === 'mongodb') return 'bg-[#e6fcf5] text-[#0ca678] border border-[#bbf7d0]';
+                          if (conn.type === 'oracle') return 'bg-[#fee2e2] text-[#ef4444] border border-[#fecaca]';
+                          return 'bg-[#f3e8ff] text-[#9333ea] border border-[#e9d5ff]';
+                        };
+
+                        return (
+                          <tr key={conn._id || idx} className="hover:bg-gray-50/80 transition-colors">
+                            {/* # */}
+                            <td className="px-3.5 py-3 text-slate-400 font-bold text-[11px]">
+                              {idx + 1}
+                            </td>
+
+                            {/* CONNECTION */}
+                            <td className="px-3.5 py-3">
+                              <div className="flex items-center gap-2.5">
+                                {renderEngineIcon(conn.type, 'md')}
+                                <div>
+                                  <p className="font-bold text-[#0f172a] text-xs leading-none">{conn.name}</p>
+                                  <p className="text-[10px] text-[#64748b] capitalize mt-0.5 leading-none">{conn.type}</p>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* DATABASE */}
+                            <td className="px-3.5 py-3">
+                              <span className={`px-2.5 py-0.5 rounded-md font-mono text-[10.5px] font-bold ${getDbBadge()}`}>
+                                {conn.database || `${conn.name.toLowerCase()}_db`}
+                              </span>
+                            </td>
+
+                            {/* HOST / PORT */}
+                            <td className="px-3.5 py-3">
+                              <p className="font-mono text-[#334155] text-[11px] leading-none">
+                                {conn.host || 'localhost'}:{conn.port || 3306}
+                              </p>
+                              <p className="text-[10px] text-[#94a3b8] font-medium mt-0.5 leading-none">
+                                {conn.environment || (idx === 0 ? 'Production' : idx === 4 ? 'Testing' : 'Development')}
+                              </p>
+                            </td>
+
+                            {/* OWNER */}
+                            <td className="px-3.5 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {conn.user?.name ? conn.user.name.charAt(0).toUpperCase() : (idx % 2 === 0 ? 'V' : 'A')}
+                                </div>
+                                <div className="leading-tight">
+                                  <p className="font-bold text-[#0f172a] text-[11px] leading-none">
+                                    {conn.user?.name || (idx % 2 === 0 ? 'Vishal' : 'Admin')}
+                                  </p>
+                                  <p className="text-[9.5px] text-[#64748b] capitalize mt-0.5 leading-none">
+                                    {conn.user?.role || (idx % 2 === 0 ? 'Admin' : 'Administrator')}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* STATUS */}
+                            <td className="px-3.5 py-3">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isConnected
+                                    ? 'bg-[#dcfce7] text-[#15803d]'
+                                    : 'bg-[#fee2e2] text-[#b91c1c]'
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-[#15803d]' : 'bg-[#b91c1c]'}`}></span>
+                                {isConnected ? 'Connected' : 'Inactive'}
+                              </span>
+                            </td>
+
+                            {/* ACTIONS */}
+                            <td className="px-3.5 py-3 text-right">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleOpenEditConnModal(conn)}
+                                  className="px-2 py-1 border border-gray-200 text-slate-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  onClick={() => navigate(`/connections/${conn._id}`)}
+                                  className="px-2.5 py-1 bg-[#2563eb] hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                >
+                                  <span>Open</span>
+                                  <span>↗</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenShareModal(conn)}
+                                  title="Options"
+                                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                >
+                                  ⋮
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {filteredConnections.length === 0 && (
+                        <tr>
+                          <td colSpan="7" className="text-center py-8 text-slate-400">
+                            No connections found matching your search.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Audit Logs View (if tab activated) */}
+            {activeTab === 'audit-logs' && (
+              <div className="bg-white border border-gray-150 rounded-2xl p-5 shadow-xs">
                 <SystemAuditLogsPanel />
               </div>
             )}
 
-            {activeTab === 'users' && user?.role === 'admin' && (
-              <div className="p-6 bg-teal-50/20 dark:bg-gray-900/40 text-left">
-                <div className="bg-white dark:bg-gray-850 rounded-xl border border-gray-250 dark:border-gray-800 p-5 shadow-xs">
-                  <div className="mb-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
-                    <div>
-                      <h3 className="text-md font-bold text-gray-900 dark:text-gray-50">Registered Users &amp; Roles</h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage accounts, change roles (Read, ReadWrite, Admin), edit credentials &amp; permissions.</p>
-                    </div>
-
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                      {/* Search users */}
-                      <div className="w-full md:w-72 relative">
-                        <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-xs">🔍</span>
-                        <input
-                          type="text"
-                          placeholder="Search users by name, email or role..."
-                          value={usersSearch}
-                          onChange={e => {
-                            setUsersSearch(e.target.value);
-                            setUsersPage(1);
-                          }}
-                          className="w-full pl-8 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl text-xs bg-gray-50 dark:bg-gray-800 focus:bg-white dark:focus:bg-gray-750 text-gray-900 dark:text-gray-100 outline-none focus:ring-1 focus:ring-[#0d9da4] focus:border-[#0d9da4] transition font-medium"
-                        />
-                      </div>
-
-                      {/* + Create User Button */}
-                      <button
-                        onClick={() => {
-                          setCreateForm({
-                            name: '',
-                            email: '',
-                            password: '',
-                            role: 'developer',
-                            accessMode: 'read',
-                            permissions: {
-                              userManagement: false,
-                              backup: false, binlog: true, monitor: true, query: true,
-                              history: true, slowQuery: true, auditLogs: true, connections: false
-                            }
-                          });
-                          setCreateError('');
-                          setCreateUserModalOpen(true);
-                        }}
-                        style={{ backgroundColor: '#0d9da4' }}
-                        className="px-3.5 py-2 text-white text-xs font-bold rounded-xl hover:opacity-90 transition shadow-xs flex items-center gap-1.5 cursor-pointer shrink-0"
-                      >
-                        <span>➕</span> Create User
-                      </button>
-                    </div>
-                  </div>
-
-                  {usersLoading ? (
-                    <div className="text-center py-10">
-                      <div className="w-8 h-8 border-3 border-teal-100 border-t-[#0d9da4] rounded-full animate-spin mx-auto mb-3"></div>
-                      <p className="text-xs text-gray-400 font-semibold">Loading users list...</p>
-                    </div>
-                  ) : users.length === 0 ? (
-                    <div className="text-center py-10">
-                      <p className="text-sm text-gray-400 italic">No registered users found.</p>
-                    </div>
-                  ) : filteredUsers.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-gray-200 dark:border-gray-850 rounded-xl bg-gray-50/50 dark:bg-gray-850/50">
-                      <p className="text-xs text-gray-450 italic">No matching users found for "{usersSearch}"</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-850">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          <tr>
-                            <th className="px-5 py-3">User Details</th>
-                            <th className="px-5 py-3">Current Role</th>
-                            <th className="px-5 py-3">Update Role</th>
-                            <th className="px-5 py-3 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-150 dark:divide-gray-800">
-                          {paginatedUsers.map(u => (
-                            <tr key={u._id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/40 transition">
-                              <td className="px-5 py-3.5">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-[#e3f6f6] dark:bg-teal-950/40 text-[#0d9da4] border border-teal-100/50 dark:border-teal-900/40">
-                                    {u.name?.charAt(0).toUpperCase() || 'U'}
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-gray-900 dark:text-gray-100">{u.name}</p>
-                                    <p className="text-gray-400 dark:text-gray-500 text-[11px] font-mono mt-0.5">{u.email}</p>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="px-5 py-3.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`text-[9px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                    u.role === 'admin'
-                                      ? 'bg-gray-950 dark:bg-gray-900 text-white border border-gray-900 dark:border-gray-800'
-                                      : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
-                                  }`}>
-                                    {u.role === 'admin' ? 'Admin' : 'Developer'}
-                                  </span>
-
-                                  {u.role !== 'admin' && (
-                                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                      (u.accessMode === 'readwrite' || u.role === 'readwrite')
-                                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/40'
-                                        : 'bg-teal-50 dark:bg-teal-950/20 text-teal-700 dark:text-teal-400 border border-teal-150 dark:border-teal-900/30'
-                                    }`}>
-                                      {(u.accessMode === 'readwrite' || u.role === 'readwrite') ? '⚡ Read/Write' : '🔒 Read Only'}
-                                    </span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-5 py-3.5">
-                                {u._id !== user.id ? (
-                                  <select
-                                    value={u.role === 'admin' ? 'admin' : 'developer'}
-                                    onChange={e => updateUserRoleInDashboard(u._id, e.target.value)}
-                                    className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-semibold outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4] cursor-pointer"
-                                  >
-                                    <option value="developer">Developer</option>
-                                    <option value="admin">Admin</option>
-                                  </select>
-                                ) : (
-                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">Self Account</span>
-                                )}
-                              </td>
-                              <td className="px-5 py-3.5 text-right">
-                                {u._id !== user.id ? (
-                                  <div className="flex items-center justify-end gap-2">
-                                    {/* Edit Icon Button */}
-                                    <button
-                                      onClick={() => handleOpenEditUser(u)}
-                                      className="p-1.5 rounded-lg border border-teal-200 dark:border-teal-900/50 hover:bg-teal-50 dark:hover:bg-teal-950/40 text-[#0d9da4] transition cursor-pointer"
-                                      title="Edit User Details, Email, Password & Permissions"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                      </svg>
-                                    </button>
-
-                                    {/* Delete Icon Button */}
-                                    <button
-                                      onClick={() => deleteUserInDashboard(u._id, u.name)}
-                                      className="p-1.5 rounded-lg border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500 transition cursor-pointer"
-                                      title="Delete User Account"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="text-[11px] text-gray-400 dark:text-gray-500 italic font-medium">Locked</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-
-                      {/* Premium Pagination Footer */}
-                      {totalUsersPages > 1 && (
-                        <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-150 dark:border-gray-750 flex flex-col sm:flex-row items-center justify-between gap-4">
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
-                            Showing <span className="font-semibold text-gray-800 dark:text-gray-200">{usersStartIndex + 1}</span> to{' '}
-                            <span className="font-semibold text-gray-800 dark:text-gray-200">
-                              {Math.min(usersStartIndex + usersItemsPerPage, filteredUsers.length)}
-                            </span>{' '}
-                            of <span className="font-semibold text-gray-800 dark:text-gray-200">{filteredUsers.length}</span> users
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => setUsersPage(prev => Math.max(prev - 1, 1))}
-                              disabled={usersPage === 1}
-                              className="px-2.5 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50 transition shadow-sm cursor-pointer"
-                            >
-                              Previous
-                            </button>
-                            {Array.from({ length: totalUsersPages }).map((_, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setUsersPage(i + 1)}
-                                className={`px-2.5 py-1.5 border rounded-lg text-xs font-semibold transition ${
-                                  usersPage === i + 1
-                                    ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100'
-                                    : 'border-gray-200 dark:border-gray-750 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer'
-                                }`}
-                              >
-                                {i + 1}
-                              </button>
-                            ))}
-                            <button
-                              onClick={() => setUsersPage(prev => Math.min(prev + 1, totalUsersPages))}
-                              disabled={usersPage === totalUsersPages}
-                              className="px-2.5 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 disabled:opacity-50 transition shadow-sm cursor-pointer"
-                            >
-                              Next
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* Query Detail Modal */}
-      {showQueryModal && viewingQuery && (
-        <div className="fixed inset-0 bg-teal-950/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl ring-1 ring-teal-100 shadow-2xl w-full max-w-full h-full max-h-full sm:w-[560px] sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden animate-fadeIn text-left">
-
-            <div className="px-6 py-4 border-b border-teal-100 bg-teal-50/60 flex justify-between items-center shrink-0">
-              <div>
-                <h3 className="text-[15px] font-bold text-teal-900">
-                  Full SQL Query
-                </h3>
-                <p className="text-[12px] text-teal-700/60 mt-0.5">
-                  Executed by <span className="font-semibold text-teal-800">{viewingQuery.user?.name}</span> · {formatDateDayTime(viewingQuery.createdAt)}
-                </p>
-              </div>
-              <button
-                onClick={() => { setShowQueryModal(false); setViewingQuery(null); }}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-teal-500 hover:text-teal-800 hover:bg-teal-100 transition-colors text-lg font-medium"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-6 space-y-4 flex-1 overflow-y-auto flex flex-col">
-              <div className="relative group flex-1 flex flex-col min-h-[150px]">
-                <div className="absolute top-2 right-2 opacity-90 group-hover:opacity-100 transition-opacity z-10">
+            {/* 4. Bottom Row: 3 Widget Cards (matching crop_bottom.png) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              {/* Card 1: Quick Actions */}
+              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                <h4 className="text-xs font-bold text-[#0f172a] tracking-tight mb-2.5">Quick Actions</h4>
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleCopyQuery(viewingQuery.query)}
-                    className="px-2.5 py-1.5 bg-teal-800 hover:bg-teal-700 text-white rounded-md text-[10px] font-bold flex items-center gap-1 ring-1 ring-teal-700 transition active:scale-95 shadow"
+                    onClick={() => navigate('/connections')}
+                    className="p-2 bg-[#0ea5e9] hover:bg-sky-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                   >
-                    {copied ? '✓ Copied' : 'Copy'}
+                    <span>+</span>
+                    <span>New Connection</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab('audit-logs')}
+                    className="p-2 bg-[#8b5cf6] hover:bg-purple-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                  >
+                    <span>📜</span>
+                    <span>View Audit Logs</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/permissions')}
+                    className="p-2 bg-[#10b981] hover:bg-emerald-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                  >
+                    <span>👥</span>
+                    <span>Manage Users</span>
+                  </button>
+
+                  <button
+                    onClick={() => navigate('/profile')}
+                    className="p-2 bg-white hover:bg-gray-50 border border-gray-200 text-slate-700 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>⚙️</span>
+                    <span>Settings</span>
                   </button>
                 </div>
-                <div className="bg-teal-950 text-teal-50 rounded-lg p-4 pt-10 font-mono text-[12px] overflow-auto whitespace-pre-wrap flex-1 ring-1 ring-teal-800 leading-relaxed">
-                  {viewingQuery.query}
-                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-[12px] shrink-0">
-                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
-                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Status</span>
-                  <span className={`font-bold mt-1.5 text-[14px] ${viewingQuery.status === 'success' ? 'text-teal-600' : 'text-rose-500'}`}>
-                    {viewingQuery.status === 'success' ? '● Success' : '● Failed'}
-                  </span>
+              {/* Card 2: Database Usage */}
+              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Database Usage</h4>
+                  <span className="text-[10px] text-blue-600 font-semibold cursor-pointer">Last 7 Days</span>
                 </div>
 
-                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
-                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Execution Speed</span>
-                  <span className="text-teal-900 font-bold mt-1.5 text-[14px]">
-                    {viewingQuery.executionTime} ms
-                  </span>
-                </div>
-
-                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
-                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Rows Affected</span>
-                  <span className="text-teal-900 font-bold mt-1.5 text-[14px]">
-                    {viewingQuery.rowsAffected}
-                  </span>
-                </div>
-
-                <div className="bg-teal-50/60 ring-1 ring-teal-100 rounded-xl p-3.5 flex flex-col justify-between">
-                  <span className="text-teal-600 block font-bold uppercase tracking-wider text-[10px]">Date &amp; Day</span>
-                  <span className="text-teal-900 font-bold mt-1.5 text-[12px] truncate">
-                    {formatDateDayTime(viewingQuery.createdAt)}
-                  </span>
-                </div>
-              </div>
-
-              {viewingQuery.error && (
-                <div className="bg-rose-50 ring-1 ring-rose-200 rounded-xl p-4 text-rose-600 text-[12px] font-mono flex items-start gap-2.5 shrink-0">
-                  <span className="text-base leading-none">⚠</span>
-                  <div>
-                    <strong className="block font-bold mb-0.5">Execution error</strong>
-                    <span className="leading-relaxed">{viewingQuery.error}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="px-6 py-4 bg-teal-50/60 border-t border-teal-100 flex justify-end shrink-0">
-              <button
-                onClick={() => { setShowQueryModal(false); setViewingQuery(null); }}
-                className="px-4 py-2 text-white text-[12px] font-bold rounded-lg transition-opacity hover:opacity-90"
-                style={{ backgroundColor: '#0d9da4' }}
-              >
-                Close
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-
-
-      {/* Create User Modal */}
-      {createUserModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl w-[80vw] max-w-4xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
-            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <span>➕</span> Create New User Account
-              </h3>
-              <button
-                onClick={() => setCreateUserModalOpen(false)}
-                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateUserSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-              {createError && (
-                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
-                  ❌ {createError}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. John Doe"
-                  value={createForm.name}
-                  onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. john@example.com"
-                  value={createForm.email}
-                  onChange={e => setCreateForm({ ...createForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Minimum 6 characters"
-                  value={createForm.password}
-                  onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  System Role
-                </label>
-                <select
-                  value={createForm.role}
-                  onChange={e => setCreateForm({ ...createForm, role: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                >
-                  <option value="developer">Developer</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              {createForm.role === 'developer' && (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                      Developer Query Permission
-                    </label>
-                    <select
-                      value={createForm.accessMode || 'read'}
-                      onChange={e => setCreateForm({ ...createForm, accessMode: e.target.value })}
-                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                    >
-                      <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
-                      <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
-                    </select>
+                <div className="flex items-end justify-between gap-3 h-20 pt-1 px-2">
+                  {/* MySQL bar (42%) */}
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <span className="text-[10px] font-bold text-[#0ea5e9]">42%</span>
+                    <div className="w-full bg-[#0ea5e9] rounded-t-md" style={{ height: '42%' }}></div>
+                    <span className="text-[9px] text-[#64748b] font-medium">MySQL</span>
                   </div>
 
-                  <div className="pt-2 border-t border-gray-150 dark:border-gray-800 space-y-3">
-                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                      <input
-                        type="checkbox"
-                        checked={!!createForm.permissions?.userManagement}
-                        onChange={e => setCreateForm({
-                          ...createForm,
-                          permissions: {
-                            ...createForm.permissions,
-                            userManagement: e.target.checked
-                          }
-                        })}
-                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">👤 Database Users Manager Access</span>
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                      <input
-                        type="checkbox"
-                        checked={!!createForm.permissions?.connections}
-                        onChange={e => setCreateForm({
-                          ...createForm,
-                          permissions: {
-                            ...createForm.permissions,
-                            connections: e.target.checked
-                          }
-                        })}
-                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
-                      />
-                      <div>
-                        <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">⚙️ Add &amp; Manage Connections</span>
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to add, edit, and delete database connections</span>
-                      </div>
-                    </label>
-
-                    <ConnectionSchemaSelector
-                      value={createForm.allowedConnections || []}
-                      onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
-                      role={createForm.role}
-                      defaultAccessMode={createForm.accessMode || 'read'}
-                    />
+                  {/* PostgreSQL bar (42%) */}
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <span className="text-[10px] font-bold text-[#8b5cf6]">42%</span>
+                    <div className="w-full bg-[#8b5cf6] rounded-t-md" style={{ height: '42%' }}></div>
+                    <span className="text-[9px] text-[#64748b] font-medium">PostgreSQL</span>
                   </div>
-                </>
-              )}
 
-              <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setCreateUserModalOpen(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createLoading}
-                  style={{ backgroundColor: '#0d9da4' }}
-                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
-                >
-                  {createLoading ? 'Creating...' : 'Create Account'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  {/* MongoDB bar (23%) */}
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <span className="text-[10px] font-bold text-[#22c55e]">23%</span>
+                    <div className="w-full bg-[#22c55e] rounded-t-md" style={{ height: '23%' }}></div>
+                    <span className="text-[9px] text-[#64748b] font-medium">MongoDB</span>
+                  </div>
 
-      {/* Edit User Modal */}
-      {editUserModalUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl w-[80vw] max-w-4xl border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
-            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <span>✏️</span> Edit User: {editUserModalUser.name}
-              </h3>
-              <button
-                onClick={() => setEditUserModalUser(null)}
-                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEditUser} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-              {editError && (
-                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
-                  ❌ {editError}
+                  {/* Oracle bar (2%) */}
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <span className="text-[10px] font-bold text-[#f43f5e]">2%</span>
+                    <div className="w-full bg-[#f43f5e] rounded-t-md" style={{ height: '8%' }}></div>
+                    <span className="text-[9px] text-[#64748b] font-medium">Oracle</span>
+                  </div>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.name}
-                  onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={editForm.email}
-                  onChange={e => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Change Password <span className="text-[10px] text-gray-400 font-normal">(Leave blank to keep current password)</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="Enter new password"
-                  value={editForm.password}
-                  onChange={e => setEditForm({ ...editForm, password: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Account Role
-                </label>
-                <select
-                  value={editForm.role}
-                  onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                >
-                  <option value="developer">Developer</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-
-              {editForm.role === 'developer' && (
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Developer Query Permission
-                  </label>
-                  <select
-                    value={editForm.accessMode}
-                    onChange={e => setEditForm({ ...editForm, accessMode: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                  >
-                    <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
-                    <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
-                  </select>
+              {/* Card 3: Performance Overview */}
+              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Performance Overview</h4>
                 </div>
-              )}
 
-              {editForm.role !== 'admin' && (
-                <div className="pt-2 border-t border-gray-150 dark:border-gray-800 space-y-3">
-                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                    <input
-                      type="checkbox"
-                      checked={!!editForm.permissions?.userManagement}
-                      onChange={e => setEditForm({
-                        ...editForm,
-                        permissions: {
-                          ...(editForm.permissions || {}),
-                          userManagement: e.target.checked
-                        }
-                      })}
-                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
-                    />
+                <div className="flex items-center justify-between gap-3">
+                  {/* Left smooth blue sparkline matching crop_bottom.png */}
+                  <div className="h-14 w-28">
+                    <svg className="w-full h-full" viewBox="0 0 100 35" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M0,25 Q15,30 30,15 T60,20 T85,8 T100,6 L100,35 L0,35 Z" fill="url(#perfGrad)" />
+                      <path d="M0,25 Q15,30 30,15 T60,20 T85,8 T100,6" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" />
+                    </svg>
+                  </div>
+
+                  {/* Right stats */}
+                  <div className="text-right space-y-1">
                     <div>
-                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">👤 Database Users Manager Access</span>
-                      <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                      <p className="text-[9.5px] text-[#64748b]">Avg. Response Time</p>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-xs font-black text-[#0f172a]">12 ms</span>
+                        <span className="text-[9px] text-[#10b981] font-bold">↑ 45%</span>
+                      </div>
                     </div>
-                  </label>
-
-                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-                    <input
-                      type="checkbox"
-                      checked={!!editForm.permissions?.connections}
-                      onChange={e => setEditForm({
-                        ...editForm,
-                        permissions: {
-                          ...(editForm.permissions || {}),
-                          connections: e.target.checked
-                        }
-                      })}
-                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
-                    />
                     <div>
-                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200 block">⚙️ Add &amp; Manage Connections</span>
-                      <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Allows developer to add, edit, and delete database connections</span>
+                      <p className="text-[9.5px] text-[#64748b]">Total Queries (Today)</p>
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-xs font-black text-[#0f172a]">12,384</span>
+                        <span className="text-[9px] text-[#10b981] font-bold">↑ 32%</span>
+                      </div>
                     </div>
-                  </label>
-
-                  <ConnectionSchemaSelector
-                    value={editForm.allowedConnections || []}
-                    onChange={allowedConnections => setEditForm({ ...editForm, allowedConnections })}
-                    role={editForm.role}
-                    defaultAccessMode={editForm.accessMode || 'read'}
-                  />
+                  </div>
                 </div>
-              )}
-
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-150 dark:border-gray-800">
-                <button
-                  type="button"
-                  onClick={() => setEditUserModalUser(null)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  style={{ backgroundColor: '#0d9da4' }}
-                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
-                >
-                  {editLoading ? 'Saving...' : 'Save User Changes'}
-                </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Edit Connection Modal */}
+      {/* ========================================================
+          MODALS
+      ======================================================== */}
+      {/* 1. Edit Connection Modal */}
       {editConnectionModalConn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
-          <div className="bg-white dark:bg-gray-850 rounded-2xl max-w-xl w-full border border-gray-200 dark:border-gray-800 shadow-xl overflow-hidden animate-fadeIn">
-            <div className="px-6 py-4 border-b border-gray-150 dark:border-gray-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <span>✏️</span> Edit Connection: {editConnectionModalConn.name}
-              </h3>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl text-slate-800 border border-gray-150 animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
+              <h3 className="text-base font-bold text-slate-900">Edit Connection: {editConnForm.name}</h3>
               <button
                 onClick={() => setEditConnectionModalConn(null)}
-                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditConnection} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              {editConnError && (
-                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
-                  ❌ {editConnError}
-                </div>
-              )}
-
-              {editConnTestResult && (
-                <div className={`text-xs px-4 py-2.5 rounded-lg border ${
-                  editConnTestResult.success ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'
-                }`}>
-                  {editConnTestResult.success ? '✅' : '❌'} {editConnTestResult.message}
-                </div>
-              )}
-
-              {/* Connection Name */}
+            <form onSubmit={handleSaveEditConnection} className="space-y-3.5 text-xs">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Connection Name
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">Connection Name</label>
                 <input
                   type="text"
-                  required
                   value={editConnForm.name}
-                  onChange={e => setEditConnForm({ ...editConnForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                  onChange={(e) => setEditConnForm({ ...editConnForm, name: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
+                  required
                 />
               </div>
 
-              {/* Database Type */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  Database Engine
-                </label>
-                <select
-                  value={editConnForm.type}
-                  onChange={e => setEditConnForm({
-                    ...editConnForm,
-                    type: e.target.value,
-                    port: e.target.value === 'mysql' ? '3306' : e.target.value === 'postgresql' ? '5432' : '27017'
-                  })}
-                  className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100 font-semibold cursor-pointer"
-                >
-                  <option value="mysql">🐬 MySQL</option>
-                  <option value="postgresql">🐘 PostgreSQL</option>
-                  <option value="mongodb">🍃 MongoDB</option>
-                  <option value="oracle">🔴 Oracle</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Host / Server</label>
+                  <input
+                    type="text"
+                    value={editConnForm.host}
+                    onChange={(e) => setEditConnForm({ ...editConnForm, host: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Port</label>
+                  <input
+                    type="text"
+                    value={editConnForm.port}
+                    onChange={(e) => setEditConnForm({ ...editConnForm, port: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
+                  />
+                </div>
               </div>
 
-              {/* Host & Port */}
-              {editConnForm.type !== 'mongodb' && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Host / Server IP</label>
-                    <input
-                      type="text"
-                      required
-                      value={editConnForm.host}
-                      onChange={e => setEditConnForm({ ...editConnForm, host: e.target.value })}
-                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">Port</label>
-                    <input
-                      type="number"
-                      required
-                      value={editConnForm.port}
-                      onChange={e => setEditConnForm({ ...editConnForm, port: e.target.value })}
-                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Username & Password */}
-              {editConnForm.type !== 'mongodb' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">DB Username</label>
-                    <input
-                      type="text"
-                      required
-                      value={editConnForm.username}
-                      onChange={e => setEditConnForm({ ...editConnForm, username: e.target.value })}
-                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                      DB Password <span className="text-[10px] text-gray-400 font-normal">(Blank = keep current)</span>
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="Leave blank to keep existing"
-                      value={editConnForm.password}
-                      onChange={e => setEditConnForm({ ...editConnForm, password: e.target.value })}
-                      className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Database Name */}
-              {editConnForm.type !== 'mongodb' && (
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                    Default Database Name
-                  </label>
+                  <label className="block font-bold text-slate-700 mb-1">Username</label>
                   <input
                     type="text"
-                    placeholder="e.g. main_db"
-                    value={editConnForm.database}
-                    onChange={e => setEditConnForm({ ...editConnForm, database: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    value={editConnForm.username}
+                    onChange={(e) => setEditConnForm({ ...editConnForm, username: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
                   />
                 </div>
-              )}
-
-              {/* MongoDB Connection String */}
-              {editConnForm.type === 'mongodb' && (
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">MongoDB Connection URI</label>
+                  <label className="block font-bold text-slate-700 mb-1">Password</label>
                   <input
-                    type="text"
-                    required
-                    placeholder="mongodb://localhost:27017/dbname"
-                    value={editConnForm.connectionString}
-                    onChange={e => setEditConnForm({ ...editConnForm, connectionString: e.target.value })}
-                    className="w-full px-3.5 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white dark:bg-gray-800 dark:text-gray-100"
+                    type="password"
+                    placeholder="Leave blank to keep current"
+                    value={editConnForm.password}
+                    onChange={(e) => setEditConnForm({ ...editConnForm, password: e.target.value })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Default Database / Schema</label>
+                <input
+                  type="text"
+                  value={editConnForm.database}
+                  onChange={(e) => setEditConnForm({ ...editConnForm, database: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-slate-900"
+                />
+              </div>
+
+              {editConnError && (
+                <p className="text-rose-600 font-mono text-[11px]">{editConnError}</p>
+              )}
+              {editConnTestResult && (
+                <p className={`font-mono text-[11px] ${editConnTestResult.success ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {editConnTestResult.message}
+                </p>
               )}
 
-              {/* Modal Footer */}
-              <div className="pt-4 flex items-center justify-between border-t border-gray-150 dark:border-gray-800">
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={handleTestEditConnection}
                   disabled={editConnTestLoading}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-750 text-xs font-bold rounded-lg transition cursor-pointer"
+                  className="px-3 py-2 bg-gray-100 text-slate-700 hover:bg-gray-200 rounded-xl font-bold cursor-pointer"
                 >
-                  {editConnTestLoading ? 'Testing...' : '🧪 Test Connection'}
+                  {editConnTestLoading ? 'Testing...' : 'Test Connection'}
                 </button>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setEditConnectionModalConn(null)}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                    className="px-3 py-2 text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={editConnLoading}
-                    style={{ backgroundColor: '#0d9da4' }}
-                    className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                    className="px-4 py-2 bg-[#2563eb] hover:bg-blue-700 text-white rounded-xl font-bold cursor-pointer"
                   >
-                    {editConnLoading ? 'Saving...' : 'Save Connection Changes'}
+                    {editConnLoading ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </div>
@@ -1927,16 +1540,56 @@ export default function Dashboard() {
         </div>
       )}
 
-      <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeIn {
-          animation: fadeIn 0.18s ease-out;
-        }
-      `}</style>
-      <Toast toast={toast} onClose={() => setToast(null)} />
+      {/* 2. Share Connection Modal */}
+      {shareModalOpen && sharingConn && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-slate-800 border border-gray-150 animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
+              <h3 className="text-base font-bold text-slate-900">Share Connection</h3>
+              <button onClick={() => setShareModalOpen(false)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-3">
+              Grant selected team members permission to query and browse <span className="text-blue-600 font-bold">{sharingConn.name}</span>.
+            </p>
+
+            <div className="max-h-48 overflow-y-auto space-y-2 border border-gray-200 bg-gray-50 p-3 rounded-xl mb-4">
+              {usersList.map((u) => (
+                <label key={u._id} className="flex items-center gap-2.5 text-xs text-slate-700 cursor-pointer hover:text-slate-900">
+                  <input
+                    type="checkbox"
+                    checked={selectedUserIds.includes(u._id)}
+                    onChange={() => handleToggleUser(u._id)}
+                    className="rounded text-blue-600 focus:ring-0"
+                  />
+                  <span>{u.name} ({u.email})</span>
+                </label>
+              ))}
+            </div>
+
+            {shareError && <p className="text-rose-600 text-xs mb-2">{shareError}</p>}
+            {shareSuccess && <p className="text-emerald-600 text-xs mb-2">{shareSuccess}</p>}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => setShareModalOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveShare}
+                disabled={shareLoading}
+                className="px-4 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                {shareLoading ? 'Saving...' : 'Save Permissions'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

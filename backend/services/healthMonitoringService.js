@@ -3,6 +3,7 @@ const Alert = require('../models/alertModel');
 const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
 const { getConnection } = require('../connections/connectionManager');
 const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } = require('./notificationService');
+const { getOracleMonitoringMetrics } = require('../utils/oracleMonitoringUtils');
 
 const resolveRecipientEmails = async (connDoc) => {
   if (connDoc.alertEmail) return connDoc.alertEmail;
@@ -43,6 +44,8 @@ const evaluateConnectionHealth = async (connDoc, io) => {
       await sendEmailNotification(recipientEmail, alertPayload);
       io.emit('alert-resolved', { ...activeDownAlert.toJSON(), connectionName: connDoc.name });
     }
+
+    if (type === 'oracle') return;
 
     // ─── EVALUATE CAPACITY METRICS ───────────────────
     let activeConn = 0;
@@ -122,6 +125,9 @@ const evaluateConnectionHealth = async (connDoc, io) => {
 
   } catch (err) {
     console.error(`Health evaluation failed for connection "${connDoc.name}":`, err.message);
+    if (connDoc.type === 'oracle' && dbConnection) {
+      return;
+    }
     
     // ─── IF UNREACHABLE: Create database down alert ───
     const activeDownAlert = await Alert.findOne({ connection: connDoc._id, type: 'down', resolved: false });
@@ -268,6 +274,14 @@ const recordConnectionSnapshot = async (connDoc) => {
           delete: serverStatus.opcounters?.delete || 0,
         },
         uptime: serverStatus.uptime || 0,
+      });
+    } else if (type === 'oracle') {
+      const metrics = await getOracleMonitoringMetrics(conn);
+      await MonitoringSnapshot.create({
+        connection: connDoc._id,
+        database: connDoc.username || connDoc.database || null,
+        type: 'oracle',
+        ...metrics,
       });
     }
   } catch (err) {

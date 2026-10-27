@@ -94,7 +94,7 @@ const getConnection = async (connectionDoc, targetDatabase = null) => {
 
   // Connection config prepare karo
   const configToUse = connectionDoc.toObject ? connectionDoc.toObject() : { ...connectionDoc };
-  if (targetDb) {
+  if (targetDb && configToUse.type !== 'oracle') {
     configToUse.database = targetDb;
   }
 

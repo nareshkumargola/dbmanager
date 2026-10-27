@@ -78,11 +78,25 @@ exports.signup = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const cleanEmail = (email || '').trim().toLowerCase();
 
-    // Find user
-    const user = await User.findOne({ email });
+    // Find user with support for whitespace and case variations in DB
+    const user = await User.findOne({
+      $or: [
+        { email: cleanEmail },
+        { email: (email || '').trim() },
+        { email: new RegExp('^\\s*' + cleanEmail.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') + '\\s*$', 'i') }
+      ]
+    });
+
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    // Auto-clean email whitespace if found with leading/trailing spaces
+    if (user.email !== cleanEmail) {
+      user.email = cleanEmail;
+      await user.save();
     }
 
     // Verify password

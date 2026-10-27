@@ -18,6 +18,13 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const finishLogin = (userData, token) => {
+    const name = userData?.name?.trim() || userData?.email?.split('@')[0] || 'there';
+    sessionStorage.setItem('welcomeUserName', name);
+    login(userData, token);
+    navigate('/dashboard');
+  };
+
   // Mask Email for privacy (e.g. vi*****@gmail.com)
   const maskEmail = (email) => {
     if (!email) return '';
@@ -54,8 +61,7 @@ export default function Login() {
         setTimer(60);
         setOtpDigits(['', '', '', '', '', '']);
       } else {
-        login(res.data.user, res.data.token);
-        navigate('/dashboard');
+        finishLogin(res.data.user, res.data.token);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong');
@@ -130,8 +136,7 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await API.post('/auth/verify-otp', { email: userEmail, otp: fullOtp });
-      login(res.data.user, res.data.token);
-      navigate('/dashboard');
+      finishLogin(res.data.user, res.data.token);
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid or expired OTP code.');
     } finally {

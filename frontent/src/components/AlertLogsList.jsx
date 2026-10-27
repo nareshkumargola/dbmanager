@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import API from '../api/axios';
 import { socket } from '../api/socket';
+import { useAuth } from '../context/AuthContext';
 
 export default function AlertLogsList({ connectionId }) {
+  const { user } = useAuth();
+  const canResolveAlerts = user?.role === 'admin' || user?.permissions?.monitor === true;
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -135,13 +138,13 @@ export default function AlertLogsList({ connectionId }) {
                   </div>
                 </div>
 
-                <button
+                {canResolveAlerts && <button
                   onClick={() => handleResolveAlert(alert._id)}
                   disabled={resolvingId === alert._id}
                   className="px-3.5 py-1.5 border border-gray-250 hover:bg-white text-gray-800 text-xs font-bold rounded-lg shadow-xs transition bg-white/70"
                 >
                   {resolvingId === alert._id ? 'Resolving...' : 'Resolve'}
-                </button>
+                </button>}
               </div>
             ))}
           </div>
