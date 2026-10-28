@@ -3,6 +3,7 @@ const router = express.Router();
 const monitorController = require('../controllers/monitorController');
 const { protect, checkPermission } = require('../middlewares/authMiddleware');
 
+router.get('/overview', protect, monitorController.getDashboardPerformanceOverview);
 router.get('/:id', protect, monitorController.getMonitoringData);
 router.get('/:id/history', protect, monitorController.getMonitoringHistory);
 router.get('/:id/tables', protect, monitorController.getTableDetails);

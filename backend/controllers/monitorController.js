@@ -50,6 +50,104 @@ const getHourlyAverage = (snapshots, includeDate = false) => {
   return avg;
 };
 
+exports.getDashboardPerformanceOverview = async (req, res) => {
+  try {
+    const connectionQuery = req.user.role === 'admin'
+      ? {}
+      : {
+          $or: [
+            { user: req.user.id },
+            { allowedUsers: req.user.id },
+          ],
+        };
+    const connections = await Connection.find(connectionQuery)
+      .select('_id name type')
+      .lean();
+
+    if (connections.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: { connections: [], history: [], updatedAt: null },
+      });
+    }
+
+    const connectionIds = connections.map((connection) => connection._id);
+    const now = Date.now();
+    const oneHourAgo = new Date(now - 60 * 60 * 1000);
+    const currentSnapshotCutoff = new Date(now - 3 * 60 * 1000);
+    const snapshots = await MonitoringSnapshot.find({
+      connection: { $in: connectionIds },
+      createdAt: { $gte: oneHourAgo },
+    })
+      .select('connection type activeConnections maxConnections queriesPerSecond slowQueries sizeMB createdAt')
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const latestByConnection = new Map();
+    const buckets = new Map();
+    const bucketDuration = 5 * 60 * 1000;
+
+    snapshots.forEach((snapshot) => {
+      const connectionId = snapshot.connection.toString();
+      if (snapshot.createdAt >= currentSnapshotCutoff) {
+        latestByConnection.set(connectionId, snapshot);
+      }
+
+      const bucketTime = Math.floor(new Date(snapshot.createdAt).getTime() / bucketDuration) * bucketDuration;
+      if (!buckets.has(bucketTime)) buckets.set(bucketTime, new Map());
+      buckets.get(bucketTime).set(connectionId, snapshot);
+    });
+
+    const overviewConnections = connections.map((connection) => {
+      const snapshot = latestByConnection.get(connection._id.toString());
+      return {
+        id: connection._id,
+        name: connection.name,
+        type: connection.type,
+        activeConnections: snapshot?.activeConnections ?? null,
+        maxConnections: snapshot?.maxConnections ?? null,
+        queriesPerSecond: snapshot?.queriesPerSecond ?? null,
+        slowQueries: snapshot?.slowQueries ?? null,
+        sizeMB: snapshot?.sizeMB ?? null,
+        createdAt: snapshot?.createdAt ?? null,
+      };
+    });
+
+    const history = [...buckets.entries()]
+      .sort(([timeA], [timeB]) => timeA - timeB)
+      .map(([bucketTime, connectionSnapshots]) => {
+        const samples = [...connectionSnapshots.values()];
+        return {
+          timestamp: new Date(bucketTime),
+          queriesPerSecond: Number(samples
+            .reduce((total, snapshot) => total + (snapshot.queriesPerSecond || 0), 0)
+            .toFixed(2)),
+          activeConnections: samples.reduce(
+            (total, snapshot) => total + (snapshot.activeConnections || 0),
+            0
+          ),
+        };
+      });
+
+    const latestTimestamp = overviewConnections.reduce((latest, connection) => {
+      if (!connection.createdAt) return latest;
+      return !latest || connection.createdAt > latest ? connection.createdAt : latest;
+    }, null);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        connections: overviewConnections,
+        history,
+        updatedAt: latestTimestamp,
+      },
+    });
+  } catch (err) {
+    console.error('Dashboard performance overview error:', err);
+    res.status(500).json({ message: 'Error fetching performance overview', error: err.message });
+  }
+};
+
 exports.getMonitoringData = async (req, res) => {
   try {
     const connection = await Connection.findById(req.params.id);
@@ -671,6 +769,10 @@ exports.resolveAlert = async (req, res) => {
     alert.resolved = true;
     alert.resolvedAt = new Date();
     await alert.save();
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('alert-resolved', alert.toJSON());
+    }
     res.status(200).json({ success: true, message: 'Alert marked as resolved successfully!' });
   } catch (err) {
     res.status(500).json({ message: 'Error resolving alert', error: err.message });

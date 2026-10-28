@@ -232,6 +232,21 @@ const recordConnectionSnapshot = async (connDoc) => {
       const dbSize = await conn.query(`SELECT pg_database_size($1) AS size_bytes`, [dbName]);
       const tables = await conn.query(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'`);
       const stats = await conn.query(`SELECT * FROM pg_stat_database WHERE datname = $1`, [dbName]);
+      const uptimeResult = await conn.query(
+        'SELECT floor(extract(epoch from (now() - pg_postmaster_start_time()))) AS uptime'
+      );
+      const uptimeSeconds = Math.max(parseInt(uptimeResult.rows[0]?.uptime || 1), 1);
+      const commits = parseInt(stats.rows[0]?.xact_commit || 0);
+      const rollbacks = parseInt(stats.rows[0]?.xact_rollback || 0);
+      let slowQueryCount = 0;
+      try {
+        const slowQueries = await conn.query(
+          "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' AND (now() - query_start) > interval '1 second'"
+        );
+        slowQueryCount = parseInt(slowQueries.rows[0]?.count || 0);
+      } catch (slowQueryError) {
+        console.warn(`PostgreSQL slow query metric unavailable for "${connDoc.name}":`, slowQueryError.message);
+      }
 
       const sizeMB = parseFloat((parseInt(dbSize.rows[0]?.size_bytes || 0) / 1024 / 1024).toFixed(2));
 
@@ -241,13 +256,16 @@ const recordConnectionSnapshot = async (connDoc) => {
         type: 'postgresql',
         activeConnections: parseInt(connCount.rows[0]?.count || 0),
         maxConnections: parseInt(maxConn.rows[0]?.max_connections || 100),
+        queriesPerSecond: parseFloat(((commits + rollbacks) / uptimeSeconds).toFixed(2)),
+        slowQueries: slowQueryCount,
         sizeMB,
         size: `${sizeMB.toFixed(2)} MB`,
         totalTables: parseInt(tables.rows[0]?.count || 0),
-        commits: stats.rows[0]?.xact_commit || 0,
-        rollbacks: stats.rows[0]?.xact_rollback || 0,
+        commits,
+        rollbacks,
         blocksRead: stats.rows[0]?.blks_read || 0,
         blocksHit: stats.rows[0]?.blks_hit || 0,
+        uptime: uptimeSeconds,
       });
     }
 
@@ -257,23 +275,28 @@ const recordConnectionSnapshot = async (connDoc) => {
       const serverStatus = await db.command({ serverStatus: 1 });
       const dbStats = await db.stats();
       const collections = await db.listCollections().toArray();
+      const opCounters = serverStatus.opcounters || {};
+      const totalOperations = (opCounters.insert || 0) + (opCounters.query || 0)
+        + (opCounters.update || 0) + (opCounters.delete || 0);
+      const uptimeSeconds = Math.max(serverStatus.uptime || 1, 1);
 
       await MonitoringSnapshot.create({
         connection: connDoc._id,
         database: dbName,
         type: 'mongodb',
         activeConnections: serverStatus.connections?.current || 0,
-        maxConnections: serverStatus.connections?.available || 0,
+        maxConnections: (serverStatus.connections?.current || 0) + (serverStatus.connections?.available || 0),
+        queriesPerSecond: parseFloat((totalOperations / uptimeSeconds).toFixed(2)),
         totalCollections: collections.length,
         totalDocuments: dbStats.objects || 0,
         sizeMB: parseFloat(((dbStats.dataSize || 0) / 1024 / 1024).toFixed(2)),
         opCounters: {
-          insert: serverStatus.opcounters?.insert || 0,
-          query: serverStatus.opcounters?.query || 0,
-          update: serverStatus.opcounters?.update || 0,
-          delete: serverStatus.opcounters?.delete || 0,
+          insert: opCounters.insert || 0,
+          query: opCounters.query || 0,
+          update: opCounters.update || 0,
+          delete: opCounters.delete || 0,
         },
-        uptime: serverStatus.uptime || 0,
+        uptime: uptimeSeconds,
       });
     } else if (type === 'oracle') {
       const metrics = await getOracleMonitoringMetrics(conn);

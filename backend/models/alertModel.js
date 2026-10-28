@@ -34,4 +34,9 @@ const alertSchema = new mongoose.Schema({
   },
 });
 
+alertSchema.index(
+  { resolvedAt: 1 },
+  { expireAfterSeconds: 5 * 24 * 60 * 60 }
+);
+
 module.exports = mongoose.model('Alert', alertSchema);

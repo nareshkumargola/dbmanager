@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import API from '../api/axios';
 import Navbar from '../components/Navbar';
 import AlertSettingsTab from '../components/AlertSettingsTab';
@@ -16,6 +16,7 @@ export default function ConnectionMonitor() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
 
   const [connectionName, setConnectionName] = useState('');
   const [dbType, setDbType] = useState('');
@@ -37,7 +38,7 @@ export default function ConnectionMonitor() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('metrics');
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') === 'alerts' ? 'alerts' : 'metrics');
   const [activeToast, setActiveToast] = useState(null);
   const canManageMonitoring = user?.role === 'admin' || user?.permissions?.monitor === true;
 

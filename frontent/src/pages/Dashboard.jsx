@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
+import { socket } from '../api/socket';
 import { useAuth } from '../context/AuthContext';
 import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
 import Toast from '../components/Toast';
@@ -24,6 +25,18 @@ export default function Dashboard() {
 
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [performanceOverview, setPerformanceOverview] = useState({
+    connections: [],
+    history: [],
+    updatedAt: null,
+  });
+  const [performanceLoading, setPerformanceLoading] = useState(true);
+  const [performanceError, setPerformanceError] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState('');
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef(null);
 
   // Filter States
   const [filterType, setFilterType] = useState('all');
@@ -60,6 +73,9 @@ export default function Dashboard() {
     const handleClickOutside = (event) => {
       if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
         setUserDropdownOpen(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        setNotificationsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -221,6 +237,75 @@ export default function Dashboard() {
     });
   }, [activeConnectionsList, filterType, filterRole, filterUser, filterStatus, searchConnText]);
   const globalSearchResults = filteredConnections.slice(0, 6);
+  const hasActiveFilters = Boolean(
+    searchConnText.trim() || filterType !== 'all' || filterRole !== 'all' || filterStatus !== 'all'
+  );
+  const currentPerformanceConnections = performanceOverview.connections.filter(
+    (connection) => connection.createdAt !== null
+  );
+  const performanceTotals = currentPerformanceConnections.reduce(
+    (totals, connection) => ({
+      queriesPerSecond: totals.queriesPerSecond + (Number(connection.queriesPerSecond) || 0),
+      activeConnections: totals.activeConnections + (Number(connection.activeConnections) || 0),
+      slowQueries: totals.slowQueries + (Number(connection.slowQueries) || 0),
+    }),
+    { queriesPerSecond: 0, activeConnections: 0, slowQueries: 0 }
+  );
+  const getConnectionUtilization = (type) => {
+    const measured = currentPerformanceConnections.filter((connection) =>
+      connection.type === type
+      && connection.activeConnections !== null
+      && connection.activeConnections !== undefined
+      && connection.maxConnections !== null
+      && connection.maxConnections !== undefined
+      && Number.isFinite(Number(connection.activeConnections))
+      && Number.isFinite(Number(connection.maxConnections))
+      && Number(connection.maxConnections) > 0
+    );
+    if (measured.length === 0) return null;
+
+    const capacity = measured.reduce((total, connection) => total + Number(connection.maxConnections), 0);
+    const active = measured.reduce((total, connection) => total + Number(connection.activeConnections), 0);
+    return Math.round((active / capacity) * 100);
+  };
+  const performanceChartPoints = performanceOverview.history.slice(-12);
+  const maxPerformanceQps = Math.max(
+    1,
+    ...performanceChartPoints.map((point) => point.queriesPerSecond || 0)
+  );
+  const performanceLinePoints = performanceChartPoints.map((point, index) => {
+    const x = performanceChartPoints.length === 1
+      ? 50
+      : (index / (performanceChartPoints.length - 1)) * 100;
+    const y = 33 - ((point.queriesPerSecond || 0) / maxPerformanceQps) * 27;
+    return `${x},${y}`;
+  }).join(' ');
+  const databaseUsageTypes = [
+    { type: 'mysql', label: 'MySQL', color: '#0284c7' },
+    { type: 'postgresql', label: 'PostgreSQL', color: '#7c3aed' },
+    { type: 'mongodb', label: 'MongoDB', color: '#16a34a' },
+    { type: 'oracle', label: 'Oracle', color: '#e11d48' },
+  ]
+    .map((engine) => {
+      const measuredConnections = currentPerformanceConnections.filter(
+        (connection) => connection.type === engine.type
+          && connection.sizeMB !== null
+          && connection.sizeMB !== undefined
+          && Number.isFinite(Number(connection.sizeMB))
+      );
+      return {
+        ...engine,
+        sizeMB: measuredConnections.reduce((total, connection) => total + Number(connection.sizeMB), 0),
+        connectionCount: measuredConnections.length,
+      };
+    })
+    .filter((engine) => engine.connectionCount > 0);
+  const totalDatabaseSizeMB = databaseUsageTypes.reduce((total, engine) => total + engine.sizeMB, 0);
+  const formatDatabaseSize = (sizeMB) => {
+    if (sizeMB >= 1024 * 1024) return `${(sizeMB / (1024 * 1024)).toFixed(2)} TB`;
+    if (sizeMB >= 1024) return `${(sizeMB / 1024).toFixed(2)} GB`;
+    return `${sizeMB.toFixed(2)} MB`;
+  };
 
   // Connection counts
   const mysqlCount = activeConnectionsList.filter((c) => c.type === 'mysql').length;
@@ -277,6 +362,133 @@ export default function Dashboard() {
     }
     fetchConnections();
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    let cancelled = false;
+    const fetchPerformanceOverview = async () => {
+      try {
+        const response = await API.get('/monitor/overview');
+        if (cancelled) return;
+        setPerformanceOverview(response.data.data);
+        setPerformanceError('');
+      } catch (err) {
+        console.error('Failed to load dashboard performance overview:', err);
+        if (!cancelled) setPerformanceError('Performance metrics could not be loaded.');
+      } finally {
+        if (!cancelled) setPerformanceLoading(false);
+      }
+    };
+
+    fetchPerformanceOverview();
+    const refreshTimer = setInterval(fetchPerformanceOverview, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(refreshTimer);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (connections.length === 0) return undefined;
+
+    let cancelled = false;
+    const fetchNotifications = async () => {
+      setNotificationsLoading(true);
+      setNotificationsError('');
+      const results = await Promise.allSettled(
+        connections.map((connection) => API.get(`/monitor/${connection._id}/alerts`))
+      );
+      if (cancelled) return;
+
+      const alerts = [];
+      let failedRequests = 0;
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          failedRequests += 1;
+          console.error(`Failed to load alerts for connection "${connections[index].name}":`, result.reason);
+          return;
+        }
+
+        const connection = connections[index];
+        (result.value.data.alerts || []).forEach((alert) => {
+          alerts.push({ ...alert, connection: connection._id, connectionName: connection.name });
+        });
+      });
+
+      setNotifications(alerts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      setNotificationsError(failedRequests ? 'Some connection alerts could not be loaded.' : '');
+      setNotificationsLoading(false);
+    };
+
+    fetchNotifications().catch((err) => {
+      console.error('Failed to load dashboard notifications:', err);
+      if (!cancelled) {
+        setNotificationsError('Notifications could not be loaded.');
+        setNotificationsLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connections]);
+
+  useEffect(() => {
+    if (connections.length === 0) return undefined;
+
+    socket.connect();
+    const connectionIds = new Set(connections.map((connection) => connection._id));
+    const getConnectionId = (alert) =>
+      typeof alert.connection === 'object' ? alert.connection?._id : alert.connection;
+
+    const handleNewAlert = (alert) => {
+      const connectionId = getConnectionId(alert);
+      const connection = connections.find((item) => item._id === connectionId);
+      if (!connection) return;
+
+      const notification = {
+        ...alert,
+        connection: connectionId,
+        connectionName: alert.connectionName || connection.name,
+      };
+      setNotifications((current) => [
+        notification,
+        ...current.filter((item) => item._id !== notification._id),
+      ]);
+    };
+
+    const handleAlertResolved = (alert) => {
+      const connectionId = getConnectionId(alert);
+      if (!connectionIds.has(connectionId)) return;
+
+      const connection = connections.find((item) => item._id === connectionId);
+      const notification = {
+        ...alert,
+        connection: connectionId,
+        connectionName: alert.connectionName || connection?.name,
+        resolved: true,
+      };
+      setNotifications((current) => {
+        const existing = current.some((item) => item._id === notification._id);
+        const updated = existing
+          ? current.map((item) => item._id === notification._id ? notification : item)
+          : [notification, ...current];
+        return updated.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      });
+    };
+
+    socket.on('new-alert', handleNewAlert);
+    socket.on('alert-resolved', handleAlertResolved);
+    return () => {
+      socket.off('new-alert', handleNewAlert);
+      socket.off('alert-resolved', handleAlertResolved);
+    };
+  }, [connections]);
+
+  const connectionIds = new Set(connections.map((connection) => connection._id));
+  const visibleNotifications = notifications.filter((notification) => connectionIds.has(notification.connection));
+  const activeNotifications = visibleNotifications.filter((notification) => !notification.resolved);
 
   const handleOpenEditConnModal = (conn) => {
     setEditConnectionModalConn(conn);
@@ -715,15 +927,87 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Notification Bell with Badge */}
-            <button className="relative w-8 h-8 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200/80 flex items-center justify-center text-slate-600 transition cursor-pointer">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
-                6
-              </span>
-            </button>
+            {/* Notification Bell with Live Database Alerts */}
+            <div className="relative" ref={notificationsRef}>
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((open) => !open)}
+                aria-label={`Notifications${activeNotifications.length ? `, ${activeNotifications.length} active` : ''}`}
+                aria-expanded={notificationsOpen}
+                className="relative w-8 h-8 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200/80 flex items-center justify-center text-slate-600 transition cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {activeNotifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                    {activeNotifications.length > 99 ? '99+' : activeNotifications.length}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl z-50 text-left">
+                  <div className="sticky top-0 bg-white border-b border-slate-100 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        {activeNotifications.length} active
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 space-y-3">
+                    {notificationsError && (
+                      <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[10px] text-red-700">
+                        {notificationsError}
+                      </p>
+                    )}
+
+                    {notificationsLoading ? (
+                      <p className="py-5 text-center text-xs text-slate-500">Loading database alerts...</p>
+                    ) : (
+                      activeNotifications.length === 0 ? (
+                        !notificationsError && (
+                          <p className="py-5 text-center text-xs text-slate-500">No notifications</p>
+                        )
+                      ) : (
+                        <div className="space-y-2">
+                          {activeNotifications.slice(0, 5).map((notification) => (
+                            <button
+                              key={notification._id}
+                              type="button"
+                              onClick={() => {
+                                setNotificationsOpen(false);
+                                navigate(`/connections/${notification.connection}/monitor?tab=alerts`);
+                              }}
+                              className="w-full rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-left hover:bg-amber-50 transition"
+                            >
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] font-bold text-slate-800">
+                                  {notification.connectionName} · {(notification.type || 'alert').replace(/_/g, ' ')}
+                                </span>
+                                <span className={`shrink-0 text-[9px] font-bold uppercase ${
+                                  notification.severity === 'critical' ? 'text-red-600' : 'text-amber-600'
+                                }`}>
+                                  {notification.severity}
+                                </span>
+                              </span>
+                              <span className="mt-1 block text-[10px] leading-relaxed text-slate-600">
+                                {notification.message}
+                              </span>
+                              <span className="mt-1 block text-[9px] text-slate-400">
+                                {new Date(notification.createdAt).toLocaleString()}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Dark / Light Mode Toggle Pill */}
             <div
@@ -894,22 +1178,25 @@ export default function Dashboard() {
                     <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
                   </div>
 
-                  <div className="flex flex-col items-end">
-                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
-                      ↑ 100%
-                    </span>
-                    {/* Delicate smooth wave matching crop_cards.png */}
-                    <div className="w-22 h-6">
-                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
-                        <defs>
-                          <linearGradient id="mysqlWaveFade" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M 0 18 Q 14 26 28 16 T 56 18 T 80 8 T 100 6 L 100 28 L 0 28 Z" fill="url(#mysqlWaveFade)" />
-                        <path d="M 0 18 Q 14 26 28 16 T 56 18 T 80 8 T 100 6" stroke="#0ea5e9" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                  <div className="w-24">
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <span className="text-[9px] font-semibold text-slate-500">Capacity</span>
+                      <span className="text-[11px] font-bold text-sky-700">
+                        {getConnectionUtilization('mysql') === null ? 'N/A' : `${getConnectionUtilization('mysql')}%`}
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 overflow-hidden rounded-full bg-sky-100"
+                      role="progressbar"
+                      aria-label="MySQL connection capacity used"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={getConnectionUtilization('mysql') ?? 0}
+                    >
+                      <div
+                        className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                        style={{ width: `${Math.min(getConnectionUtilization('mysql') ?? 0, 100)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -934,22 +1221,25 @@ export default function Dashboard() {
                     <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
                   </div>
 
-                  <div className="flex flex-col items-end">
-                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
-                      ↑ 100%
-                    </span>
-                    {/* Delicate smooth wave matching crop_cards.png */}
-                    <div className="w-22 h-6">
-                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
-                        <defs>
-                          <linearGradient id="pgWaveFade" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#a855f7" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M 0 20 Q 15 28 30 16 T 60 14 T 82 8 T 100 10 L 100 28 L 0 28 Z" fill="url(#pgWaveFade)" />
-                        <path d="M 0 20 Q 15 28 30 16 T 60 14 T 82 8 T 100 10" stroke="#a855f7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                  <div className="w-24">
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <span className="text-[9px] font-semibold text-slate-500">Capacity</span>
+                      <span className="text-[11px] font-bold text-violet-700">
+                        {getConnectionUtilization('postgresql') === null ? 'N/A' : `${getConnectionUtilization('postgresql')}%`}
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 overflow-hidden rounded-full bg-violet-100"
+                      role="progressbar"
+                      aria-label="PostgreSQL connection capacity used"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={getConnectionUtilization('postgresql') ?? 0}
+                    >
+                      <div
+                        className="h-full rounded-full bg-violet-500 transition-all duration-500"
+                        style={{ width: `${Math.min(getConnectionUtilization('postgresql') ?? 0, 100)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -974,22 +1264,25 @@ export default function Dashboard() {
                     <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
                   </div>
 
-                  <div className="flex flex-col items-end">
-                    <span className="text-[11px] font-bold text-[#16a34a] flex items-center gap-0.5 mb-1 leading-none">
-                      ↑ 100%
-                    </span>
-                    {/* Delicate smooth wave matching crop_cards.png */}
-                    <div className="w-22 h-6">
-                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
-                        <defs>
-                          <linearGradient id="mongoWaveFade" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M 0 22 Q 18 28 35 14 T 68 18 T 88 10 T 100 6 L 100 28 L 0 28 Z" fill="url(#mongoWaveFade)" />
-                        <path d="M 0 22 Q 18 28 35 14 T 68 18 T 88 10 T 100 6" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                  <div className="w-24">
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <span className="text-[9px] font-semibold text-slate-500">Capacity</span>
+                      <span className="text-[11px] font-bold text-emerald-700">
+                        {getConnectionUtilization('mongodb') === null ? 'N/A' : `${getConnectionUtilization('mongodb')}%`}
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 overflow-hidden rounded-full bg-emerald-100"
+                      role="progressbar"
+                      aria-label="MongoDB connection capacity used"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={getConnectionUtilization('mongodb') ?? 0}
+                    >
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${Math.min(getConnectionUtilization('mongodb') ?? 0, 100)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1014,23 +1307,25 @@ export default function Dashboard() {
                     <p className="text-[11px] text-[#64748b] font-medium mt-1 leading-none">Active Connection</p>
                   </div>
 
-                  <div className="flex flex-col items-end">
-                    <span className="text-[11px] font-bold text-[#e11d48] flex items-center gap-1 mb-1 leading-none">
-                      <span className="w-2 h-2 rounded-full bg-[#e11d48]"></span>
-                      0%
-                    </span>
-                    {/* Delicate smooth wave matching crop_cards.png */}
-                    <div className="w-22 h-6">
-                      <svg className="w-full h-full" viewBox="0 0 100 28" fill="none">
-                        <defs>
-                          <linearGradient id="oracleWaveFade" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#f43f5e" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <path d="M 0 20 Q 20 26 40 18 T 70 20 T 90 12 T 100 8 L 100 28 L 0 28 Z" fill="url(#oracleWaveFade)" />
-                        <path d="M 0 20 Q 20 26 40 18 T 70 20 T 90 12 T 100 8" stroke="#f43f5e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                  <div className="w-24">
+                    <div className="mb-1 flex items-center justify-between gap-1">
+                      <span className="text-[9px] font-semibold text-slate-500">Capacity</span>
+                      <span className="text-[11px] font-bold text-rose-700">
+                        {getConnectionUtilization('oracle') === null ? 'N/A' : `${getConnectionUtilization('oracle')}%`}
+                      </span>
+                    </div>
+                    <div
+                      className="h-1.5 overflow-hidden rounded-full bg-rose-100"
+                      role="progressbar"
+                      aria-label="Oracle connection capacity used"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={getConnectionUtilization('oracle') ?? 0}
+                    >
+                      <div
+                        className="h-full rounded-full bg-rose-500 transition-all duration-500"
+                        style={{ width: `${Math.min(getConnectionUtilization('oracle') ?? 0, 100)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1065,32 +1360,54 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                {/* Filter Toolbar (Strictly 1 single line matching crop_table.png) */}
-                <div className="flex items-center justify-between gap-3 mb-3.5 pb-3 border-b border-gray-100 text-xs">
-                  <div className="flex items-center gap-2.5 overflow-x-auto py-0.5">
-                    {/* Search by name, host, database */}
-                    <div className="relative w-48 shrink-0">
-                      <span className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-slate-400">
-                        🔍
-                      </span>
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 sm:p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16M7 12h10m-7 7h4" />
+                      </svg>
+                      <span className="text-xs font-bold text-slate-700">Find a connection</span>
+                      {hasActiveFilters && (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                          Filters applied
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] font-medium text-slate-500">
+                      Showing <span className="font-bold text-slate-700">{filteredConnections.length}</span> of {activeConnectionsList.length} connections
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_repeat(3,minmax(130px,160px))_auto]">
+                    <div className="relative min-w-0">
+                      <label htmlFor="connection-search" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Search
+                      </label>
+                      <svg className="absolute left-3 top-[38px] h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7" />
+                        <path strokeLinecap="round" d="m16 16 4 4" />
+                      </svg>
                       <input
-                        type="text"
-                        placeholder="Search by name, host, port, database..."
+                        id="connection-search"
+                        type="search"
+                        placeholder="Name, host, port or database"
                         value={searchConnText}
                         onChange={(e) => setSearchConnText(e.target.value)}
-                        className="w-full pl-7 pr-2.5 py-1.5 bg-[#f8fafc] border border-gray-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
                     </div>
 
-                    {/* Database Type select */}
-                    <div className="flex flex-col shrink-0">
-                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Database Type</label>
+                    <div>
+                      <label htmlFor="connection-type-filter" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Database type
+                      </label>
                       <select
+                        id="connection-type-filter"
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
-                        <option value="all">All</option>
+                        <option value="all">All types</option>
                         <option value="mysql">MySQL</option>
                         <option value="postgresql">PostgreSQL</option>
                         <option value="mongodb">MongoDB</option>
@@ -1098,53 +1415,54 @@ export default function Dashboard() {
                       </select>
                     </div>
 
-                    {/* Role select */}
-                    <div className="flex flex-col shrink-0">
-                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Role</label>
+                    <div>
+                      <label htmlFor="connection-role-filter" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Role
+                      </label>
                       <select
+                        id="connection-role-filter"
                         value={filterRole}
                         onChange={(e) => setFilterRole(e.target.value)}
-                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
-                        <option value="all">All</option>
+                        <option value="all">All roles</option>
                         <option value="admin">Admin</option>
                         <option value="developer">Developer</option>
                       </select>
                     </div>
 
-                    {/* Status select */}
-                    <div className="flex flex-col shrink-0">
-                      <label className="text-[9.5px] font-semibold text-slate-400 leading-tight mb-0.5">Status</label>
+                    <div>
+                      <label htmlFor="connection-status-filter" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Status
+                      </label>
                       <select
+                        id="connection-status-filter"
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="bg-[#f8fafc] border border-gray-200 rounded-xl px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm outline-none transition hover:border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       >
-                        <option value="all">All</option>
+                        <option value="all">All statuses</option>
                         <option value="connected">Connected</option>
                         <option value="inactive">Inactive</option>
                       </select>
                     </div>
 
-                    {/* Clear Filters Button */}
-                    <div className="flex items-end shrink-0 pt-3">
+                    <div className="flex items-end">
                       <button
+                        type="button"
+                        disabled={!hasActiveFilters}
                         onClick={() => {
                           setFilterType('all');
                           setFilterRole('all');
                           setFilterStatus('all');
                           setSearchConnText('');
                         }}
-                        className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer transition"
+                        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45 xl:w-auto"
                       >
-                        Clear Filters
+                        Clear filters
                       </button>
                     </div>
                   </div>
-
-                  <span className="text-[11px] text-slate-400 font-medium shrink-0 hidden md:inline-block">
-                    Showing {filteredConnections.length} of {activeConnectionsList.length} connections
-                  </span>
                 </div>
 
                 {/* Table */}
@@ -1247,26 +1565,41 @@ export default function Dashboard() {
 
                             {/* ACTIONS */}
                             <td className="px-3.5 py-3 text-right">
-                              <div className="inline-flex items-center gap-1.5">
+                              <div className="inline-flex items-center justify-end gap-2">
                                 <button
+                                  type="button"
                                   onClick={() => handleOpenEditConnModal(conn)}
-                                  className="px-2 py-1 border border-gray-200 text-slate-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                                  title={`Edit ${conn.name}`}
+                                  className="group inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 active:translate-y-0"
                                 >
-                                  ✏️ Edit
+                                  <svg className="h-3.5 w-3.5 transition-transform duration-200 group-hover:rotate-[-8deg]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z" />
+                                  </svg>
+                                  <span>Edit</span>
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => navigate(`/connections/${conn._id}`)}
-                                  className="px-2.5 py-1 bg-[#2563eb] hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                  className="group inline-flex h-8 items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 text-[11px] font-bold text-white shadow-sm shadow-blue-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700 hover:shadow-md hover:shadow-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 active:translate-y-0"
                                 >
                                   <span>Open</span>
-                                  <span>↗</span>
+                                  <svg className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M7 17 17 7M8 7h9v9" />
+                                  </svg>
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => handleOpenShareModal(conn)}
-                                  title="Options"
-                                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  title={`Share ${conn.name}`}
+                                  aria-label={`Share ${conn.name}`}
+                                  className="group inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-1 active:translate-y-0"
                                 >
-                                  ⋮
+                                  <svg className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <circle cx="18" cy="5" r="3" />
+                                    <circle cx="6" cy="12" r="3" />
+                                    <circle cx="18" cy="19" r="3" />
+                                    <path d="m8.7 10.7 6.6-4.4m-6.6 7 6.6 4.4" />
+                                  </svg>
                                 </button>
                               </div>
                             </td>
@@ -1336,81 +1669,143 @@ export default function Dashboard() {
 
               {/* Card 2: Database Usage */}
               <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Database Usage</h4>
-                  <span className="text-[10px] text-blue-600 font-semibold cursor-pointer">Last 7 Days</span>
+                  <span className="text-[9px] font-medium text-slate-400">
+                    {performanceOverview.updatedAt
+                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Live snapshot'}
+                  </span>
                 </div>
 
-                <div className="flex items-end justify-between gap-3 h-20 pt-1 px-2">
-                  {/* MySQL bar (42%) */}
-                  <div className="flex flex-col items-center gap-1 flex-1">
-                    <span className="text-[10px] font-bold text-[#0ea5e9]">42%</span>
-                    <div className="w-full bg-[#0ea5e9] rounded-t-md" style={{ height: '42%' }}></div>
-                    <span className="text-[9px] text-[#64748b] font-medium">MySQL</span>
+                {performanceLoading && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">Loading database sizes...</p>
+                ) : performanceError && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
+                ) : databaseUsageTypes.length === 0 ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">
+                    No recent database size metrics available.
+                  </p>
+                ) : (
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between border-b border-slate-100 pb-2">
+                      <span className="text-[10px] font-medium text-slate-500">Total measured storage</span>
+                      <span className="text-sm font-black text-slate-900">{formatDatabaseSize(totalDatabaseSizeMB)}</span>
+                    </div>
+                    <div className="space-y-2.5">
+                      {databaseUsageTypes.map((engine) => {
+                        const share = totalDatabaseSizeMB > 0
+                          ? (engine.sizeMB / totalDatabaseSizeMB) * 100
+                          : 0;
+                        return (
+                          <div key={engine.type} className="flex items-center gap-2">
+                            {renderEngineIcon(engine.type, 'sm')}
+                            <div className="min-w-0 flex-1">
+                              <div className="mb-1 flex items-center justify-between gap-2">
+                                <span className="truncate text-[10px] font-semibold text-slate-700">
+                                  {engine.label}
+                                  <span className="ml-1 font-normal text-slate-400">({engine.connectionCount})</span>
+                                </span>
+                                <span className="shrink-0 text-[10px] font-bold text-slate-700">
+                                  {formatDatabaseSize(engine.sizeMB)}
+                                </span>
+                              </div>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${share}%`, backgroundColor: engine.color }}
+                                />
+                              </div>
+                            </div>
+                            <span className="w-9 shrink-0 text-right text-[9px] font-semibold text-slate-400">
+                              {share.toFixed(0)}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-
-                  {/* PostgreSQL bar (42%) */}
-                  <div className="flex flex-col items-center gap-1 flex-1">
-                    <span className="text-[10px] font-bold text-[#8b5cf6]">42%</span>
-                    <div className="w-full bg-[#8b5cf6] rounded-t-md" style={{ height: '42%' }}></div>
-                    <span className="text-[9px] text-[#64748b] font-medium">PostgreSQL</span>
-                  </div>
-
-                  {/* MongoDB bar (23%) */}
-                  <div className="flex flex-col items-center gap-1 flex-1">
-                    <span className="text-[10px] font-bold text-[#22c55e]">23%</span>
-                    <div className="w-full bg-[#22c55e] rounded-t-md" style={{ height: '23%' }}></div>
-                    <span className="text-[9px] text-[#64748b] font-medium">MongoDB</span>
-                  </div>
-
-                  {/* Oracle bar (2%) */}
-                  <div className="flex flex-col items-center gap-1 flex-1">
-                    <span className="text-[10px] font-bold text-[#f43f5e]">2%</span>
-                    <div className="w-full bg-[#f43f5e] rounded-t-md" style={{ height: '8%' }}></div>
-                    <span className="text-[9px] text-[#64748b] font-medium">Oracle</span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Card 3: Performance Overview */}
               <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-1">
                   <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Performance Overview</h4>
+                  <span className="text-[9px] font-medium text-slate-400">
+                    {performanceOverview.updatedAt
+                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Live monitoring'}
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-3">
-                  {/* Left smooth blue sparkline matching crop_bottom.png */}
-                  <div className="h-14 w-28">
-                    <svg className="w-full h-full" viewBox="0 0 100 35" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M0,25 Q15,30 30,15 T60,20 T85,8 T100,6 L100,35 L0,35 Z" fill="url(#perfGrad)" />
-                      <path d="M0,25 Q15,30 30,15 T60,20 T85,8 T100,6" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" />
-                    </svg>
-                  </div>
+                {performanceLoading && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">Loading live performance metrics...</p>
+                ) : performanceError && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
+                ) : currentPerformanceConnections.length === 0 ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">
+                    No recent monitoring data available.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-blue-50/70 px-2.5 py-2">
+                        <p className="text-[9px] font-medium leading-tight text-slate-500">Activity / sec</p>
+                        <p className="mt-1 text-sm font-black text-blue-700">
+                          {performanceTotals.queriesPerSecond.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-emerald-50/70 px-2.5 py-2">
+                        <p className="text-[9px] font-medium leading-tight text-slate-500">Active connections</p>
+                        <p className="mt-1 text-sm font-black text-emerald-700">
+                          {performanceTotals.activeConnections.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-amber-50/70 px-2.5 py-2">
+                        <p className="text-[9px] font-medium leading-tight text-slate-500">Slow queries</p>
+                        <p className="mt-1 text-sm font-black text-amber-700">
+                          {performanceTotals.slowQueries.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
 
-                  {/* Right stats */}
-                  <div className="text-right space-y-1">
-                    <div>
-                      <p className="text-[9.5px] text-[#64748b]">Avg. Response Time</p>
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="text-xs font-black text-[#0f172a]">12 ms</span>
-                        <span className="text-[9px] text-[#10b981] font-bold">↑ 45%</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-1 text-[9px] font-medium text-slate-400">Activity rate · last hour</p>
+                        {performanceLinePoints ? (
+                          <svg className="h-10 w-full overflow-visible" viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label="Database activity rate over the last hour">
+                            <polyline
+                              points={performanceLinePoints}
+                              fill="none"
+                              stroke="#2563eb"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                            {performanceChartPoints.length === 1 && (
+                              <circle cx="50" cy={Number(performanceLinePoints.split(',')[1])} r="2" fill="#2563eb" />
+                            )}
+                          </svg>
+                        ) : (
+                          <div className="flex h-10 items-center text-[10px] text-slate-400">
+                            Activity history is being collected.
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div>
-                      <p className="text-[9.5px] text-[#64748b]">Total Queries (Today)</p>
-                      <div className="flex items-center justify-end gap-1">
-                        <span className="text-xs font-black text-[#0f172a]">12,384</span>
-                        <span className="text-[9px] text-[#10b981] font-bold">↑ 32%</span>
+                      <div className="shrink-0 border-l border-slate-100 pl-3 text-right">
+                        <p className="text-[9px] text-slate-500">Monitored</p>
+                        <p className="mt-0.5 text-xs font-bold text-slate-800">
+                          {currentPerformanceConnections.length} / {performanceOverview.connections.length}
+                        </p>
+                        {performanceError && (
+                          <p className="mt-0.5 text-[8px] text-amber-600">Refresh delayed</p>
+                        )}
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
