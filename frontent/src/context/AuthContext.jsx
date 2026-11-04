@@ -65,10 +65,19 @@ export function AuthProvider({ children }) {
     };
   }, [user]);
 
+  // Apply the user's "reduce animations" setting to the whole app
+  const reduceMotion = Boolean(user?.preferences?.reduceMotion);
+  useEffect(() => {
+    document.documentElement.classList.toggle('reduce-motion', reduceMotion);
+  }, [reduceMotion]);
+
   const login = (userData, token) => {
     localStorage.setItem('token', token);
     setUser(userData);
   };
+
+  // Merge fresh fields (e.g. after a profile or settings update) into the signed-in user
+  const updateUser = (fields) => setUser((current) => (current ? { ...current, ...fields } : current));
 
   const logout = async () => {
     try {
@@ -86,7 +95,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

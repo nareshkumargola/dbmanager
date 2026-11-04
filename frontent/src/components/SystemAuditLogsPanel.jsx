@@ -1,174 +1,196 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import API from '../api/axios';
+import Toast from './Toast';
+import AdminPager from './AdminPager';
+import { copyText, downloadCsv, escapeHtml, initialsOf, timeAgo, toLocalDateInput } from '../utils/adminHelpers';
+import './AdminPages.css';
+
+// Quick category chips (client-side, on top of the server filters)
+const CATEGORIES = [
+  { id: 'queries', label: 'Queries', actions: ['RUN_QUERY', 'SLOW_QUERY'] },
+  { id: 'data', label: 'Data & Schema', actions: ['INSERT_DATA', 'UPDATE_DATA', 'DELETE_DATA', 'CREATE_TABLE', 'ALTER_TABLE', 'DROP_TABLE', 'CREATE_DATABASE', 'ALTER_DATABASE', 'DROP_DATABASE'] },
+  { id: 'backups', label: 'Backups', actions: ['EXPORT_BACKUP', 'RESTORE_BACKUP'] },
+  { id: 'users', label: 'Users & Access', actions: ['CREATE_USER', 'UPDATE_USER', 'DELETE_USER', 'UPDATE_USER_PERMISSIONS', 'CREATE_DB_USER', 'UPDATE_DB_USER', 'DELETE_DB_USER', 'PROFILE_UPDATE', 'PASSWORD_CHANGE'] },
+  { id: 'connections', label: 'Connections', actions: ['CREATE_CONNECTION', 'UPDATE_CONNECTION', 'DELETE_CONNECTION', 'TEST_CONNECTION'] },
+  { id: 'signins', label: 'Sign-ins', actions: ['LOGIN', 'LOGOUT'] },
+];
+const ALL_ACTIONS = CATEGORIES.flatMap((category) => category.actions);
+
+// Actions that destroy data or change who can do what
+const SENSITIVE_ACTIONS = new Set(['DELETE_DATA', 'DROP_TABLE', 'DROP_DATABASE', 'RESTORE_BACKUP', 'DELETE_CONNECTION', 'DELETE_USER', 'DELETE_DB_USER', 'UPDATE_USER_PERMISSIONS', 'PASSWORD_CHANGE']);
+
+const DATE_PRESETS = [
+  { id: 'all', label: 'All time', days: null },
+  { id: 'today', label: 'Today', days: 0 },
+  { id: '7d', label: '7 days', days: 6 },
+  { id: '30d', label: '30 days', days: 29 },
+];
+
+const AUTO_REFRESH_MS = 30000;
+
+const dayLabel = (value) => {
+  const date = new Date(value);
+  const key = toLocalDateInput(date);
+  const now = new Date();
+  if (key === toLocalDateInput(now)) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (key === toLocalDateInput(yesterday)) return 'Yesterday';
+  return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 export default function SystemAuditLogsPanel() {
   const [logs, setLogs] = useState([]);
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [connections, setConnections] = useState([]);
   const [error, setError] = useState('');
+  const [toast, setToast] = useState(null);
+  const closeToast = useCallback(() => setToast(null), []);
 
-  // Filter States
+  // Server-side filters
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedAction, setSelectedAction] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [queryType, setQueryType] = useState('');
-  const [expandedLogId, setExpandedLogId] = useState(null);
-
-  // New granular filter states
-  const [connections, setConnections] = useState([]);
   const [selectedConnection, setSelectedConnection] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
-  
-  // Search & Pagination States
+
+  // Client-side view state
   const [tableSearch, setTableSearch] = useState('');
+  const [category, setCategory] = useState('all');
+  const [sensitiveOnly, setSensitiveOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  const [pageSize, setPageSize] = useState(20);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedUser, selectedAction, startDate, endDate, queryType, tableSearch, selectedConnection, selectedRole]);
+  // Only the newest request may update the list
+  const latestRequest = useRef(0);
+  const paramsKey = JSON.stringify(Object.fromEntries(Object.entries({
+    userId: selectedUser,
+    action: selectedAction,
+    startDate,
+    endDate,
+    queryType,
+    connectionId: selectedConnection,
+    role: selectedRole,
+  }).filter(([, value]) => value)));
+  const [loadedKey, setLoadedKey] = useState(null);
+  const loading = loadedKey !== paramsKey;
 
-  useEffect(() => {
-    fetchUsers();
-    fetchConnections();
-  }, []);
+  const fetchSystemLogs = useCallback(async () => {
+    latestRequest.current += 1;
+    const requestId = latestRequest.current;
+    try {
+      const res = await API.get('/audit-logs', { params: JSON.parse(paramsKey) });
+      if (requestId !== latestRequest.current) return;
+      setLogs(res.data.logs || []);
+      setError('');
+      setLastUpdated(new Date());
+    } catch (err) {
+      if (requestId !== latestRequest.current) return;
+      console.error(err);
+      setError(err.response?.status === 403 ? 'Audit logs are available to admins only.' : 'Failed to load system audit logs.');
+    } finally {
+      if (requestId === latestRequest.current) {
+        setLoadedKey(paramsKey);
+        setRefreshing(false);
+      }
+    }
+  }, [paramsKey]);
 
-  // Live auto-fetching when any filter changes
   useEffect(() => {
     fetchSystemLogs();
-  }, [selectedUser, selectedAction, startDate, endDate, queryType, selectedConnection, selectedRole]);
+  }, [fetchSystemLogs]);
+
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const timer = setInterval(fetchSystemLogs, AUTO_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [autoRefresh, fetchSystemLogs]);
+
+  useEffect(() => {
+    API.get('/users').then((res) => setUsers(res.data.users || [])).catch((e) => console.error('Failed to load users list:', e));
+    API.get('/connections').then((res) => setConnections(res.data.connections || [])).catch((e) => console.error('Failed to load connections list:', e));
+  }, []);
+
+  // Back to page 1 whenever the visible set changes
+  const viewKey = `${paramsKey}|${tableSearch}|${category}|${sensitiveOnly}|${pageSize}`;
+  const [prevViewKey, setPrevViewKey] = useState(viewKey);
+  if (prevViewKey !== viewKey) {
+    setPrevViewKey(viewKey);
+    setCurrentPage(1);
+  }
+
+  const userHasConnection = (userObj, connId) => (
+    Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.some((c) => (
+      typeof c === 'string' ? c === connId : c.connectionId === connId
+    ))
+  );
 
   const handleUserChange = (userId) => {
     setSelectedUser(userId);
-    if (userId) {
-      const userObj = users.find(u => u._id === userId);
-      if (userObj) {
-        // Auto-select User Role
-        if (userObj.role) {
-          setSelectedRole(userObj.role);
-        }
-        // Check if selected connection is allowed for this user
-        if (selectedConnection && selectedConnection !== 'global') {
-          if (userObj.role !== 'admin') {
-            const hasAccess = Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.some(c =>
-              typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
-            );
-            if (!hasAccess) {
-              setSelectedConnection('');
-            }
-          }
-        }
-      }
+    const userObj = users.find((u) => u._id === userId);
+    if (!userObj) return;
+    if (userObj.role) setSelectedRole(userObj.role);
+    if (selectedConnection && selectedConnection !== 'global' && userObj.role !== 'admin' && !userHasConnection(userObj, selectedConnection)) {
+      setSelectedConnection('');
     }
   };
 
   const handleConnectionChange = (connId) => {
     setSelectedConnection(connId);
-    if (connId && connId !== 'global') {
-      if (selectedUser) {
-        const userObj = users.find(u => u._id === selectedUser);
-        if (userObj && userObj.role !== 'admin') {
-          const hasAccess = Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.some(c =>
-            typeof c === 'string' ? c === connId : c.connectionId === connId
-          );
-          if (!hasAccess) {
-            setSelectedUser('');
-          }
-        }
-      }
-    }
+    if (!connId || connId === 'global' || !selectedUser) return;
+    const userObj = users.find((u) => u._id === selectedUser);
+    if (userObj && userObj.role !== 'admin' && !userHasConnection(userObj, connId)) setSelectedUser('');
   };
 
   const handleRoleChange = (role) => {
     setSelectedRole(role);
-    if (role && selectedUser) {
-      const userObj = users.find(u => u._id === selectedUser);
-      if (userObj && (userObj.role || '').toLowerCase() !== role.toLowerCase()) {
-        setSelectedUser('');
-      }
-    }
+    if (!role || !selectedUser) return;
+    const userObj = users.find((u) => u._id === selectedUser);
+    if (userObj && (userObj.role || '').toLowerCase() !== role.toLowerCase()) setSelectedUser('');
   };
 
-  const availableUsers = users.filter(u => {
-    // Role filter
-    if (selectedRole && (u.role || '').toLowerCase() !== selectedRole.toLowerCase()) {
-      return false;
-    }
-    // Connection filter
+  const availableUsers = users.filter((u) => {
+    if (selectedRole && (u.role || '').toLowerCase() !== selectedRole.toLowerCase()) return false;
     if (selectedConnection && selectedConnection !== 'global') {
-      if (u.role === 'admin') return true;
-      if (Array.isArray(u.allowedConnections) && u.allowedConnections.length > 0) {
-        return u.allowedConnections.some(c =>
-          typeof c === 'string' ? c === selectedConnection : c.connectionId === selectedConnection
-        );
-      }
-      return false;
+      return u.role === 'admin' || userHasConnection(u, selectedConnection);
     }
     return true;
   });
 
-  const availableConnections = selectedUser
-    ? (() => {
-        const userObj = users.find(u => u._id === selectedUser);
-        if (!userObj || userObj.role === 'admin') return connections;
-        if (Array.isArray(userObj.allowedConnections) && userObj.allowedConnections.length > 0) {
-          return connections.filter(conn =>
-            userObj.allowedConnections.some(c =>
-              typeof c === 'string' ? c === conn._id : c.connectionId === conn._id
-            )
-          );
-        }
-        return [];
-      })()
+  const selectedUserObj = users.find((u) => u._id === selectedUser);
+  const availableConnections = selectedUserObj && selectedUserObj.role !== 'admin'
+    ? connections.filter((conn) => userHasConnection(selectedUserObj, conn._id))
     : connections;
 
-  const fetchUsers = async () => {
-    try {
-      const res = await API.get('/users');
-      setUsers(res.data.users || []);
-    } catch (e) {
-      console.error('Failed to load users list:', e);
+  const activePreset = useMemo(() => {
+    if (!startDate && !endDate) return 'all';
+    const today = toLocalDateInput(new Date());
+    if (endDate !== today) return null;
+    return DATE_PRESETS.find((preset) => {
+      if (preset.days === null) return false;
+      const from = new Date();
+      from.setDate(from.getDate() - preset.days);
+      return toLocalDateInput(from) === startDate;
+    })?.id ?? null;
+  }, [startDate, endDate]);
+
+  const applyPreset = (preset) => {
+    if (preset.days === null) {
+      setStartDate('');
+      setEndDate('');
+      return;
     }
-  };
-
-  const fetchConnections = async () => {
-    try {
-      const res = await API.get('/connections');
-      setConnections(res.data.connections || []);
-    } catch (err) {
-      console.error('Failed to load connections list:', err);
-    }
-  };
-
-  const fetchSystemLogs = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      // Build query parameters
-      const params = {};
-      if (selectedUser) params.userId = selectedUser;
-      if (selectedAction) params.action = selectedAction;
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      if (queryType) params.queryType = queryType;
-      if (selectedConnection) params.connectionId = selectedConnection;
-      if (selectedRole) params.role = selectedRole;
-
-      const res = await API.get('/audit-logs', { params });
-      setLogs(res.data.logs || []);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load system audit logs.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Re-trigger fetch when filters change
-  const handleApplyFilters = (e) => {
-    if (e) e.preventDefault();
-    fetchSystemLogs();
+    const from = new Date();
+    from.setDate(from.getDate() - preset.days);
+    setStartDate(toLocalDateInput(from));
+    setEndDate(toLocalDateInput(new Date()));
   };
 
   const handleClearFilters = () => {
@@ -180,506 +202,354 @@ export default function SystemAuditLogsPanel() {
     setTableSearch('');
     setSelectedConnection('');
     setSelectedRole('');
-    // Fetch all logs again
-    setTimeout(() => {
-      fetchSystemLogs();
-    }, 50);
+    setCategory('all');
+    setSensitiveOnly(false);
   };
 
-  const getActionBadge = (action) => {
-    switch (action) {
-      case 'RUN_QUERY':
-        return <span className="bg-blue-50 text-blue-700 border border-blue-150 px-2 py-0.5 rounded text-[10px] font-bold">RUN QUERY</span>;
-      case 'SLOW_QUERY':
-        return <span className="bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">SLOW QUERY</span>;
-      case 'RESTORE_BACKUP':
-        return <span className="bg-purple-50 text-purple-700 border border-purple-150 px-2 py-0.5 rounded text-[10px] font-bold">RESTORE BACKUP</span>;
-      case 'EXPORT_BACKUP':
-        return <span className="bg-green-50 text-green-700 border border-green-150 px-2 py-0.5 rounded text-[10px] font-bold">EXPORT BACKUP</span>;
-      case 'CREATE_DB_USER':
-        return <span className="bg-amber-50 text-amber-700 border border-amber-150 px-2 py-0.5 rounded text-[10px] font-bold">CREATE DB USER</span>;
-      case 'DELETE_DB_USER':
-        return <span className="bg-rose-50 text-rose-700 border border-rose-150 px-2 py-0.5 rounded text-[10px] font-bold">DELETE DB USER</span>;
-      case 'UPDATE_DB_USER':
-        return <span className="bg-orange-50 text-orange-700 border border-orange-150 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE DB USER</span>;
-      case 'CREATE_CONNECTION':
-        return <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[10px] font-bold">CREATE CONNECTION</span>;
-      case 'UPDATE_CONNECTION':
-        return <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-[10px] font-bold">UPDATE CONNECTION</span>;
-      case 'DELETE_CONNECTION':
-        return <span className="bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded text-[10px] font-bold">DELETE CONNECTION</span>;
-      case 'TEST_CONNECTION':
-        return <span className="bg-cyan-50 text-cyan-700 border border-cyan-200 px-2 py-0.5 rounded text-[10px] font-bold">TEST CONNECTION</span>;
-      case 'LOGIN':
-        return <span className="bg-emerald-50 text-emerald-700 border border-emerald-150 px-2 py-0.5 rounded text-[10px] font-bold">LOGIN</span>;
-      case 'LOGOUT':
-        return <span className="bg-gray-100 text-gray-700 border border-gray-250 px-2 py-0.5 rounded text-[10px] font-bold">LOGOUT</span>;
-      default:
-        return <span className="bg-gray-50 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold">{action ? action.replace(/_/g, ' ') : 'ACTION'}</span>;
-    }
-  };
+  const advancedFilterCount = [selectedUser, selectedAction, startDate, endDate, queryType, selectedConnection, selectedRole].filter(Boolean).length;
+  const hasAnyFilter = advancedFilterCount > 0 || tableSearch || category !== 'all' || sensitiveOnly;
 
-  // Export to Excel (CSV Format)
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    logs.forEach((log) => {
+      const match = CATEGORIES.find((c) => c.actions.includes(log.action));
+      if (match) counts[match.id] = (counts[match.id] || 0) + 1;
+    });
+    return counts;
+  }, [logs]);
+
+  const filteredLogs = useMemo(() => {
+    const q = tableSearch.trim().toLowerCase();
+    const categoryActions = CATEGORIES.find((c) => c.id === category)?.actions;
+    return logs.filter((log) => {
+      if (categoryActions && !categoryActions.includes(log.action)) return false;
+      if (sensitiveOnly && !SENSITIVE_ACTIONS.has(log.action)) return false;
+      if (!q) return true;
+      return [log.details, log.user?.name, log.user?.email, log.connection?.name, log.action, new Date(log.createdAt).toLocaleString()]
+        .some((field) => field && String(field).toLowerCase().includes(q));
+    });
+  }, [logs, tableSearch, category, sensitiveOnly]);
+
+  const stats = useMemo(() => {
+    const today = toLocalDateInput(new Date());
+    return {
+      total: logs.length,
+      today: logs.filter((log) => toLocalDateInput(new Date(log.createdAt)) === today).length,
+      people: new Set(logs.map((log) => log.user?._id).filter(Boolean)).size,
+      sensitive: logs.filter((log) => SENSITIVE_ACTIONS.has(log.action)).length,
+    };
+  }, [logs]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
+  const page = Math.min(currentPage, totalPages);
+  const currentItems = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
+
+  // Exports use exactly what the filters currently show
   const exportToExcel = () => {
-    if (logs.length === 0) {
-      alert('No data available to export.');
-      return;
-    }
-
-    const headers = ['Timestamp', 'User Name', 'User Email', 'Role', 'Connection Target', 'Action Category', 'Operation Details'];
-    const rows = logs.map(log => [
-      new Date(log.createdAt).toLocaleString(),
-      log.user?.name || 'Unknown',
-      log.user?.email || 'N/A',
-      log.user?.role || 'N/A',
-      log.connection?.name || 'Global System',
-      log.action,
-      log.details.replace(/"/g, '""') // Escape double quotes for CSV
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `system_audit_logs_${Date.now()}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (filteredLogs.length === 0) return;
+    downloadCsv(
+      `system_audit_logs_${toLocalDateInput(new Date())}.csv`,
+      ['Timestamp', 'User Name', 'User Email', 'Role', 'Connection', 'Action', 'Details'],
+      filteredLogs.map((log) => [
+        new Date(log.createdAt).toLocaleString(),
+        log.user?.name || 'Unknown',
+        log.user?.email || 'N/A',
+        log.user?.role || 'N/A',
+        log.connection?.name || 'Global System',
+        log.action,
+        log.details || '',
+      ])
+    );
+    setToast({ message: `Exported ${filteredLogs.length} records as CSV`, type: 'success' });
   };
 
-  // Export to PDF
   const exportToPDF = async () => {
-    if (logs.length === 0) {
-      alert('No data available to export.');
-      return;
-    }
-
+    if (filteredLogs.length === 0) return;
     const element = document.createElement('div');
     element.style.padding = '24px';
     element.style.fontFamily = 'system-ui, sans-serif';
     element.style.fontSize = '10px';
+    // Log text can hold anything a user typed, so every value is escaped before going into HTML
     element.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0d9da4; padding-bottom: 12px; margin-bottom: 18px;">
-        <div style="display: flex; align-items: center; gap: 10px;">
-          <img src="/allatone_logo.jpg" style="height: 44px; width: auto; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; padding: 2px; background: #ffffff;" alt="Allatone Logo" />
-          <div>
-            <div style="font-size: 16px; font-weight: 800; color: #0d9da4; letter-spacing: 0.5px;">ALLATONE DMS</div>
-            <div style="font-size: 8px; color: #64748b; font-weight: 700; text-transform: uppercase;">Enterprise Audit &amp; Compliance Trail</div>
-          </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:18px;">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:#0d9488;">ALLATONE DMS</div>
+          <div style="font-size:8px;color:#64748b;font-weight:700;text-transform:uppercase;">Audit &amp; Compliance Trail</div>
         </div>
-        <div style="text-align: right;">
-          <div style="font-size: 14px; font-weight: bold; color: #111827;">📜 System Activity Audit Trail</div>
-          <div style="font-size: 8px; color: #6b7280; margin-top: 2px;">Report Generated: ${new Date().toLocaleString()}</div>
+        <div style="text-align:right;">
+          <div style="font-size:14px;font-weight:bold;color:#111827;">System Activity Audit Trail</div>
+          <div style="font-size:8px;color:#6b7280;margin-top:2px;">${filteredLogs.length} records · Generated ${escapeHtml(new Date().toLocaleString())}</div>
         </div>
       </div>
-      
-      <table style="width: 100%; border-collapse: collapse; text-align: left;">
+      <table style="width:100%;border-collapse:collapse;text-align:left;">
         <thead>
-          <tr style="background-color: #f3f4f6; border-bottom: 1.5px solid #d1d5db; color: #374151;">
-            <th style="padding: 6px; border: 1.5px solid #e5e7eb;">Timestamp</th>
-            <th style="padding: 6px; border: 1.5px solid #e5e7eb;">User</th>
-            <th style="padding: 6px; border: 1.5px solid #e5e7eb;">Connection</th>
-            <th style="padding: 6px; border: 1.5px solid #e5e7eb;">Action</th>
-            <th style="padding: 6px; border: 1.5px solid #e5e7eb;">Details</th>
+          <tr style="background-color:#f3f4f6;color:#374151;">
+            ${['Timestamp', 'User', 'Connection', 'Action', 'Details'].map((h) => `<th style="padding:6px;border:1px solid #e5e7eb;">${h}</th>`).join('')}
           </tr>
         </thead>
         <tbody>
-          ${logs.map(log => `
-            <tr style="border-bottom: 1.5px solid #e5e7eb; color: #4b5563;">
-              <td style="padding: 6px; border: 1.5px solid #e5e7eb; white-space: nowrap;">${new Date(log.createdAt).toLocaleString()}</td>
-              <td style="padding: 6px; border: 1.5px solid #e5e7eb;">${log.user?.name || 'Unknown'}<br/><span style="font-size: 7px; color: #9ca3af;">${log.user?.email || ''}</span></td>
-              <td style="padding: 6px; border: 1.5px solid #e5e7eb;">${log.connection?.name || 'Global System'}</td>
-              <td style="padding: 6px; border: 1.5px solid #e5e7eb;"><strong>${log.action}</strong></td>
-              <td style="padding: 6px; border: 1.5px solid #e5e7eb; font-size: 8px; font-family: monospace; max-width: 250px; overflow-wrap: break-word;">${log.details.substring(0, 120)}</td>
+          ${filteredLogs.map((log) => `
+            <tr style="color:#4b5563;">
+              <td style="padding:6px;border:1px solid #e5e7eb;white-space:nowrap;">${escapeHtml(new Date(log.createdAt).toLocaleString())}</td>
+              <td style="padding:6px;border:1px solid #e5e7eb;">${escapeHtml(log.user?.name || 'Unknown')}<br/><span style="font-size:7px;color:#9ca3af;">${escapeHtml(log.user?.email || '')}</span></td>
+              <td style="padding:6px;border:1px solid #e5e7eb;">${escapeHtml(log.connection?.name || 'Global System')}</td>
+              <td style="padding:6px;border:1px solid #e5e7eb;"><strong>${escapeHtml(log.action)}</strong></td>
+              <td style="padding:6px;border:1px solid #e5e7eb;font-size:8px;font-family:monospace;max-width:250px;overflow-wrap:break-word;">${escapeHtml((log.details || '').substring(0, 120))}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
     `;
 
-    const options = {
-      margin: 10,
-      filename: `system_audit_report_${Date.now()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' }
-    };
-
     try {
       const mod = await import('html2pdf.js');
       const html2pdf = mod.default || mod;
-      html2pdf().set(options).from(element).save();
+      await html2pdf().set({
+        margin: 10,
+        filename: `system_audit_report_${toLocalDateInput(new Date())}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' },
+      }).from(element).save();
     } catch (e) {
       console.error('PDF generation failed', e);
-      alert('PDF download failed.');
+      setToast({ message: 'PDF download failed.', type: 'error' });
     }
   };
 
-  const filteredLogs = logs.filter(log => {
-    if (!tableSearch.trim()) return true;
-    const q = tableSearch.toLowerCase();
-    const detailsMatch = log.details && log.details.toLowerCase().includes(q);
-    const userNameMatch = log.user?.name && log.user.name.toLowerCase().includes(q);
-    const userEmailMatch = log.user?.email && log.user.email.toLowerCase().includes(q);
-    const connectionMatch = log.connection?.name && log.connection.name.toLowerCase().includes(q);
-    const actionMatch = log.action && log.action.toLowerCase().includes(q);
-    const timestampMatch = new Date(log.createdAt).toLocaleString().toLowerCase().includes(q);
-    return detailsMatch || userNameMatch || userEmailMatch || connectionMatch || actionMatch || timestampMatch;
-  });
+  const handleCopyDetails = async (text) => {
+    const ok = await copyText(text || '');
+    setToast(ok ? { message: 'Details copied', type: 'success' } : { message: 'Could not copy to the clipboard.', type: 'error' });
+  };
 
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredLogs.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+  let lastDay = null;
 
   return (
-    <div className="space-y-6 bg-white dark:bg-gray-850 p-6 rounded-xl border border-gray-150 dark:border-gray-800 text-left text-gray-900 dark:text-gray-100">
-      
-      {/* Search & Filter Form */}
-      <form onSubmit={handleApplyFilters} className="bg-gray-50/80 dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-        <h4 className="text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-          <span>🔍</span> Filter Options
-        </h4>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
-          {/* User selector */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Filter by User</label>
-            <select
-              value={selectedUser}
-              onChange={e => handleUserChange(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold cursor-pointer"
-            >
-              <option value="">All Users ({availableUsers.length})</option>
-              {availableUsers.map(u => (
-                <option key={u._id} value={u._id}>
-                  👤 {u.name} ({u.role || 'user'}) - {u.email}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="ap-page">
+      {toast && <Toast toast={toast} onClose={closeToast} placement="top-right" />}
 
-          {/* User Role selector */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">User Role</label>
-            <select
-              value={selectedRole}
-              onChange={e => handleRoleChange(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold cursor-pointer"
-            >
-              <option value="">All Roles</option>
-              <option value="admin">👑 Admin</option>
-              <option value="developer">💻 Developer</option>
-            </select>
-          </div>
-
-          {/* Connection selector */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Connection Target</label>
-            <select
-              value={selectedConnection}
-              onChange={e => handleConnectionChange(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-semibold"
-            >
-              <option value="">All Connections ({availableConnections.length})</option>
-              <option value="global">Global System Logs</option>
-              {availableConnections.map(c => (
-                <option key={c._id} value={c._id}>{c.name} ({c.type.toUpperCase()})</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Action category selector */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Action Category</label>
-            <select
-              value={selectedAction}
-              onChange={e => setSelectedAction(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
-            >
-              <option value="">All Actions</option>
-              <option value="RUN_QUERY">RUN_QUERY (SQL Run)</option>
-              <option value="SLOW_QUERY">SLOW_QUERY (Slow Latency)</option>
-              <option value="EXPORT_BACKUP">EXPORT_BACKUP</option>
-              <option value="RESTORE_BACKUP">RESTORE_BACKUP</option>
-              <option value="CREATE_DB_USER">CREATE_DB_USER</option>
-              <option value="DELETE_DB_USER">DELETE_DB_USER</option>
-              <option value="UPDATE_DB_USER">UPDATE_DB_USER</option>
-              <option value="CREATE_CONNECTION">CREATE_CONNECTION</option>
-              <option value="UPDATE_CONNECTION">UPDATE_CONNECTION</option>
-              <option value="DELETE_CONNECTION">DELETE_CONNECTION</option>
-              <option value="UPDATE_USER_PERMISSIONS">UPDATE_USER_PERMISSIONS</option>
-              <option value="CREATE_USER">CREATE_USER (App User)</option>
-              <option value="DELETE_USER">DELETE_USER (App User)</option>
-              <option value="LOGIN">LOGIN ACTIVITY</option>
-              <option value="LOGOUT">LOGOUT ACTIVITY</option>
-            </select>
-          </div>
-
-          {/* Query type query filter (Select, Insert, etc) */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Query Operation</label>
-            <select
-              value={queryType}
-              onChange={e => setQueryType(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750"
-              disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY' && selectedAction !== 'SLOW_QUERY'}
-            >
-              <option value="">All Operations</option>
-              <option value="select">Read / Select (SELECT/FIND)</option>
-              <option value="insert">Write / Insert (INSERT)</option>
-              <option value="update">Write / Update (UPDATE)</option>
-              <option value="delete">Write / Delete (DELETE/DROP)</option>
-            </select>
-          </div>
-
-          {/* Start Date */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">From Date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-mono"
-            />
-          </div>
-
-          {/* End Date */}
-          <div>
-            <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">To Date</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="w-full px-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 font-mono"
-            />
-          </div>
+      <div className="ap-head">
+        <div>
+          <h2 className="ap-title">Audit Logs</h2>
+          <p className="ap-sub">
+            Every important action across the system.
+            {lastUpdated && ` Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}.`}
+          </p>
         </div>
-
-        {/* Buttons */}
-        <div className="flex gap-2 justify-end pt-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={handleClearFilters}
-            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-750 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+            onClick={() => setAutoRefresh((on) => !on)}
+            aria-pressed={autoRefresh}
+            className={`ap-btn-outline ${autoRefresh ? 'is-active' : ''}`}
+            title="Reload the logs every 30 seconds"
           >
-            🧹 Clear Filters
+            <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-teal-500 animate-pulse' : 'bg-slate-300'}`} />
+            Auto-refresh
           </button>
           <button
-            type="submit"
-            style={{ backgroundColor: '#0d9da4', color: '#ffffff' }}
-            className="px-5 py-2 text-xs font-bold rounded-lg hover:opacity-90 transition shadow-sm"
+            type="button"
+            onClick={() => { setRefreshing(true); fetchSystemLogs(); }}
+            disabled={refreshing}
+            className="ap-btn-outline"
           >
-            🔍 Apply Filters
+            <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /></svg>
+            Refresh
           </button>
-        </div>
-      </form>
-
-      {/* Export Toolbar */}
-      <div className="flex items-center justify-between gap-4 border-b border-gray-150 dark:border-gray-800 pb-3 flex-wrap md:flex-nowrap">
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <span className="text-xs font-bold text-teal-900 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/20 ring-1 ring-teal-200 dark:ring-teal-900/45 px-3 py-1 rounded-full whitespace-nowrap">
-            {filteredLogs.length} of {logs.length} Found
-          </span>
-          {/* Instant Table Search Bar */}
-          <div className="relative w-full md:w-64">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 text-xs">
-              🔍
-            </span>
-            <input
-              type="text"
-              placeholder="Instant search table..."
-              value={tableSearch}
-              onChange={e => setTableSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 border border-gray-250 dark:border-gray-700 rounded-lg text-xs outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-teal-400 focus:bg-white dark:focus:bg-gray-750 placeholder-gray-450 font-medium"
-            />
-            {tableSearch && (
-              <button
-                type="button"
-                onClick={() => setTableSearch('')}
-                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-gray-450 hover:text-gray-600 text-xs focus:outline-none"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-        
-        <div className="flex gap-2">
-          <button
-            onClick={exportToExcel}
-            className="px-3.5 py-1.5 border border-green-200 dark:border-green-900/50 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 text-xs font-bold rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition shadow-2xs flex items-center gap-1.5"
-          >
-            <span>📥</span> Export Excel (CSV)
+          <button type="button" onClick={exportToExcel} disabled={filteredLogs.length === 0} className="ap-btn-outline">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+            CSV
           </button>
-          <button
-            onClick={exportToPDF}
-            className="px-3.5 py-1.5 border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition shadow-2xs flex items-center gap-1.5"
-          >
-            <span>📄</span> Export PDF Report
+          <button type="button" onClick={exportToPDF} disabled={filteredLogs.length === 0} className="ap-btn">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /></svg>
+            PDF report
           </button>
         </div>
       </div>
 
-      {/* error message */}
-      {error && (
-        <div className="bg-red-50 text-red-600 text-xs px-4 py-3 rounded-lg border border-red-200">
-          ❌ {error}
+      <div className="ap-stats">
+        <div className="ap-stat">
+          <span className="ap-stat-icon"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 8h6M9 12h6M9 16h4" /></svg></span>
+          <div><div className="ap-stat-value">{stats.total.toLocaleString()}</div><div className="ap-stat-label">Records loaded</div></div>
         </div>
-      )}
-
-      {/* Logs Listing Table */}
-      {loading ? (
-        <div className="py-20 text-center text-gray-500">
-          <div className="w-8 h-8 border-[3px] border-teal-100 border-t-[#0d9da4] rounded-full animate-spin mx-auto mb-3"></div>
-          Applying filters and loading system audit trail logs...
+        <button type="button" className={`ap-stat ${activePreset === 'today' ? 'is-active' : ''}`} onClick={() => applyPreset(DATE_PRESETS[activePreset === 'today' ? 0 : 1])} title="Show only today">
+          <span className="ap-stat-icon"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg></span>
+          <div><div className="ap-stat-value">{stats.today.toLocaleString()}</div><div className="ap-stat-label">Today</div></div>
+        </button>
+        <div className="ap-stat">
+          <span className="ap-stat-icon"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 7M18 14.5a5.5 5.5 0 013.5 5.5" /></svg></span>
+          <div><div className="ap-stat-value">{stats.people.toLocaleString()}</div><div className="ap-stat-label">Active people</div></div>
         </div>
-      ) : filteredLogs.length === 0 ? (
-        <div className="py-16 text-center text-gray-400 italic text-xs">
-          No system-wide activity logs found matching the filter criteria.
-        </div>
-      ) : (
-        <div className="border border-gray-250 dark:border-gray-800 rounded-xl overflow-hidden shadow-2xs bg-white dark:bg-gray-850">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 font-bold">
-                <tr>
-                  <th className="px-5 py-3">Timestamp</th>
-                  <th className="px-5 py-3">Team Member</th>
-                  <th className="px-5 py-3">Connection Target</th>
-                  <th className="px-5 py-3">Action Category</th>
-                  <th className="px-5 py-3">Summary Details</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-150 dark:divide-gray-800 bg-white dark:bg-gray-850">
-                {currentItems.map(log => {
-                  const isExpanded = expandedLogId === log._id;
-                  const isQuery = log.action === 'RUN_QUERY';
+        <button type="button" className={`ap-stat ${sensitiveOnly ? 'is-active' : ''}`} onClick={() => setSensitiveOnly((on) => !on)} aria-pressed={sensitiveOnly} title="Deletes, drops, restores and access changes">
+          <span className="ap-stat-icon is-danger"><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17h.01" /></svg></span>
+          <div><div className="ap-stat-value">{stats.sensitive.toLocaleString()}</div><div className="ap-stat-label">Sensitive actions</div></div>
+        </button>
+      </div>
 
-                  return (
-                    <tr key={log._id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 align-top transition-colors">
-                      {/* Timestamp */}
-                      <td className="px-5 py-3.5 text-gray-500 dark:text-gray-450 font-mono whitespace-nowrap">
-                        {new Date(log.createdAt).toLocaleString()}
-                      </td>
-
-                      {/* User Info */}
-                      <td className="px-5 py-3.5">
-                        <p className="font-bold text-gray-800 dark:text-gray-200">{log.user?.name || 'Unknown'}</p>
-                        <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">{log.user?.email || 'N/A'}</p>
-                      </td>
-
-                      {/* Connection info */}
-                      <td className="px-5 py-3.5">
-                        {log.connection ? (
-                          <>
-                            <p className="font-semibold text-gray-700 dark:text-gray-300">{log.connection.name}</p>
-                            <span className="text-[9px] font-bold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/30 px-1.5 py-0.5 rounded uppercase mt-1 inline-block">
-                              {log.connection.type}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">Global App System</span>
-                        )}
-                      </td>
-
-                      {/* Action category */}
-                      <td className="px-5 py-3.5 whitespace-nowrap">
-                        {getActionBadge(log.action)}
-                      </td>
-
-                      {/* Details summary */}
-                      <td className="px-5 py-3.5 max-w-sm">
-                        <p className={`text-xs text-gray-650 dark:text-gray-350 leading-relaxed ${isExpanded ? '' : 'truncate'}`}>
-                          {log.details}
-                        </p>
-                        {isExpanded && isQuery && (
-                          <div className="mt-3 bg-gray-900 rounded-lg p-3 overflow-x-auto border border-gray-800 animate-fadeIn text-left">
-                            <pre className="text-[10px] font-mono text-green-400 whitespace-pre-wrap leading-relaxed">
-                              {log.details}
-                            </pre>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Action expand */}
-                      <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                        {isQuery && (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedLogId(isExpanded ? null : log._id)}
-                            className="text-[#0d9da4] hover:underline font-bold"
-                          >
-                            {isExpanded ? 'Collapse' : 'View Query'}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <div className="ap-card">
+        {/* Search, date presets, filter toggle */}
+        <div className="ap-toolbar">
+          <div className="ap-search">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+            <input type="text" className="ap-input" placeholder="Search details, people, connections..." value={tableSearch} onChange={(e) => setTableSearch(e.target.value)} />
+            {tableSearch && (
+              <button type="button" className="ap-search-clear" onClick={() => setTableSearch('')} aria-label="Clear search">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            )}
           </div>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-gray-150 dark:border-gray-800 px-5 py-4 bg-gray-50/50 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400">
-              <span className="text-xs font-medium">
-                Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredLogs.length)} of {filteredLogs.length} audit records
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 text-xs font-bold rounded-lg bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
-                >
-                  Previous
-                </button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }).map((_, idx) => {
-                    const pageNum = idx + 1;
-                    if (totalPages > 5 && Math.abs(currentPage - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
-                      if (pageNum === 2 || pageNum === totalPages - 1) {
-                        return <span key={pageNum} className="text-xs text-gray-400 px-1 select-none">...</span>;
-                      }
-                      return null;
-                    }
-                    return (
-                      <button
-                        key={pageNum}
-                        type="button"
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition focus:outline-none ${
-                          currentPage === pageNum
-                            ? 'bg-teal-600 text-white shadow-xs'
-                            : 'border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-750 dark:text-gray-400'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-700 text-xs font-bold rounded-lg bg-white dark:bg-gray-850 hover:bg-gray-50 dark:hover:bg-gray-750 text-gray-770 dark:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition focus:outline-none"
-                >
-                  Next
-                </button>
-              </div>
+          <div className="ap-seg" role="group" aria-label="Date range">
+            {DATE_PRESETS.map((preset) => (
+              <button key={preset.id} type="button" onClick={() => applyPreset(preset)} className={activePreset === preset.id ? 'is-active' : ''}>{preset.label}</button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen} className={`ap-btn-outline ${filtersOpen || advancedFilterCount ? 'is-active' : ''}`}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
+            Filters{advancedFilterCount > 0 && ` (${advancedFilterCount})`}
+          </button>
+          {hasAnyFilter && <button type="button" onClick={handleClearFilters} className="ap-btn-outline">Clear all</button>}
+        </div>
+
+        {filtersOpen && (
+          <div className="ap-divider grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3">
+            <div>
+              <label className="ap-label" htmlFor="ap-user">Person</label>
+              <select id="ap-user" className="ap-select" value={selectedUser} onChange={(e) => handleUserChange(e.target.value)}>
+                <option value="">All people ({availableUsers.length})</option>
+                {availableUsers.map((u) => <option key={u._id} value={u._id}>{u.name} ({u.role || 'user'})</option>)}
+              </select>
             </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-role">Role</label>
+              <select id="ap-role" className="ap-select" value={selectedRole} onChange={(e) => handleRoleChange(e.target.value)}>
+                <option value="">All roles</option>
+                <option value="admin">Admin</option>
+                <option value="developer">Developer</option>
+              </select>
+            </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-conn">Connection</label>
+              <select id="ap-conn" className="ap-select" value={selectedConnection} onChange={(e) => handleConnectionChange(e.target.value)}>
+                <option value="">All connections ({availableConnections.length})</option>
+                <option value="global">Global system logs</option>
+                {availableConnections.map((c) => <option key={c._id} value={c._id}>{c.name} ({String(c.type).toUpperCase()})</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-action">Exact action</label>
+              <select id="ap-action" className="ap-select" value={selectedAction} onChange={(e) => setSelectedAction(e.target.value)}>
+                <option value="">All actions</option>
+                {ALL_ACTIONS.map((action) => <option key={action} value={action}>{action.replace(/_/g, ' ')}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-op">Query type</label>
+              <select
+                id="ap-op"
+                className="ap-select"
+                value={queryType}
+                onChange={(e) => setQueryType(e.target.value)}
+                disabled={selectedAction !== '' && selectedAction !== 'RUN_QUERY' && selectedAction !== 'SLOW_QUERY'}
+              >
+                <option value="">All operations</option>
+                <option value="select">Read (SELECT / FIND)</option>
+                <option value="insert">Insert</option>
+                <option value="update">Update</option>
+                <option value="delete">Delete / Drop</option>
+              </select>
+            </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-from">From</label>
+              <input id="ap-from" type="date" className="ap-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="ap-label" htmlFor="ap-to">To</label>
+              <input id="ap-to" type="date" className="ap-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        {/* Category chips */}
+        <div className="ap-divider flex flex-wrap gap-1.5 p-3">
+          <button type="button" onClick={() => setCategory('all')} className={`ap-chip ${category === 'all' ? 'is-active' : ''}`}>
+            All <span className="ap-chip-count">{logs.length.toLocaleString()}</span>
+          </button>
+          {CATEGORIES.map((c) => (
+            <button key={c.id} type="button" onClick={() => setCategory(c.id)} className={`ap-chip ${category === c.id ? 'is-active' : ''}`}>
+              {c.label} <span className="ap-chip-count">{(categoryCounts[c.id] || 0).toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+
+        {error && <div className="ap-alert mx-3 mb-3">{error}</div>}
+
+        {/* Timeline */}
+        <div className="ap-divider">
+          {loading ? (
+            <div className="ap-empty">
+              <div className="ap-spinner" />
+              <p className="mt-3 text-[13px] text-slate-500">Loading audit logs...</p>
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="ap-empty">
+              <div className="ap-empty-icon"><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 8h6M9 12h6M9 16h4" /></svg></div>
+              <p className="text-[14px] font-semibold">No matching activity</p>
+              <p className="mt-1 text-[12.5px] text-slate-500">{hasAnyFilter ? 'Try removing some filters.' : 'Nothing has been logged yet.'}</p>
+              {hasAnyFilter && <button type="button" onClick={handleClearFilters} className="ap-btn-outline mt-3">Clear all filters</button>}
+            </div>
+          ) : (
+            currentItems.map((log) => {
+              const isOpen = expandedLogId === log._id;
+              const sensitive = SENSITIVE_ACTIONS.has(log.action);
+              const day = dayLabel(log.createdAt);
+              const showDay = day !== lastDay;
+              lastDay = day;
+              return (
+                <div key={log._id}>
+                  {showDay && <div className="ap-day">{day}</div>}
+                  <div className={`ap-log ${isOpen ? 'is-open' : ''}`}>
+                    <button type="button" className="ap-log-row" onClick={() => setExpandedLogId(isOpen ? null : log._id)} aria-expanded={isOpen}>
+                      <span className="ap-log-time">{new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className={`ap-avatar !w-7 !h-7 !text-[10.5px] ${log.user?.role === 'admin' ? 'is-admin' : ''}`} title={log.user?.email || ''}>{initialsOf(log.user?.name)}</span>
+                      <span className="w-32 shrink-0 truncate text-[12.5px] font-semibold">{log.user?.name || 'Unknown'}</span>
+                      <span className={`ap-tag ${sensitive ? 'is-danger' : ''}`}>{(log.action || 'ACTION').replace(/_/g, ' ')}</span>
+                      <span className="ap-tag is-neutral hidden md:inline-flex max-w-[140px]"><span className="truncate">{log.connection?.name || 'System'}</span></span>
+                      <span className="ap-log-details">{log.details}</span>
+                      <svg className="ap-log-chevron w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg>
+                    </button>
+                    {isOpen && (
+                      <div className="ap-log-expanded">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[12px] text-slate-500">
+                          <span>{new Date(log.createdAt).toLocaleString()} ({timeAgo(log.createdAt)})</span>
+                          <span className="ap-mono">{log.user?.email || 'N/A'}</span>
+                          <span className="capitalize">{log.user?.role || 'unknown role'}</span>
+                          {log.connection && <span>{log.connection.name} · {String(log.connection.type).toUpperCase()}</span>}
+                        </div>
+                        <pre className="ap-code">{log.details}</pre>
+                        <button type="button" onClick={() => handleCopyDetails(log.details)} className="ap-btn-outline !h-8 mt-2">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 012-2h10" /></svg>
+                          Copy details
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
-      )}
 
+        {!loading && filteredLogs.length > 0 && (
+          <AdminPager
+            page={page}
+            pageSize={pageSize}
+            total={filteredLogs.length}
+            noun="records"
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
+      </div>
     </div>
   );
 }

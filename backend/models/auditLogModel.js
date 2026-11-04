@@ -39,7 +39,10 @@ const auditLogSchema = new mongoose.Schema({
       'LOGOUT',
       'UPDATE_USER_PERMISSIONS',
       'CREATE_USER',
-      'DELETE_USER'
+      'DELETE_USER',
+      'UPDATE_USER',
+      'PROFILE_UPDATE',
+      'PASSWORD_CHANGE'
     ],
     required: true,
   },

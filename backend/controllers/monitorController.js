@@ -388,7 +388,7 @@ exports.getTableDetails = async (req, res) => {
           INDEX_LENGTH
         FROM information_schema.TABLES
         ${dbQuery}
-        ORDER BY TABLE_ROWS DESC, (DATA_LENGTH + INDEX_LENGTH) DESC
+        ORDER BY (DATA_LENGTH + INDEX_LENGTH) DESC, TABLE_ROWS DESC
         LIMIT ${limit} OFFSET ${offset}
       `, params);
 
@@ -435,7 +435,8 @@ exports.getTableDetails = async (req, res) => {
     } else if (type === 'mongodb') {
       const mongoDbName = targetDb || 'test';
       const db = conn.db(mongoDbName);
-      const collections = await db.listCollections().skip(offset).limit(limit).toArray();
+      // The listCollections cursor has no skip()/limit() in driver v7, so page the list here
+      const collections = (await db.listCollections().toArray()).slice(offset, offset + limit);
       const collData = [];
       for (const col of collections) {
         try {

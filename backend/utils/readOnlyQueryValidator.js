@@ -1,3 +1,148 @@
+function stripCommentsAndQuotedLiterals(sql) {
+  let stripped = '';
+  let quote = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    const next = sql[i + 1];
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+        stripped += ' ';
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote && next === quote) {
+        stripped += '  ';
+        i += 1;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      stripped += ' ';
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      stripped += ' ';
+      continue;
+    }
+
+    stripped += char;
+  }
+
+  return stripped;
+}
+
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let quote = null;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    const next = sql[i + 1];
+
+    if (inLineComment) {
+      current += char;
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += char;
+      if (char === '*' && next === '/') {
+        current += next;
+        i += 1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (quote) {
+      current += char;
+      if (char === quote && next === quote) {
+        current += next;
+        i += 1;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      current += char + next;
+      i += 1;
+      inLineComment = true;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      current += char + next;
+      i += 1;
+      inBlockComment = true;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === ';') {
+      const statement = current.trim();
+      if (statement) {
+        statements.push(statement);
+      }
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  const finalStatement = current.trim();
+  if (finalStatement) {
+    statements.push(finalStatement);
+  }
+
+  return statements;
+}
+
 /**
  * Validates query execution permissions based on user role & dbType.
  * Read Users ('read') are strictly limited to Read-Only operations across MySQL, PostgreSQL, Oracle, and MongoDB.
@@ -41,12 +186,10 @@ function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connec
     const query = rawQuery.trim();
     const type = (dbType || 'mysql').toLowerCase();
 
-    // ─── MONGODB READ-ONLY VALIDATION ───────────────────
     if (type === 'mongodb') {
       const clean = query.replace(/;+\s*$/, '').trim();
       const upper = clean.toUpperCase();
 
-      // Allowed MongoDB read patterns
       if (
         upper === 'SHOW TABLES' ||
         upper === 'SHOW COLLECTIONS' ||
@@ -56,13 +199,11 @@ function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connec
         return { isAllowed: true };
       }
 
-      // Check MongoDB shell method calls db.collection.method(...)
       const mongoReadMatch = clean.match(/^db\.(?:getCollection\(['"]([^'"]+)['"]\)|([a-zA-Z0-9_-]+))\.(find|findOne|countDocuments|count|aggregate|distinct|estimatedDocumentCount)\(/i);
       if (mongoReadMatch) {
         return { isAllowed: true };
       }
 
-      // Write/Mutation methods
       const writeMethods = [
         'insertOne', 'insertMany', 'updateOne', 'updateMany', 'deleteOne', 'deleteMany',
         'replaceOne', 'drop', 'dropDatabase', 'createCollection', 'bulkWrite', 'remove', 'save', 'renameCollection'
@@ -81,27 +222,47 @@ function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connec
       };
     }
 
-    // ─── SQL (MYSQL, POSTGRESQL, ORACLE) READ-ONLY VALIDATION ───
-    // Remove comments
-    const cleanSql = query
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/--.*$/gm, '')
-      .trim();
-
-    // Check statements separated by semicolon
-    const statements = cleanSql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
+    const statements = splitSqlStatements(query);
     const allowedVerbs = ['SELECT', 'SHOW', 'EXPLAIN', 'DESC', 'DESCRIBE', 'WITH', 'VALUES'];
-    const forbiddenKeywords = [
-      'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'RENAME',
-      'GRANT', 'REVOKE', 'REPLACE', 'CALL', 'EXEC', 'EXECUTE', 'LOCK', 'FLASHBACK', 'PURGE'
-    ];
+    const forbiddenKeywords = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'RENAME', 'GRANT', 'REVOKE', 'REPLACE', 'CALL', 'EXEC', 'EXECUTE', 'LOCK', 'FLASHBACK', 'PURGE'];
 
     for (const stmt of statements) {
-      const firstWord = stmt.split(/\s+/)[0].toUpperCase();
+      const normalized = stripCommentsAndQuotedLiterals(stmt).trim();
+      if (!normalized) {
+        continue;
+      }
+
+      const tokens = normalized
+        .replace(/[^A-Za-z0-9_$#]+/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(token => token.toUpperCase());
+
+      if (!tokens.length) {
+        continue;
+      }
+
+      let firstWord = tokens[0];
+      if (firstWord === 'EXPLAIN') {
+        const nextWord = tokens[1] || '';
+        if (!allowedVerbs.includes(nextWord) && nextWord !== 'ANALYZE') {
+          return {
+            isAllowed: false,
+            error: `Access Denied: Read User accounts are restricted to read-only queries (SELECT, SHOW, EXPLAIN, DESCRIBE). Operation '${nextWord || 'UNKNOWN'}' is not permitted.`
+          };
+        }
+        if (nextWord === 'ANALYZE') {
+          const followUp = tokens[2] || '';
+          if (!allowedVerbs.includes(followUp)) {
+            return {
+              isAllowed: false,
+              error: `Access Denied: Read User accounts are restricted to read-only queries (SELECT, SHOW, EXPLAIN, DESCRIBE). Operation '${followUp || 'UNKNOWN'}' is not permitted.`
+            };
+          }
+        }
+        continue;
+      }
+
       if (!allowedVerbs.includes(firstWord)) {
         return {
           isAllowed: false,
@@ -109,16 +270,11 @@ function validateQueryPermissions(rawQuery, user, dbType, targetDatabase, connec
         };
       }
 
-      // Secondary check for embedded mutation statements
-      const upperStmt = stmt.toUpperCase();
-      for (const kw of forbiddenKeywords) {
-        const regex = new RegExp(`\\b${kw}\\b`, 'i');
-        if (regex.test(upperStmt) && !upperStmt.startsWith('SELECT') && !upperStmt.startsWith('WITH')) {
-          return {
-            isAllowed: false,
-            error: `Access Denied: Read User accounts are restricted to read-only queries. Keyword '${kw}' is prohibited for Read Users.`
-          };
-        }
+      if (firstWord === 'WITH' && tokens.some(token => forbiddenKeywords.includes(token))) {
+        return {
+          isAllowed: false,
+          error: `Access Denied: Read User accounts are restricted to read-only queries. Keyword '${tokens.find(token => forbiddenKeywords.includes(token))}' is prohibited for Read Users.`
+        };
       }
     }
 

@@ -1,0 +1,167 @@
+/* Animated database illustration (3 transparent layers + SVG effects), shared by Login and Dashboard.
+   Size it by setting a width on .ah-hero; --ah-float and --ah-rise scale the motion for small sizes. */
+.ah-hero {
+  position: relative;
+  width: 100%;
+}
+.ah-hero-float {
+  animation: heroFloat 6s ease-in-out infinite;
+}
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(var(--ah-float, -14px)); }
+}
+.ah-hero-tilt {
+  position: relative;
+  transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.5s cubic-bezier(.2,.8,.2,1);
+  backface-visibility: hidden;
+}
+
+/* Soft floor shadow — a separate element, because a CSS filter on the tilted layer blurs the image */
+.ah-hero-shadow {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 1%;
+  height: 7%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(14, 60, 130, 0.28), transparent 70%);
+  pointer-events: none;
+  animation: shadowPulse 6s ease-in-out infinite;
+}
+@keyframes shadowPulse {
+  0%, 100% { transform: scaleX(1); opacity: 1; }
+  50% { transform: scaleX(0.88); opacity: 0.7; }
+}
+.ah-hero-tilt img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+  pointer-events: none;
+}
+.ah-hero-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Light sweep across the picture, masked to the cut-out so it doesn't hit the transparent area */
+.ah-hero-shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask: url('/assets/hero_layer_servers.png') center / 100% 100% no-repeat;
+  mask: url('/assets/hero_layer_servers.png') center / 100% 100% no-repeat;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.45) 48%, transparent 60%);
+  background-size: 250% 100%;
+  mix-blend-mode: soft-light;
+  animation: shineSweep 6s ease-in-out infinite;
+}
+@keyframes shineSweep {
+  0% { background-position: 150% 0; }
+  60%, 100% { background-position: -100% 0; }
+}
+
+/* Floating card layers (same canvas as the servers layer, transparent elsewhere) */
+.ah-hero-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+.ah-hero-card-db {
+  transform-origin: 28% 12%;
+  animation: cardBobA 4.6s ease-in-out infinite;
+}
+.ah-hero-card-repl {
+  transform-origin: 75% 20%;
+  animation: cardBobB 5.2s ease-in-out infinite;
+}
+@keyframes cardBobA {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(-6px, -16px) rotate(-1.5deg); }
+}
+@keyframes cardBobB {
+  0%, 100% { transform: translate(0, -4px) rotate(0deg); }
+  50% { transform: translate(8px, 12px) rotate(1.5deg); }
+}
+
+/* SVG effect pieces */
+.fx-glow {
+  mix-blend-mode: screen;
+  animation: glowPulse 2.8s ease-in-out infinite;
+}
+@keyframes glowPulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.85; }
+}
+
+.fx-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ringPulse 3.2s ease-out infinite;
+}
+@keyframes ringPulse {
+  0% { transform: scale(0.75); opacity: 0.9; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+.fx-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes ping {
+  0% { transform: scale(1); opacity: 0.85; }
+  80%, 100% { transform: scale(3); opacity: 0; }
+}
+
+.fx-led {
+  animation: ledBlink 1.6s steps(2, jump-none) infinite;
+}
+@keyframes ledBlink {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 1; }
+}
+
+.fx-orbit {
+  stroke-dasharray: 6 10;
+  animation: orbitDash 3s linear infinite;
+}
+@keyframes orbitDash {
+  to { stroke-dashoffset: -64; }
+}
+
+/* Rising data particles */
+.ah-particle {
+  position: absolute;
+  bottom: 30%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e0f7ff, #38bdf8 60%, transparent 70%);
+  box-shadow: 0 0 10px #38bdf8;
+  opacity: 0;
+  pointer-events: none;
+  animation: rise 4.5s ease-in infinite;
+}
+@keyframes rise {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(var(--ah-rise, -260px)) scale(1.1); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ah-hero *,
+  .ah-hero *::before,
+  .ah-hero *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .ah-particle { display: none; }
+}

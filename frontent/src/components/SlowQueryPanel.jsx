@@ -330,7 +330,7 @@ export default function SlowQueryPanel({ connectionId }) {
     <div className="space-y-6 text-left">
       
       {/* Top Header & Interactive Controls */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
+      <div className="cd-panel bg-white rounded-2xl border border-gray-200 p-5 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
@@ -484,15 +484,15 @@ export default function SlowQueryPanel({ connectionId }) {
       {/* Summary Cards */}
       {activeTab === 'history' && stats && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-gray-900">{stats.totalSlowQueries}</p>
             <p className="text-xs text-gray-500 mt-1">Total Logged Queries</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-gray-900">{stats.avgExecutionTime}ms</p>
             <p className="text-xs text-gray-500 mt-1">Average Execution Latency</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className="text-2xl font-bold text-rose-600">{stats.slowestTime}ms</p>
             <p className="text-xs text-gray-500 mt-1">Slowest Execution</p>
           </div>
@@ -501,13 +501,13 @@ export default function SlowQueryPanel({ connectionId }) {
 
       {/* Main Content Area */}
       {loading ? (
-        <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center text-gray-500">
+        <div className="cd-panel bg-white rounded-2xl border border-gray-200 p-12 text-center text-gray-500">
           <div className="w-8 h-8 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-3"></div>
           Fetching queries taking &gt;= {threshold}ms...
         </div>
       ) : activeTab === 'live' ? (
         /* LIVE SERVER PROCESSLIST TABLE VIEW */
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+        <div className="cd-panel bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="px-5 py-3.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3 select-none">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">
@@ -640,7 +640,7 @@ export default function SlowQueryPanel({ connectionId }) {
         </div>
       ) : (
         /* LOGGED SLOW QUERIES HISTORY TABLE VIEW */
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
+        <div className="cd-panel bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
           <div className="px-5 py-3.5 bg-gray-50/90 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3 select-none">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-bold text-teal-800 uppercase tracking-wider">

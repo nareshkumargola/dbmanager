@@ -109,6 +109,23 @@ const checkAccess = (connection, user) => {
   return false;
 };
 
+// Network-level failures reaching the target database server (as opposed to SQL errors)
+const UNREACHABLE_CODES = ['ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'NJS-500', 'NJS-501', 'NJS-503', 'NJS-510'];
+const isUnreachableError = (err) =>
+  UNREACHABLE_CODES.includes(err?.code) ||
+  /ETIMEDOUT|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENOTFOUND|NJS-50[0-3]|NJS-510|server selection timed out/i.test(err?.message || '');
+
+// Send a clear 503 when the database server can't be reached, otherwise the usual 500
+const sendConnectionError = (res, err) => {
+  if (isUnreachableError(err)) {
+    return res.status(503).json({
+      message: 'Cannot reach the database server. It may be down, or blocked by a firewall/VPN from this network.',
+      error: err.message,
+    });
+  }
+  return res.status(500).json({ message: 'Error', error: err.message });
+};
+
 // ─── SAARE CONNECTIONS DEKHO ──────────────────────
 exports.getConnections = async (req, res) => {
   try {
@@ -703,7 +720,9 @@ exports.getDatabaseObjects = async (req, res) => {
 
     else if (type === 'mongodb') {
       const db = conn.db(database || 'test');
-      const collectionsRaw = await db.listCollections().skip(tableOffset).limit(tableLimit).toArray();
+      // The listCollections cursor has no skip()/limit() in driver v7, so page the list here
+      const allCollections = await db.listCollections().toArray();
+      const collectionsRaw = allCollections.slice(tableOffset, tableOffset + tableLimit);
       
       const collections = [];
       const views = [];
@@ -828,7 +847,8 @@ exports.getDatabaseObjects = async (req, res) => {
 
     res.status(200).json({ success: true, type, result, database });
   } catch (err) {
-    res.status(500).json({ message: 'Error', error: err.message });
+    console.error('getDatabaseObjects failed:', err);
+    sendConnectionError(res, err);
   }
 };
 
@@ -1484,7 +1504,8 @@ exports.getDatabases = async (req, res) => {
 
     res.status(200).json({ success: true, databases });
   } catch (err) {
-    res.status(500).json({ message: 'Error', error: err.message });
+    console.error('getDatabases failed:', err.message);
+    sendConnectionError(res, err);
   }
 };
 

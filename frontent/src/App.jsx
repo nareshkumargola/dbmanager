@@ -91,6 +91,8 @@ function AppRoutes() {
         {/* Protected Routes wrapped in persistent Layout */}
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/audit-logs" element={<Dashboard />} />
+          <Route path="/system-users" element={<Dashboard />} />
           <Route path="/mysql/table/:tableName" element={<MysqlTable />} />
           <Route path="/mongo/collection/:collectionName" element={<MongoCollection />} />
           <Route path="/query" element={<QueryEditor />} />

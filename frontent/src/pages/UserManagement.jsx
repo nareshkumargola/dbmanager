@@ -1,905 +1,629 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 import Toast from '../components/Toast';
+import AdminPager from '../components/AdminPager';
+import { PERMISSIONS, downloadCsv, enabledPermissionCount, initialsOf, permissionsOf, timeAgo, toLocalDateInput } from '../utils/adminHelpers';
+import '../components/AdminPages.css';
+
+const PERMISSION_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))];
+
+// One-click starting points; connection access is left untouched
+const ROLE_PRESETS = [
+  { id: 'analyst', label: 'Analyst', hint: 'Query and history only', keys: ['query', 'history', 'slowQuery'] },
+  { id: 'developer', label: 'Developer', hint: 'Queries plus monitoring', keys: ['query', 'history', 'slowQuery', 'monitor', 'binlog', 'auditLogs'] },
+  { id: 'dba', label: 'DBA', hint: 'Everything except users', keys: PERMISSIONS.map((p) => p.key).filter((key) => key !== 'userManagement') },
+  { id: 'all', label: 'Full', hint: 'All modules', keys: PERMISSIONS.map((p) => p.key) },
+  { id: 'none', label: 'None', hint: 'Remove all modules', keys: [] },
+];
+
+const HISTORY_ACTIONS = {
+  UPDATE_USER_PERMISSIONS: { label: 'Permissions changed', tone: '' },
+  UPDATE_USER: { label: 'User updated', tone: 'is-neutral' },
+  CREATE_USER: { label: 'User created', tone: '' },
+  DELETE_USER: { label: 'User deleted', tone: 'is-danger' },
+};
+
+const EMPTY_FORM = {
+  name: '', email: '', password: '', role: 'developer', accessMode: 'read',
+  permissions: { userManagement: false, connections: false },
+};
+
+const presetPerms = (keys) => Object.fromEntries(PERMISSIONS.map(({ key }) => [key, keys.includes(key)]));
+
+const generatePassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+  const values = crypto.getRandomValues(new Uint32Array(14));
+  return Array.from(values, (value) => chars[value % chars.length]).join('');
+};
 
 export default function UserManagement() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
+  const selfId = String(currentUser?._id || currentUser?.id || '');
+  const canOpenPage = isAdmin || Boolean(currentUser?.permissions?.userManagement);
+
   const [toast, setToast] = useState(null);
-  const showToast = (message, type = 'success') => setToast({ message, type });
+  const showToast = useCallback((message, type = 'success') => setToast({ message, type }), []);
+  const closeToast = useCallback(() => setToast(null), []);
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [view, setView] = useState('permissions');
+
+  // Editor state: a draft that is only sent when saved
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [perms, setPerms] = useState(() => permissionsOf(null));
+  const [accessMode, setAccessMode] = useState('read');
+  const [allowedConnections, setAllowedConnections] = useState([]);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [listSearch, setListSearch] = useState('');
+  const [copyFromId, setCopyFromId] = useState('');
+
+  // Create-user modal
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: '', email: '', password: '', role: 'developer', accessMode: 'read',
-    permissions: { userManagement: false, connections: false }
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [showPassword, setShowPassword] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
 
-  // Tabs inside page: 'permissions' or 'history'
-  const [activeSubTab, setActiveSubTab] = useState('permissions');
-  
-  // Selected user for permissions toggle
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [userAllowedConnections, setUserAllowedConnections] = useState([]);
-  const [perms, setPerms] = useState({
-    userManagement: false,
-    backup: true,
-    binlog: true,
-    monitor: true,
-    query: true,
-    history: true,
-    slowQuery: true,
-    auditLogs: true,
-    connections: true
-  });
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [editingUser, setEditingUser] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
-
-  const [historyPage, setHistoryPage] = useState(1);
-  const historyItemsPerPage = 5;
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [userSearchQuery]);
-
-  const getActivePermsList = (u) => {
-    if (u.role === 'admin') return ['Master Bypass'];
-    const list = [];
-    if (u.permissions?.userManagement) list.push('👤 DB Users Manager');
-    if (u.permissions?.query ?? true) list.push('⚡ Query');
-    if (u.permissions?.history ?? true) list.push('📜 History');
-    if (u.permissions?.slowQuery ?? true) list.push('🐢 Slow Query');
-    if (u.permissions?.auditLogs ?? true) list.push('🔍 Audit Logs');
-    if (u.permissions?.backup ?? true) list.push('💾 Backup');
-    if (u.permissions?.binlog ?? true) list.push('📡 WAL/Binlog');
-    if (u.permissions?.monitor ?? true) list.push('📊 Monitor');
-    if (u.permissions?.connections ?? true) list.push('⚙️ Connections');
-    return list;
-  };
-
-  // Permissions History logs
+  // Permission history
   const [historyLogs, setHistoryLogs] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyAction, setHistoryAction] = useState('all');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
 
-  useEffect(() => {
-    // Allow admin or users with userManagement permission
-    if (currentUser && currentUser.role !== 'admin' && !currentUser.permissions?.userManagement) {
-      navigate('/dashboard');
-      return;
-    }
-    fetchUsers();
-    fetchHistory();
-  }, [currentUser]);
+  const selectedUser = users.find((u) => u._id === selectedUserId);
 
-  useEffect(() => {
-    if (users.length > 0 && !selectedUserId) {
-      const firstNonSelf = users.find(u => u._id !== currentUser?.id) || users[0];
-      setSelectedUserId(firstNonSelf?._id || '');
-    }
-  }, [users]);
+  const loadDraft = useCallback((u) => {
+    setSelectedUserId(u?._id || '');
+    setPerms(permissionsOf(u));
+    setAccessMode(u?.accessMode === 'readwrite' ? 'readwrite' : 'read');
+    setAllowedConnections(Array.isArray(u?.allowedConnections) ? u.allowedConnections : []);
+    setCopyFromId('');
+  }, []);
 
-  useEffect(() => {
-    if (selectedUserId) {
-      const u = users.find(x => x._id === selectedUserId);
-      if (u) {
-        setPerms({
-          userManagement: u.permissions?.userManagement ?? false,
-          backup: u.permissions?.backup ?? true,
-          binlog: u.permissions?.binlog ?? true,
-          monitor: u.permissions?.monitor ?? true,
-          query: u.permissions?.query ?? true,
-          history: u.permissions?.history ?? true,
-          slowQuery: u.permissions?.slowQuery ?? true,
-          auditLogs: u.permissions?.auditLogs ?? true,
-          connections: u.permissions?.connections ?? true,
-        });
-        setUserAllowedConnections(Array.isArray(u.allowedConnections) ? u.allowedConnections : []);
-      }
-    }
-  }, [selectedUserId, users]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
-      setLoading(true);
       const res = await API.get('/users');
-      setUsers(res.data.users || []);
-    } catch (err) {
-      setError('Failed to load users');
+      const list = res.data.users || [];
+      setUsers(list);
+      setError('');
+      return list;
+    } catch {
+      setError('Failed to load users.');
+      return [];
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
+  const fetchHistory = useCallback(async () => {
     try {
       const res = await API.get('/audit-logs');
-      // Filter only user-management and permission-related logs
-      const filtered = (res.data.logs || []).filter(log =>
-        ['UPDATE_USER_PERMISSIONS', 'CREATE_USER', 'DELETE_USER'].includes(log.action)
-      );
-      setHistoryLogs(filtered);
+      setHistoryLogs((res.data.logs || []).filter((log) => HISTORY_ACTIONS[log.action]));
     } catch (err) {
       console.error('Failed to load permission history:', err);
     } finally {
       setLoadingHistory(false);
     }
+  }, []);
+
+  const requestedUserId = searchParams.get('user');
+
+  useEffect(() => {
+    if (currentUser && !canOpenPage) {
+      navigate('/dashboard');
+      return;
+    }
+    fetchUsers().then((list) => {
+      // Open the user from the link, otherwise the first person who isn't you
+      const initial = list.find((u) => u._id === requestedUserId)
+        || list.find((u) => String(u._id) !== selfId)
+        || list[0];
+      if (initial) loadDraft(initial);
+    });
+    if (isAdmin) fetchHistory();
+    // Runs once per signed-in user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfId, canOpenPage]);
+
+  const isDirty = useMemo(() => {
+    if (!selectedUser) return false;
+    return JSON.stringify(perms) !== JSON.stringify(permissionsOf(selectedUser))
+      || accessMode !== (selectedUser.accessMode === 'readwrite' ? 'readwrite' : 'read')
+      || JSON.stringify(allowedConnections) !== JSON.stringify(selectedUser.allowedConnections || []);
+  }, [perms, accessMode, allowedConnections, selectedUser]);
+
+  const isSelfSelected = selectedUser && String(selectedUser._id) === selfId;
+  const canEdit = Boolean(selectedUser) && isAdmin && !isSelfSelected && selectedUser.role !== 'admin';
+
+  const selectUser = (u) => {
+    if (u._id === selectedUserId) return;
+    if (isDirty && !window.confirm(`Discard unsaved changes for ${selectedUser?.name}?`)) return;
+    loadDraft(u);
   };
 
-  const updateRole = async (id, role) => {
+  const openFromMatrix = (u) => {
+    selectUser(u);
+    setView('permissions');
+  };
+
+  const savePermissions = async () => {
+    setSaveLoading(true);
     try {
-      setError('');
-      setSuccess('');
-      await API.put(`/users/${id}/role`, { role });
-      setSuccess('User role updated successfully!');
-      fetchUsers();
+      await API.put(`/users/${selectedUserId}/permissions`, { permissions: perms, accessMode, allowedConnections });
+      showToast(`Permissions saved for ${selectedUser?.name || 'user'}`);
+      // Reload so the draft matches exactly what the server stored
+      const list = await fetchUsers();
+      const fresh = list.find((u) => u._id === selectedUserId);
+      if (fresh) loadDraft(fresh);
       fetchHistory();
     } catch (err) {
-      setError(err.response?.data?.message || 'Update failed!');
+      showToast(err.response?.data?.message || 'Failed to save permissions.', 'error');
+    } finally {
+      setSaveLoading(false);
     }
   };
 
-  const deleteUser = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
+  const copyFromUser = (id) => {
+    setCopyFromId(id);
+    const source = users.find((u) => u._id === id);
+    if (source) {
+      setPerms(source.role === 'admin' ? presetPerms(PERMISSIONS.map((p) => p.key)) : permissionsOf(source));
+      showToast(`Copied module permissions from ${source.name}. Save to apply.`);
+    }
+  };
+
+  const deleteUser = async (u) => {
+    if (!window.confirm(`Delete ${u.name}? This cannot be undone.`)) return;
     try {
-      setError('');
-      setSuccess('');
-      await API.delete(`/users/${id}`);
-      showToast(`User profile '${name}' deleted successfully!`);
-      if (editingUser === id) {
-        setEditingUser(null);
-      }
-      fetchUsers();
+      await API.delete(`/users/${u._id}`);
+      showToast(`${u.name} deleted`);
+      const list = await fetchUsers();
+      loadDraft(list.find((x) => String(x._id) !== selfId) || list[0]);
       fetchHistory();
     } catch (err) {
-      showToast(err.response?.data?.message || 'Delete failed!', 'error');
+      showToast(err.response?.data?.message || 'Delete failed.', 'error');
     }
   };
 
   const createUser = async (e) => {
     e.preventDefault();
     setFormLoading(true);
-    setError('');
-    setSuccess('');
     try {
       const res = await API.post('/users', form);
-      showToast(`User account '${form.name}' created successfully with granted database permissions!`);
+      showToast(`${form.name} created`);
       setShowForm(false);
-      setForm({
-        name: '', email: '', password: '', role: 'developer', accessMode: 'read',
-        permissions: { userManagement: false, connections: false }
-      });
-      fetchUsers();
+      setForm(EMPTY_FORM);
+      const list = await fetchUsers();
+      const created = list.find((u) => u._id === res.data.user?.id);
+      if (created) loadDraft(created);
       fetchHistory();
-      if (res.data.user?.id) {
-        setSelectedUserId(res.data.user.id);
-      }
     } catch (err) {
-      showToast(err.response?.data?.message || 'User create failed!', 'error');
+      showToast(err.response?.data?.message || 'Could not create the user.', 'error');
     } finally {
       setFormLoading(false);
     }
   };
 
-  const savePermissions = async () => {
-    setSaveLoading(true);
-    setError('');
-    setSuccess('');
-    try {
-      await API.put(`/users/${selectedUserId}/permissions`, {
-        permissions: perms,
-        allowedConnections: userAllowedConnections
-      });
-      showToast(`Database & module permissions saved successfully for '${selectedUserObj?.name || 'User'}'!`);
-      fetchUsers();
-      fetchHistory();
-    } catch (err) {
-      showToast(err.response?.data?.message || 'Failed to save permissions!', 'error');
-    } finally {
-      setSaveLoading(false);
-    }
+  const listUsers = users.filter((u) => {
+    const q = listSearch.trim().toLowerCase();
+    return !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+  });
+
+  const visibleHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    return historyLogs.filter((log) => (
+      (historyAction === 'all' || log.action === historyAction)
+      && (!q || [log.details, log.user?.name, log.user?.email].some((field) => field && field.toLowerCase().includes(q)))
+    ));
+  }, [historyLogs, historySearch, historyAction]);
+  const historyTotalPages = Math.max(1, Math.ceil(visibleHistory.length / historyPageSize));
+  const currentHistoryPage = Math.min(historyPage, historyTotalPages);
+  const pageHistory = visibleHistory.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize);
+
+  const exportMatrix = () => {
+    downloadCsv(
+      `access_review_${toLocalDateInput(new Date())}.csv`,
+      ['Name', 'Email', 'Role', 'Access Mode', 'Connections', ...PERMISSIONS.map((p) => p.label)],
+      users.map((u) => {
+        const effective = permissionsOf(u);
+        return [
+          u.name,
+          u.email,
+          u.role,
+          u.role === 'admin' ? 'Full' : (u.accessMode === 'readwrite' ? 'Read & Write' : 'Read Only'),
+          u.role === 'admin' ? 'All' : (u.allowedConnections?.length || 0),
+          ...PERMISSIONS.map((p) => (u.role === 'admin' || effective[p.key] ? 'Yes' : 'No')),
+        ];
+      })
+    );
+    showToast('Access review exported as CSV');
   };
-
-  const selectedUserObj = users.find(u => u._id === selectedUserId);
-
-  const filteredUsers = users.filter(u =>
-    u.name?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-    u.email?.toLowerCase().includes(userSearchQuery.toLowerCase())
-  );
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
-
-  const totalHistoryPages = Math.ceil(historyLogs.length / historyItemsPerPage);
-  const historyStartIndex = (historyPage - 1) * historyItemsPerPage;
-  const paginatedHistoryLogs = historyLogs.slice(historyStartIndex, historyStartIndex + historyItemsPerPage);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-[3px] border-teal-100 border-t-teal-600 rounded-full animate-spin"></div>
+      <div className="ap-page min-h-screen flex items-center justify-center">
+        <div className="ap-spinner" />
       </div>
     );
   }
 
+  const tabs = [
+    { id: 'permissions', label: 'Edit Permissions' },
+    { id: 'matrix', label: 'Access Overview' },
+    ...(isAdmin ? [{ id: 'history', label: 'Change History' }] : []),
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50 text-left">
-      {/* Navbar */}
+    <div className="ap-page min-h-screen bg-[#f4f7fb] dark:bg-[#0b0f19]">
       <Navbar backTo="/dashboard" backText="Dashboard" />
+      {toast && <Toast toast={toast} onClose={closeToast} placement="top-right" />}
 
-      {/* Main Container - Width 90% */}
-      <div className="w-[90%] max-w-[90%] mx-auto px-6 py-8">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div className="w-[94%] max-w-[1500px] mx-auto py-5">
+        <div className="ap-head">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Permissions & User Controls
-            </h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage developer feature access toggles and monitor configuration logs.
-            </p>
+            <h2 className="ap-title">Permissions</h2>
+            <p className="ap-sub">Control which modules and connections each person can use.</p>
           </div>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="px-4 py-2 bg-gray-900 text-white text-sm font-semibold rounded-lg hover:bg-gray-700 transition shadow-sm self-start sm:self-center"
-          >
-            {showForm ? 'Cancel Creation' : '+ Create User'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="ap-seg" role="tablist">
+              {tabs.map((tab) => (
+                <button key={tab.id} type="button" role="tab" aria-selected={view === tab.id} onClick={() => setView(tab.id)} className={view === tab.id ? 'is-active' : ''}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {isAdmin && (
+              <button type="button" onClick={() => { setForm(EMPTY_FORM); setShowForm(true); }} className="ap-btn">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                Create User
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Alerts */}
-        {error && (
-          <div className="mb-4 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
-            <span>❌</span> {error}
-          </div>
-        )}
-        {success && (
-          <div className="mb-4 bg-green-50 border border-green-200 text-green-600 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
-            <span>✅</span> {success}
-          </div>
-        )}
+        {error && <div className="ap-alert mb-3">{error}</div>}
 
-        {/* Create User Form Overlay / Collapsible Card */}
-        {showForm && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6 shadow-sm">
-            <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-1.5">
-              👤 Create New User Profile
-            </h3>
-            <form onSubmit={createUser} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Name</label>
-                  <input
-                    type="text"
-                    placeholder="Full name"
-                    value={form.name}
-                    onChange={e => setForm({ ...form, name: e.target.value })}
-                    required
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
-                  <input
-                    type="email"
-                    placeholder="email@example.com"
-                    value={form.email}
-                    onChange={e => setForm({ ...form, email: e.target.value })}
-                    required
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    placeholder="Password"
-                    value={form.password}
-                    onChange={e => setForm({ ...form, password: e.target.value })}
-                    required
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Role</label>
-                  <select
-                    value={form.role}
-                    onChange={e => setForm({ ...form, role: e.target.value })}
-                    className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition font-semibold"
-                  >
-                    <option value="developer">Developer</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-                {form.role === 'developer' && (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Permission Mode</label>
-                    <select
-                      value={form.accessMode}
-                      onChange={e => setForm({ ...form, accessMode: e.target.value })}
-                      className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50/50 outline-none focus:border-gray-500 focus:bg-white transition font-semibold cursor-pointer"
-                    >
-                      <option value="read">🔒 Read-Only (SELECT, SHOW, FIND)</option>
-                      <option value="readwrite">⚡ Read & Write (INSERT, UPDATE, DELETE)</option>
-                    </select>
-                  </div>
-                )}
+        {/* ===== Edit Permissions: user list + editor ===== */}
+        {view === 'permissions' && (
+          <div className="ap-split">
+            <div className="ap-card p-2.5">
+              <div className="ap-search mb-2">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+                <input type="text" className="ap-input" placeholder="Search people..." value={listSearch} onChange={(e) => setListSearch(e.target.value)} />
               </div>
-
-              {form.role === 'developer' && (
-                <div className="pt-3 border-t border-gray-150 space-y-3">
-                  <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                    <input
-                      type="checkbox"
-                      checked={!!form.permissions?.userManagement}
-                      onChange={e => setForm({
-                        ...form,
-                        permissions: { ...form.permissions, userManagement: e.target.checked }
-                      })}
-                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                    />
-                    <div>
-                      <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
-                      <span className="text-[11px] text-gray-500 block">Allow this developer to manage database users</span>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                    <input
-                      type="checkbox"
-                      checked={!!form.permissions?.connections}
-                      onChange={e => setForm({
-                        ...form,
-                        permissions: { ...form.permissions, connections: e.target.checked }
-                      })}
-                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                    />
-                    <div>
-                      <span className="text-xs font-bold text-gray-900 block">⚙️ Add & Manage Connections</span>
-                      <span className="text-[11px] text-gray-500 block">Allow this developer to add, edit, and delete database connections</span>
-                    </div>
-                  </label>
-                  <ConnectionSchemaSelector
-                    value={form.allowedConnections || []}
-                    onChange={allowedConnections => setForm({ ...form, allowedConnections })}
-                    role={form.role}
-                    defaultAccessMode={form.accessMode || 'read'}
-                  />
-                </div>
-              )}
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-xs font-semibold hover:bg-gray-50 text-gray-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={formLoading}
-                  className="px-5 py-2 bg-gray-900 text-white rounded-lg text-xs font-semibold hover:bg-gray-800 transition disabled:opacity-50"
-                >
-                  {formLoading ? 'Creating...' : 'Create User'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Tab Selection */}
-        <div className="flex border-b border-gray-200 mb-6 gap-6">
-          <button
-            onClick={() => setActiveSubTab('permissions')}
-            className={`pb-2.5 text-sm font-semibold border-b-2 transition ${
-              activeSubTab === 'permissions' ? 'border-[#0d9da4] text-[#0d9da4]' : 'border-transparent text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            🔑 Access Permissions
-          </button>
-          <button
-            onClick={() => setActiveSubTab('history')}
-            className={`pb-2.5 text-sm font-semibold border-b-2 transition ${
-              activeSubTab === 'history' ? 'border-[#0d9da4] text-[#0d9da4]' : 'border-transparent text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            📜 Permission History
-          </button>
-        </div>
-
-        {/* Permissions Subtab */}
-        {activeSubTab === 'permissions' && (
-          editingUser === null ? (
-            <div>
-              {/* Search Box */}
-              <div className="mb-4 max-w-md relative text-left">
-                <input
-                  type="text"
-                  placeholder="Search users by name or email..."
-                  value={userSearchQuery}
-                  onChange={e => setUserSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 border border-gray-250 rounded-xl text-xs bg-white focus:bg-white outline-none focus:border-[#0d9da4] focus:ring-1 focus:ring-[#0d9da4]/35 transition"
-                />
-                <span className="absolute left-3 top-2.5 text-gray-400 text-xs">🔍</span>
-              </div>
-
-              {/* Table of users */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden text-left">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-150 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-left">
-                    <tr>
-                      <th className="px-6 py-4">User</th>
-                      <th className="px-6 py-4">Role</th>
-                      <th className="px-6 py-4">Permissions</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-150">
-                    {paginatedUsers.map(u => (
-                      <tr key={u._id} className="hover:bg-gray-50/50 transition">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center text-xs font-bold text-teal-700 shrink-0">
-                              {u.name?.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {u.name} {u._id === currentUser?.id && <span className="text-[10px] text-gray-400 font-normal ml-1">(You)</span>}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            u.role === 'admin' ? 'bg-gray-900 text-white' : u.role === 'developer' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-gray-50 text-gray-600 border border-gray-200'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 max-w-md">
-                          <div className="flex flex-wrap gap-1.5">
-                            {getActivePermsList(u).map(p => (
-                              <span key={p} className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-teal-50 text-teal-700 border border-teal-100/50">
-                                {p}
-                              </span>
-                            ))}
-                            {getActivePermsList(u).length === 0 && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-md font-medium bg-red-50 text-red-600 border border-red-100 italic">
-                                No Permissions
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-3 font-semibold">
-                            <button
-                              onClick={() => {
-                                setSelectedUserId(u._id);
-                                setEditingUser(u._id);
-                                setPerms({
-                                  userManagement: u.permissions?.userManagement ?? false,
-                                  backup: u.permissions?.backup ?? true,
-                                  binlog: u.permissions?.binlog ?? true,
-                                  monitor: u.permissions?.monitor ?? true,
-                                  query: u.permissions?.query ?? true,
-                                  history: u.permissions?.history ?? true,
-                                  slowQuery: u.permissions?.slowQuery ?? true,
-                                  auditLogs: u.permissions?.auditLogs ?? true,
-                                  connections: u.permissions?.connections ?? true,
-                                });
-                                setUserAllowedConnections(Array.isArray(u.allowedConnections) ? u.allowedConnections : []);
-                              }}
-                              className="text-xs text-[#0d9da4] hover:underline cursor-pointer"
-                            >
-                              ✏️ Edit
-                            </button>
-                            {u._id !== currentUser?.id && (
-                              <button
-                                onClick={() => deleteUser(u._id, u.name)}
-                                className="text-xs text-red-500 hover:underline"
-                              >
-                                ❌ Delete
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {paginatedUsers.length === 0 && (
-                      <tr>
-                        <td colSpan="4" className="px-6 py-8 text-center text-xs text-gray-400">
-                          No users found matching your search.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-
-                {/* Pagination Footer */}
-                {totalPages > 1 && (
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-xs text-gray-500">
-                      Showing <span className="font-semibold">{startIndex + 1}</span> to{' '}
-                      <span className="font-semibold">
-                        {Math.min(startIndex + itemsPerPage, filteredUsers.length)}
-                      </span>{' '}
-                      of <span className="font-semibold">{filteredUsers.length}</span> users
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                        disabled={currentPage === 1}
-                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm"
-                      >
-                        Previous
-                      </button>
-                      {[...Array(totalPages)].map((_, i) => (
-                        <button
-                          key={i + 1}
-                          onClick={() => setCurrentPage(i + 1)}
-                          className={`px-3 py-1.5 border rounded-lg text-xs font-semibold transition ${
-                            currentPage === i + 1
-                              ? 'bg-[#0d9da4] border-[#0d9da4] text-white'
-                              : 'border-gray-250 bg-white text-gray-600 hover:bg-gray-50'
-                          }`}
-                        >
-                          {i + 1}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                        disabled={currentPage === totalPages}
-                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
+              <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
+                {listUsers.map((u) => (
+                  <button key={u._id} type="button" onClick={() => selectUser(u)} className={`ap-user-item ${u._id === selectedUserId ? 'is-active' : ''}`} aria-current={u._id === selectedUserId ? 'true' : undefined}>
+                    <span className={`ap-avatar ${u.role === 'admin' ? 'is-admin' : ''}`}>{initialsOf(u.name)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-semibold">
+                        {u.name}{String(u._id) === selfId && <span className="ml-1 font-normal text-slate-400">(you)</span>}
+                      </span>
+                      <span className="block truncate text-[11.5px] text-slate-500">{u.email}</span>
+                    </span>
+                    <span className="text-[11px] font-semibold text-slate-400 tabular-nums" title="Permissions enabled">
+                      {u.role === 'admin' ? 'Admin' : `${enabledPermissionCount(u)}/${PERMISSIONS.length}`}
+                    </span>
+                  </button>
+                ))}
+                {listUsers.length === 0 && <p className="py-6 text-center text-[12.5px] text-slate-400">No matching people</p>}
               </div>
             </div>
-          ) : (
-            <div>
-              {/* Back to List Button */}
-              <div className="mb-4 flex justify-start">
-                <button
-                  onClick={() => setEditingUser(null)}
-                  className="px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-lg text-xs font-semibold text-gray-600 transition flex items-center gap-1.5 shadow-sm bg-white"
-                >
-                  ← Back to Users List
-                </button>
-              </div>
 
-              {/* Single Column: Permission details for the selected user */}
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-left w-[90%] max-w-[90%] mx-auto">
-                {selectedUserObj ? (
-                  <div>
-                    
-                    {/* User Title */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4 mb-5">
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">{selectedUserObj.name}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-gray-500">{selectedUserObj.email}</span>
-                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                            selectedUserObj.role === 'admin'
-                              ? 'bg-gray-950 text-white'
-                              : 'bg-teal-50 text-teal-700 border border-teal-150'
-                          }`}>
-                            {selectedUserObj.role}
-                          </span>
+            <div className="min-w-0">
+              {!selectedUser ? (
+                <div className="ap-card ap-empty"><p className="text-[14px] font-semibold">Select a person to edit their permissions</p></div>
+              ) : (
+                <>
+                  <div className="ap-card p-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className={`ap-avatar !w-11 !h-11 !text-[15px] ${selectedUser.role === 'admin' ? 'is-admin' : ''}`}>{initialsOf(selectedUser.name)}</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-[16px] font-bold truncate">{selectedUser.name}</h3>
+                        <p className="text-[12.5px] text-slate-500 truncate">{selectedUser.email} · Last sign-in {timeAgo(selectedUser.lastLoginAt)}</p>
+                      </div>
+                      <span className={`ap-tag ${selectedUser.role === 'admin' ? 'is-dark' : ''} capitalize`}>{selectedUser.role}</span>
+                      {isAdmin && !isSelfSelected && (
+                        <button type="button" onClick={() => deleteUser(selectedUser)} className="ap-icon-btn is-danger" title="Delete user" aria-label={`Delete ${selectedUser.name}`}>
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3" /></svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {selectedUser.role === 'admin' && <div className="ap-note mt-3">Admins always have every permission on every connection. Change their role to Developer to restrict them.</div>}
+                    {isSelfSelected && selectedUser.role !== 'admin' && <div className="ap-note mt-3">You can't change your own permissions. Ask an admin.</div>}
+                    {!isAdmin && !isSelfSelected && selectedUser.role !== 'admin' && <div className="ap-note mt-3">Only admins can change permissions. This view is read-only.</div>}
+
+                    {canEdit && (
+                      <div className="mt-4 flex flex-wrap items-end gap-x-5 gap-y-3">
+                        <div>
+                          <p className="ap-label">Query access</p>
+                          <div className="ap-seg" role="group" aria-label="Query access">
+                            {[['read', 'Read only'], ['readwrite', 'Read & Write']].map(([value, label]) => (
+                              <button key={value} type="button" onClick={() => setAccessMode(value)} className={accessMode === value ? 'is-active' : ''}>{label}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="ap-label">Quick presets</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ROLE_PRESETS.map((preset) => (
+                              <button key={preset.id} type="button" onClick={() => setPerms(presetPerms(preset.keys))} className="ap-chip" title={preset.hint}>{preset.label}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="min-w-[190px]">
+                          <label className="ap-label" htmlFor="ap-copy-from">Copy from</label>
+                          <select id="ap-copy-from" className="ap-select" value={copyFromId} onChange={(e) => copyFromUser(e.target.value)}>
+                            <option value="">Choose a person...</option>
+                            {users.filter((u) => u._id !== selectedUserId).map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
+                          </select>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Permissions Settings Form */}
-                    <div>
-                      {selectedUserObj.role === 'admin' ? (
-                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-850 text-xs px-4 py-3 rounded-lg mb-4">
-                          ⚠️ <strong>Admin Permission Bypass:</strong> Admin accounts automatically hold master authorizations across all features and connections. Permissions cannot be restricted for admins.
-                        </div>
-                      ) : (
-                        <div className="mt-2 space-y-6">
-                          <div>
-                            <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider mb-3">
-                              🛡️ Module & Feature Permissions
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.query}
-                                  onChange={e => setPerms(prev => ({ ...prev, query: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">⚡ Query Editor</span>
-                                  <span className="text-[11px] text-gray-500 block">Execute SQL / NoSQL queries & scripts</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.history}
-                                  onChange={e => setPerms(prev => ({ ...prev, history: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">📜 Query History</span>
-                                  <span className="text-[11px] text-gray-500 block">Access session query execution history</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.slowQuery}
-                                  onChange={e => setPerms(prev => ({ ...prev, slowQuery: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">🐢 Slow Queries</span>
-                                  <span className="text-[11px] text-gray-500 block">Monitor slow execution queries & logs</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.auditLogs}
-                                  onChange={e => setPerms(prev => ({ ...prev, auditLogs: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">🔍 Audit Logs</span>
-                                  <span className="text-[11px] text-gray-500 block">View system & database action audit trails</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.backup}
-                                  onChange={e => setPerms(prev => ({ ...prev, backup: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">💾 Backup & Restore</span>
-                                  <span className="text-[11px] text-gray-500 block">Export SQL dumps and restore backups</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.binlog}
-                                  onChange={e => setPerms(prev => ({ ...prev, binlog: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">📡 WAL / Binlog Streaming</span>
-                                  <span className="text-[11px] text-gray-500 block">Monitor live binary transaction logs</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.monitor}
-                                  onChange={e => setPerms(prev => ({ ...prev, monitor: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">📊 Monitor Controls</span>
-                                  <span className="text-[11px] text-gray-500 block">Manage alert settings and resolve alerts</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.connections}
-                                  onChange={e => setPerms(prev => ({ ...prev, connections: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">⚙️ Manage Connections</span>
-                                  <span className="text-[11px] text-gray-500 block">Access & configure database connections</span>
-                                </div>
-                              </label>
-
-                              <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition sm:col-span-2">
-                                <input
-                                  type="checkbox"
-                                  checked={!!perms.userManagement}
-                                  onChange={e => setPerms(prev => ({ ...prev, userManagement: e.target.checked }))}
-                                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600 cursor-pointer"
-                                />
-                                <div>
-                                  <span className="text-xs font-bold text-gray-900 block">👤 Database Users Manager Access</span>
-                                  <span className="text-[11px] text-gray-500 block">Allows user to view & manage database instance users and application permissions</span>
-                                </div>
-                              </label>
-                            </div>
-                          </div>
-
-                          <ConnectionSchemaSelector
-                            value={userAllowedConnections}
-                            onChange={setUserAllowedConnections}
-                            role={selectedUserObj.role}
-                            defaultAccessMode={selectedUserObj.accessMode || 'read'}
-                          />
-                        </div>
-                      )}
-
-                      {/* Save button */}
-                      {selectedUserObj.role !== 'admin' && (
-                        <div className="mt-6 flex justify-end">
-                          <button
-                            onClick={savePermissions}
-                            disabled={saveLoading}
-                            className="px-6 py-2.5 bg-gray-900 text-white rounded-lg text-xs font-semibold hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
-                          >
-                            {saveLoading ? (
-                              <>
-                                <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                                <span>Saving Toggles...</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>💾 Save Permissions</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
+                    )}
                   </div>
-                ) : (
-                  <div className="py-12 text-center text-gray-400">
-                    <p className="text-lg">👤 No user selected</p>
-                    <p className="text-xs mt-1">Please select a user profile to configure details.</p>
+
+                  <div className="ap-card p-4 mt-3">
+                    {PERMISSION_GROUPS.map((group) => (
+                      <div key={group} className="mb-4 last:mb-0">
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{group}</p>
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                          {PERMISSIONS.filter((p) => p.group === group).map((p) => {
+                            const on = selectedUser.role === 'admin' || perms[p.key];
+                            return (
+                              <button
+                                key={p.key}
+                                type="button"
+                                role="switch"
+                                aria-checked={Boolean(on)}
+                                disabled={!canEdit}
+                                onClick={() => setPerms((current) => ({ ...current, [p.key]: !current[p.key] }))}
+                                className={`ap-perm-card text-left ${on ? 'is-on' : ''} ${canEdit ? '' : 'is-readonly'}`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block text-[13px] font-semibold">{p.label}</span>
+                                  <span className="block text-[11.5px] text-slate-500">{p.desc}</span>
+                                </span>
+                                <span className={`ap-switch ${on ? 'is-on' : ''}`} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
+
+                  {canEdit && (
+                    <div className="ap-card p-4 mt-3">
+                      <ConnectionSchemaSelector
+                        value={allowedConnections}
+                        onChange={setAllowedConnections}
+                        role={selectedUser.role}
+                        defaultAccessMode={accessMode}
+                      />
+                    </div>
+                  )}
+
+                  {canEdit && isDirty && (
+                    <div className="ap-savebar">
+                      <span>You have unsaved changes for {selectedUser.name}</span>
+                      <span className="flex gap-2">
+                        <button type="button" onClick={() => loadDraft(selectedUser)} disabled={saveLoading} className="ap-btn-outline !h-8 !bg-transparent !text-slate-200 !border-slate-600">Discard</button>
+                        <button type="button" onClick={savePermissions} disabled={saveLoading} className="ap-btn !h-8">{saveLoading ? 'Saving...' : 'Save changes'}</button>
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          )
+          </div>
         )}
 
-        {/* History Subtab */}
-        {activeSubTab === 'history' && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between select-none">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                  📜 System Activity Audit Trail
-                  <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200 font-sans lowercase">
-                    Admin View
-                  </span>
-                </h3>
-              </div>
-              <button
-                onClick={fetchHistory}
-                className="text-xs text-[#0d9da4] hover:underline font-bold cursor-pointer"
-              >
-                Refresh Logs
+        {/* ===== Access Overview: who has what ===== */}
+        {view === 'matrix' && (
+          <div className="ap-card">
+            <div className="ap-toolbar justify-between">
+              <p className="text-[12.5px] text-slate-500">Everyone's access at a glance. Click a person to edit.</p>
+              <button type="button" onClick={exportMatrix} className="ap-btn-outline">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+                Export access review
               </button>
             </div>
-            
-            {loadingHistory ? (
-              <div className="p-12 text-center">
-                <div className="w-6 h-6 border-2 border-teal-100 border-t-teal-600 rounded-full animate-spin mx-auto mb-2"></div>
-                <p className="text-xs text-gray-400">Loading history logs...</p>
+            <div className="overflow-x-auto ap-divider">
+              <table className="ap-table ap-matrix">
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    {PERMISSIONS.map((p) => <th key={p.key} title={p.label}>{p.short}</th>)}
+                    <th>Connections</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => {
+                    const effective = permissionsOf(u);
+                    return (
+                      <tr key={u._id}>
+                        <td>
+                          <button type="button" onClick={() => openFromMatrix(u)} className="flex items-center gap-2.5 text-left min-w-[190px] hover:text-teal-700 cursor-pointer">
+                            <span className={`ap-avatar !w-7 !h-7 !text-[10.5px] ${u.role === 'admin' ? 'is-admin' : ''}`}>{initialsOf(u.name)}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-semibold">{u.name}</span>
+                              <span className="block text-[11px] text-slate-400 capitalize">{u.role}{u.role !== 'admin' && (u.accessMode === 'readwrite' ? ' · Read & Write' : ' · Read only')}</span>
+                            </span>
+                          </button>
+                        </td>
+                        {PERMISSIONS.map((p) => {
+                          const on = u.role === 'admin' || effective[p.key];
+                          return (
+                            <td key={p.key} aria-label={`${p.label}: ${on ? 'yes' : 'no'}`}>
+                              {on ? (
+                                <span className="ap-yes"><svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg></span>
+                              ) : <span className="ap-no" />}
+                            </td>
+                          );
+                        })}
+                        <td className="tabular-nums">{u.role === 'admin' ? 'All' : (u.allowedConnections?.length || 0)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ===== Change History ===== */}
+        {view === 'history' && (
+          <div className="ap-card">
+            <div className="ap-toolbar">
+              <div className="ap-search">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" /></svg>
+                <input type="text" className="ap-input" placeholder="Search changes or people..." value={historySearch} onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }} />
               </div>
-            ) : historyLogs.length === 0 ? (
-              <div className="p-12 text-center text-gray-400 text-sm">
-                No permission updates logged in the audit trail yet.
+              <div className="ap-seg" role="group" aria-label="Change type">
+                <button type="button" onClick={() => { setHistoryAction('all'); setHistoryPage(1); }} className={historyAction === 'all' ? 'is-active' : ''}>All</button>
+                {Object.entries(HISTORY_ACTIONS).map(([action, meta]) => (
+                  <button key={action} type="button" onClick={() => { setHistoryAction(action); setHistoryPage(1); }} className={historyAction === action ? 'is-active' : ''}>{meta.label}</button>
+                ))}
+              </div>
+              <button type="button" onClick={() => { setLoadingHistory(true); fetchHistory(); }} className="ap-btn-outline">Refresh</button>
+            </div>
+
+            {loadingHistory ? (
+              <div className="ap-empty ap-divider"><div className="ap-spinner" /></div>
+            ) : visibleHistory.length === 0 ? (
+              <div className="ap-empty ap-divider">
+                <p className="text-[14px] font-semibold">No changes found</p>
+                <p className="mt-1 text-[12.5px] text-slate-500">User and permission changes will appear here.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                    <tr>
-                      <th className="px-6 py-3.5">Admin Profile</th>
-                      <th className="px-6 py-3.5">Action</th>
-                      <th className="px-6 py-3.5">Audit Log Details</th>
-                      <th className="px-6 py-3.5">Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {paginatedHistoryLogs.map(log => (
-                      <tr key={log._id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-700 text-xs font-bold flex items-center justify-center">
-                              {log.user?.name?.charAt(0).toUpperCase() || 'A'}
+              <>
+                <div className="overflow-x-auto ap-divider">
+                  <table className="ap-table">
+                    <thead>
+                      <tr><th>Changed by</th><th>Change</th><th>Details</th><th>When</th></tr>
+                    </thead>
+                    <tbody>
+                      {pageHistory.map((log) => (
+                        <tr key={log._id}>
+                          <td>
+                            <div className="flex items-center gap-2.5 min-w-[180px]">
+                              <span className="ap-avatar !w-7 !h-7 !text-[10.5px]">{initialsOf(log.user?.name)}</span>
+                              <span className="min-w-0">
+                                <span className="block truncate font-semibold">{log.user?.name || 'Unknown'}</span>
+                                <span className="block truncate text-[11px] text-slate-400">{log.user?.email || 'N/A'}</span>
+                              </span>
                             </div>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-900">{log.user?.name || 'Unknown Admin'}</p>
-                              <p className="text-[10px] text-gray-400">{log.user?.email || 'N/A'}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase whitespace-nowrap ${
-                            log.action === 'UPDATE_USER_PERMISSIONS' ? 'bg-purple-100 text-purple-700' :
-                            log.action === 'CREATE_USER' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                          }`}>
-                            {log.action?.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-xs text-gray-600 max-w-md break-words">
-                          {log.details}
-                        </td>
-                        <td className="px-6 py-4 text-[10px] text-gray-400 font-mono whitespace-nowrap">
-                          {new Date(log.createdAt).toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Premium Pagination Footer */}
-                {totalHistoryPages > 1 && (
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-xs text-gray-500">
-                      Showing <span className="font-semibold">{historyStartIndex + 1}</span> to{' '}
-                      <span className="font-semibold">
-                        {Math.min(historyStartIndex + historyItemsPerPage, historyLogs.length)}
-                      </span>{' '}
-                      of <span className="font-semibold">{historyLogs.length}</span> entries
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setHistoryPage(prev => Math.max(prev - 1, 1))}
-                        disabled={historyPage === 1}
-                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
-                      >
-                        Previous
-                      </button>
-                      {Array.from({ length: totalHistoryPages }).map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setHistoryPage(i + 1)}
-                          className={`px-3 py-1.5 border rounded-lg text-xs font-semibold transition ${
-                            historyPage === i + 1
-                              ? 'bg-gray-900 text-white border-gray-900'
-                              : 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50 cursor-pointer'
-                          }`}
-                        >
-                          {i + 1}
-                        </button>
+                          </td>
+                          <td><span className={`ap-tag ${HISTORY_ACTIONS[log.action].tone}`}>{HISTORY_ACTIONS[log.action].label}</span></td>
+                          <td className="text-slate-600 max-w-xl break-words">{log.details}</td>
+                          <td className="whitespace-nowrap text-slate-500" title={new Date(log.createdAt).toLocaleString('en-IN')}>{timeAgo(log.createdAt)}</td>
+                        </tr>
                       ))}
-                      <button
-                        onClick={() => setHistoryPage(prev => Math.min(prev + 1, totalHistoryPages))}
-                        disabled={historyPage === totalHistoryPages}
-                        className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs font-semibold text-gray-600 bg-white hover:bg-gray-50 disabled:opacity-50 transition shadow-sm cursor-pointer"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                    </tbody>
+                  </table>
+                </div>
+                <AdminPager
+                  page={currentHistoryPage}
+                  pageSize={historyPageSize}
+                  total={visibleHistory.length}
+                  noun="changes"
+                  onPageChange={setHistoryPage}
+                  onPageSizeChange={(size) => { setHistoryPageSize(size); setHistoryPage(1); }}
+                />
+              </>
             )}
           </div>
         )}
-
-      <Toast toast={toast} onClose={() => setToast(null)} />
       </div>
+
+      {/* ===== Create user ===== */}
+      {showForm && (
+        <div className="ap-modal-back" role="dialog" aria-modal="true" aria-label="Create user">
+          <form onSubmit={createUser} className="ap-modal">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[16px] font-bold">Create User</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="ap-icon-btn" aria-label="Close">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="ap-label" htmlFor="ap-new-name">Full name</label>
+                <input id="ap-new-name" className="ap-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              </div>
+              <div>
+                <label className="ap-label" htmlFor="ap-new-email">Email</label>
+                <input id="ap-new-email" type="email" className="ap-input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="ap-label" htmlFor="ap-new-password">Password</label>
+                <div className="flex gap-2">
+                  <input id="ap-new-password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" className="ap-input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+                  <button type="button" onClick={() => setShowPassword((on) => !on)} className="ap-btn-outline">{showPassword ? 'Hide' : 'Show'}</button>
+                  <button type="button" onClick={() => { setForm({ ...form, password: generatePassword() }); setShowPassword(true); }} className="ap-btn-outline">Generate</button>
+                </div>
+              </div>
+              <div>
+                <label className="ap-label" htmlFor="ap-new-role">Role</label>
+                <select id="ap-new-role" className="ap-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {form.role === 'developer' && (
+                <div>
+                  <label className="ap-label" htmlFor="ap-new-mode">Query access</label>
+                  <select id="ap-new-mode" className="ap-select" value={form.accessMode} onChange={(e) => setForm({ ...form, accessMode: e.target.value })}>
+                    <option value="read">Read only (SELECT, SHOW, FIND)</option>
+                    <option value="readwrite">Read &amp; Write (INSERT, UPDATE, DELETE)</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {form.role === 'developer' && (
+              <div className="mt-4 space-y-2">
+                {PERMISSIONS.filter((p) => ['userManagement', 'connections'].includes(p.key)).map((p) => (
+                  <label key={p.key} className={`ap-perm-card ${form.permissions?.[p.key] ? 'is-on' : ''}`}>
+                    <span>
+                      <span className="block text-[13px] font-semibold">{p.label}</span>
+                      <span className="block text-[11.5px] text-slate-500">{p.desc}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-teal-600 cursor-pointer"
+                      checked={Boolean(form.permissions?.[p.key])}
+                      onChange={(e) => setForm({ ...form, permissions: { ...form.permissions, [p.key]: e.target.checked } })}
+                    />
+                  </label>
+                ))}
+                <ConnectionSchemaSelector
+                  value={form.allowedConnections || []}
+                  onChange={(value) => setForm({ ...form, allowedConnections: value })}
+                  role={form.role}
+                  defaultAccessMode={form.accessMode || 'read'}
+                />
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setShowForm(false)} className="ap-btn-outline">Cancel</button>
+              <button type="submit" disabled={formLoading} className="ap-btn">{formLoading ? 'Creating...' : 'Create User'}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

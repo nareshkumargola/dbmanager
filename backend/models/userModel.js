@@ -83,6 +83,17 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Self-service profile details (editable from the Profile page)
+  jobTitle: { type: String, trim: true, default: '', maxlength: 80 },
+  phone: { type: String, trim: true, default: '', maxlength: 30 },
+  bio: { type: String, trim: true, default: '', maxlength: 300 },
+  lastLoginAt: { type: Date, default: null },
+  // Per-user app settings (Profile → Settings)
+  preferences: {
+    defaultLanding: { type: String, enum: ['/dashboard', '/connections'], default: '/dashboard' },
+    sidebarOpenByDefault: { type: Boolean, default: false },
+    reduceMotion: { type: Boolean, default: false },
+  },
   createdAt: {
     type: Date,
     default: Date.now,

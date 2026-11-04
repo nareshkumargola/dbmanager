@@ -3,11 +3,14 @@ const bcrypt = require('bcryptjs');
 const Connection = require('../models/connectionModel');
 const { closeConnection } = require('../connections/connectionManager');
 
+// Fields never sent to the browser (reset tokens and OTPs could be used to take over an account)
+const PRIVATE_USER_FIELDS = '-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires';
+
 // Saare users dekho — sirf admin
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find()
-      .select('-password')  // Password mat bhejo
+      .select(PRIVATE_USER_FIELDS)
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, users });
@@ -19,7 +22,7 @@ exports.getAllUsers = async (req, res) => {
 // Single user dekho
 exports.getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const user = await User.findById(req.params.id).select(PRIVATE_USER_FIELDS);
     if (!user) {
       return res.status(404).json({ message: 'User not found!' });
     }
@@ -46,7 +49,7 @@ exports.updateUserRole = async (req, res) => {
       id,
       { role },
       { new: true }
-    ).select('-password');
+    ).select(PRIVATE_USER_FIELDS);
 
     if (!user) {
       return res.status(404).json({ message: 'User not found!' });

@@ -110,8 +110,9 @@ exports.login = async (req, res) => {
       user.isFirstLogin = false;
       user.loginOtp = null;
       user.loginOtpExpires = null;
-      await user.save();
     }
+    user.lastLoginAt = new Date();
+    await user.save();
 
     // Subsequent logins: Direct Login
     const token = generateToken(user._id, user.role);
@@ -140,6 +141,7 @@ exports.login = async (req, res) => {
         role: user.role,
         accessMode: user.accessMode || "read",
         permissions: user.permissions,
+        preferences: user.preferences,
       },
     });
   } catch (err) {
@@ -172,6 +174,7 @@ exports.verifyLoginOtp = async (req, res) => {
     user.isFirstLogin = false;
     user.loginOtp = null;
     user.loginOtpExpires = null;
+    user.lastLoginAt = new Date();
     await user.save();
 
     const token = generateToken(user._id, user.role);
@@ -199,6 +202,7 @@ exports.verifyLoginOtp = async (req, res) => {
         role: user.role,
         accessMode: user.accessMode || "read",
         permissions: user.permissions,
+        preferences: user.preferences,
       },
     });
   } catch (err) {
@@ -255,13 +259,119 @@ exports.resendLoginOtp = async (req, res) => {
   }
 };
 
+// Fields never sent to the browser
+const PRIVATE_USER_FIELDS = "-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires";
+
 // GET PROFILE
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
+    const user = await User.findById(req.user.id).select(PRIVATE_USER_FIELDS);
     res.status(200).json({ success: true, user });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// UPDATE OWN PROFILE (name, job title, phone, bio)
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, jobTitle, phone, bio } = req.body;
+    const updates = {};
+
+    if (name !== undefined) {
+      const cleanName = String(name).trim();
+      if (cleanName.length < 2 || cleanName.length > 60) {
+        return res.status(400).json({ message: "Name must be between 2 and 60 characters." });
+      }
+      updates.name = cleanName;
+    }
+    if (jobTitle !== undefined) updates.jobTitle = String(jobTitle).trim().slice(0, 80);
+    if (phone !== undefined) {
+      const cleanPhone = String(phone).trim();
+      if (cleanPhone && !/^[+\d][\d\s()-]{5,29}$/.test(cleanPhone)) {
+        return res.status(400).json({ message: "Please enter a valid phone number." });
+      }
+      updates.phone = cleanPhone;
+    }
+    if (bio !== undefined) updates.bio = String(bio).trim().slice(0, 300);
+
+    const user = await User.findByIdAndUpdate(req.user.id, updates, {
+      returnDocument: "after",
+      runValidators: true,
+    }).select(PRIVATE_USER_FIELDS);
+
+    try {
+      const { logAuditTrail } = require("../utils/auditLogger");
+      await logAuditTrail(null, req.user.id, "PROFILE_UPDATE", `User updated their profile: ${user.email}`);
+    } catch (auditErr) {
+      console.error("Profile update audit log failed:", auditErr.message);
+    }
+
+    res.status(200).json({ success: true, message: "Profile updated successfully!", user });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// CHANGE OWN PASSWORD (requires the current password)
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new password are required." });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters." });
+    }
+
+    const user = await User.findById(req.user.id);
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Current password is incorrect." });
+    }
+    if (await bcrypt.compare(newPassword, user.password)) {
+      return res.status(400).json({ message: "New password must be different from the current one." });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12);
+    await user.save();
+
+    try {
+      const { logAuditTrail } = require("../utils/auditLogger");
+      await logAuditTrail(null, req.user.id, "PASSWORD_CHANGE", `User changed their password: ${user.email}`);
+    } catch (auditErr) {
+      console.error("Password change audit log failed:", auditErr.message);
+    }
+
+    res.status(200).json({ success: true, message: "Password changed successfully!" });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+// SAVE OWN APP SETTINGS
+exports.updatePreferences = async (req, res) => {
+  try {
+    const { defaultLanding, sidebarOpenByDefault, reduceMotion } = req.body;
+    const updates = {};
+
+    if (defaultLanding !== undefined) {
+      if (!['/dashboard', '/connections'].includes(defaultLanding)) {
+        return res.status(400).json({ message: "Invalid default page." });
+      }
+      updates['preferences.defaultLanding'] = defaultLanding;
+    }
+    if (sidebarOpenByDefault !== undefined) updates['preferences.sidebarOpenByDefault'] = Boolean(sidebarOpenByDefault);
+    if (reduceMotion !== undefined) updates['preferences.reduceMotion'] = Boolean(reduceMotion);
+
+    const user = await User.findByIdAndUpdate(req.user.id, { $set: updates }, {
+      returnDocument: "after",
+      runValidators: true,
+    }).select(PRIVATE_USER_FIELDS);
+
+    res.status(200).json({ success: true, message: "Settings saved!", user });
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 

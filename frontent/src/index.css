@@ -68,7 +68,26 @@ html.dark .text-gray-500 {
 }
 
 html.dark .text-gray-400 {
-  color: #6b7280 !important; /* gray-500 */
+  color: #9ca3af !important; /* gray-400 */
+}
+
+/* Slate text remains readable on deep-neutral surfaces. */
+html.dark .text-slate-900,
+html.dark .text-slate-800 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-slate-600 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-400 {
+  color: #7f8ea3 !important;
 }
 
 /* Borders */
@@ -79,6 +98,12 @@ html.dark .border-gray-200 {
 
 html.dark .divide-gray-100 > * + * {
   border-color: #374151 !important;
+}
+
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: #334155 !important;
 }
 
 /* Interactive elements */
@@ -147,4 +172,173 @@ html.dark ::-webkit-scrollbar-thumb {
 }
 html.dark ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
+}
+
+/* Complete neutral-surface palette: every panel, card and dropdown should be dark. */
+html.dark [class*="bg-[#f4f7fb]"],
+html.dark [class*="bg-[#f8fafc]"],
+html.dark [class*="bg-[#eff6ff]"],
+html.dark [class*="from-[#f8fafc]"],
+html.dark [class*="from-[#eff6ff]"],
+html.dark [class*="bg-white/"],
+html.dark [class*="bg-slate-50"],
+html.dark [class*="bg-slate-100"],
+html.dark [class*="bg-stone-50"],
+html.dark [class*="bg-stone-100"],
+html.dark [class*="bg-zinc-50"],
+html.dark [class*="bg-zinc-100"],
+html.dark [class*="bg-neutral-50"],
+html.dark [class*="bg-neutral-100"] {
+  background-color: #111827 !important;
+}
+
+html.dark [class*="from-[#f8fafc]"],
+html.dark [class*="from-[#eff6ff]"] {
+  background-image: linear-gradient(to bottom, #111827, #172033) !important;
+}
+
+html.dark [class*="bg-gray-50/"],
+html.dark [class*="bg-gray-100/"],
+html.dark [class*="bg-slate-50/"],
+html.dark [class*="bg-slate-100/"],
+html.dark [class*="bg-white/"] {
+  background-color: #111827 !important;
+}
+
+html.dark [class*="bg-gray-200"],
+html.dark [class*="bg-slate-200"],
+html.dark [class*="bg-stone-200"] {
+  background-color: #374151 !important;
+}
+
+/* Dark alternatives for light status surfaces. */
+html.dark [class*="bg-red-50"],
+html.dark [class*="bg-red-100"],
+html.dark [class*="bg-rose-50"],
+html.dark [class*="bg-rose-100"] {
+  background-color: #451a1a !important;
+}
+
+html.dark [class*="bg-amber-50"],
+html.dark [class*="bg-amber-100"],
+html.dark [class*="bg-yellow-50"],
+html.dark [class*="bg-yellow-100"] {
+  background-color: #422006 !important;
+}
+
+html.dark [class*="bg-green-50"],
+html.dark [class*="bg-green-100"],
+html.dark [class*="bg-emerald-50"],
+html.dark [class*="bg-emerald-100"] {
+  background-color: #064e3b !important;
+}
+
+html.dark [class*="bg-blue-50"],
+html.dark [class*="bg-blue-100"],
+html.dark [class*="bg-cyan-50"],
+html.dark [class*="bg-cyan-100"],
+html.dark [class*="bg-sky-50"],
+html.dark [class*="bg-sky-100"],
+html.dark [class*="bg-teal-50"],
+html.dark [class*="bg-teal-100"] {
+  background-color: #172554 !important;
+}
+
+html.dark [class*="bg-indigo-50"],
+html.dark [class*="bg-indigo-100"],
+html.dark [class*="bg-purple-50"],
+html.dark [class*="bg-purple-100"],
+html.dark [class*="bg-pink-50"],
+html.dark [class*="bg-pink-100"] {
+  background-color: #2e1065 !important;
+}
+
+/* Neutral text and borders used across the many existing panels. */
+html.dark [class*="text-stone-900"],
+html.dark [class*="text-zinc-900"],
+html.dark [class*="text-neutral-900"] {
+  color: #f9fafb !important;
+}
+
+html.dark [class*="text-stone-800"],
+html.dark [class*="text-zinc-800"],
+html.dark [class*="text-neutral-800"] {
+  color: #f3f4f6 !important;
+}
+
+html.dark [class*="text-stone-700"],
+html.dark [class*="text-zinc-700"],
+html.dark [class*="text-neutral-700"] {
+  color: #d1d5db !important;
+}
+
+html.dark [class*="text-stone-600"],
+html.dark [class*="text-zinc-600"],
+html.dark [class*="text-neutral-600"] {
+  color: #cbd5e1 !important;
+}
+
+html.dark [class*="text-stone-500"],
+html.dark [class*="text-zinc-500"],
+html.dark [class*="text-neutral-500"] {
+  color: #94a3b8 !important;
+}
+
+html.dark [class*="border-stone-100"],
+html.dark [class*="border-stone-200"],
+html.dark [class*="border-zinc-100"],
+html.dark [class*="border-zinc-200"],
+html.dark [class*="border-neutral-100"],
+html.dark [class*="border-neutral-200"] {
+  border-color: #374151 !important;
+}
+
+/* Interactive hover surfaces remain dark instead of flashing white. */
+html.dark [class*="hover:bg-white"]:hover,
+html.dark [class*="hover:bg-gray-50"]:hover,
+html.dark [class*="hover:bg-slate-50"]:hover,
+html.dark [class*="hover:bg-stone-50"]:hover {
+  background-color: #1f2937 !important;
+}
+
+html.dark [class*="hover:bg-teal-50"]:hover,
+html.dark [class*="hover:bg-blue-50"]:hover {
+  background-color: #1e3a5f !important;
+}
+
+/* Navigation and raised surfaces have consistent edge and shadow contrast. */
+html.dark nav,
+html.dark [role="menu"] {
+  background-color: #111827;
+}
+
+html.dark nav.bg-white,
+html.dark nav [class*="bg-white"] {
+  background-color: #111827 !important;
+}
+
+html.dark [role="dialog"],
+html.dark [role="alertdialog"] {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+  color: #e5e7eb;
+}
+
+html.dark .shadow-sm,
+html.dark .shadow,
+html.dark .shadow-md,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  --tw-shadow-color: rgb(0 0 0 / 0.48);
+}
+
+/* Profile → Settings → "Reduce animations" */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }

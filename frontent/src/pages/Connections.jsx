@@ -1,9 +1,53 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
+import EngineIcon from '../components/EngineIcon';
+import './Connections.css';
+
+const ENGINE_META = {
+  mysql: { label: 'MySQL', logLabel: 'Binlog' },
+  postgresql: { label: 'PostgreSQL', logLabel: 'WAL' },
+  mongodb: { label: 'MongoDB', logLabel: 'Oplog' },
+  oracle: { label: 'Oracle', logLabel: 'Redo' },
+};
+
+const ENGINE_COLORS = {
+  mysql: '#0284c7',
+  postgresql: '#4f46e5',
+  mongodb: '#15803d',
+  oracle: '#dc2626',
+};
+
+const COLOR_THEMES = [
+  { key: 'teal', label: 'Teal', swatch: '#0d9488' },
+  { key: 'blue', label: 'Ocean Blue', swatch: '#2563eb' },
+  { key: 'violet', label: 'Violet', swatch: '#7c3aed' },
+  { key: 'rose', label: 'Rose', swatch: '#e11d48' },
+  { key: 'amber', label: 'Amber', swatch: '#b45309' },
+  { key: 'engine', label: 'By database type', swatch: 'conic-gradient(#0284c7 0 25%, #4f46e5 0 50%, #15803d 0 75%, #dc2626 0)' },
+  { key: 'midnight', label: 'Midnight', swatch: '#0f172a' },
+];
+const THEME_KEYS = COLOR_THEMES.map((theme) => theme.key);
+const LAYOUT_STORAGE_KEY = 'connectionsLayout';
+const MAX_VISIBLE_CONNECTIONS = 10;
+const DEFAULT_LAYOUT = { view: 'cards', cardTheme: 'teal', rowTheme: 'teal' };
+
+// The choice is only a display preference, so a blocked or corrupt store falls back to the default
+const readLayout = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY)) || {};
+    return {
+      view: saved.view === 'rows' ? 'rows' : 'cards',
+      cardTheme: THEME_KEYS.includes(saved.cardTheme) ? saved.cardTheme : DEFAULT_LAYOUT.cardTheme,
+      rowTheme: THEME_KEYS.includes(saved.rowTheme) ? saved.rowTheme : DEFAULT_LAYOUT.rowTheme,
+    };
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
+};
 
 export default function Connections() {
   const navigate = useNavigate();
@@ -405,16 +449,6 @@ export default function Connections() {
     }
   };
 
-  const getTypeBadge = (type) => {
-    switch (type) {
-      case 'mysql': return 'bg-blue-100 text-blue-700';
-      case 'postgresql': return 'bg-indigo-100 text-indigo-700';
-      case 'mongodb': return 'bg-green-100 text-green-700';
-      case 'oracle': return 'bg-red-100 text-red-700';
-      default: return 'bg-gray-100 text-gray-600';
-    }
-  };
-
   const getTypeIcon = (type) => {
     switch (type) {
       case 'mysql': return '🐬';
@@ -425,8 +459,150 @@ export default function Connections() {
     }
   };
 
+  const typeCounts = connections.reduce((counts, conn) => {
+    counts[conn.type] = (counts[conn.type] || 0) + 1;
+    return counts;
+  }, {});
+
+  // Admins and connection owners can edit / delete
+  const canManage = (conn) =>
+    user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id);
+
+  const hasActiveFilters = Boolean(
+    filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText || tableSearchTerm
+  );
+
+  const resetFilters = () => {
+    setFilterType('all');
+    setFilterRole('all');
+    setFilterUser('all');
+    setSearchConnText('');
+    setTableSearchQuery('');
+    setTableSearchTerm('');
+    setTableSearchResults([]);
+    setTableSearchError('');
+  };
+
+  const [layout, setLayout] = useState(readLayout);
+  const activeThemeKey = layout.view === 'rows' ? layout.rowTheme : layout.cardTheme;
+  const activeTheme = COLOR_THEMES.find((theme) => theme.key === activeThemeKey);
+
+  const updateLayout = (changes) => {
+    const next = { ...layout, ...changes };
+    setLayout(next);
+    try {
+      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Not saved; the choice still applies until the page reloads
+    }
+  };
+
+  // Longer lists scroll inside the list. The height comes from the 10th item, because
+  // card and row heights change with the view and the screen width.
+  const listRef = useRef(null);
+  const listScrolls = visibleConnections.length > MAX_VISIBLE_CONNECTIONS;
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return undefined;
+    const measure = () => {
+      const items = list.querySelectorAll(':scope > .cx-card, :scope > .cx-row');
+      if (items.length <= MAX_VISIBLE_CONNECTIONS) {
+        list.style.maxHeight = '';
+        return;
+      }
+      const lastVisible = items[MAX_VISIBLE_CONNECTIONS - 1];
+      const style = getComputedStyle(list);
+      const edges = parseFloat(style.paddingBottom) + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      list.style.maxHeight = `${lastVisible.offsetTop + lastVisible.offsetHeight + edges}px`;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [visibleConnections, layout.view, activeThemeKey, loading]);
+
+  // "By database type" gives every card or row its own accent
+  const accentStyle = (conn) => (
+    activeThemeKey === 'engine' && ENGINE_COLORS[conn.type] ? { '--cx-accent': ENGINE_COLORS[conn.type] } : {}
+  );
+
+  const connectionDetails = (conn) => {
+    const meta = ENGINE_META[conn.type] || { label: conn.type, logLabel: 'Log' };
+    const supported = Boolean(ENGINE_META[conn.type]);
+    return {
+      meta,
+      hostPort: `${conn.host || 'localhost'}:${conn.port || (conn.type === 'postgresql' ? 5432 : 3306)}`,
+      isDisconnected: conn.status === 'disconnected',
+      isShared: Boolean(conn.user && conn.user._id !== (user?._id || user?.id)),
+      tools: [
+        supported && hasPermission('userManagement') && {
+          key: 'users',
+          label: 'Users',
+          color: '#7c3aed',
+          to: `/connections/${conn._id}/users`,
+          title: `Manage ${meta.label} Users`,
+          icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 7M18 14.5a5.5 5.5 0 013.5 5.5" /></>,
+        },
+        {
+          key: 'monitor',
+          label: 'Monitor',
+          color: '#0284c7',
+          to: `/connections/${conn._id}/monitor`,
+          title: 'Monitor Database Server',
+          icon: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+        },
+        supported && hasPermission('binlog') && {
+          key: 'binlog',
+          label: `${meta.logLabel} Monitor`,
+          color: '#059669',
+          to: `/connections/${conn._id}/binlog`,
+          title: `Monitor ${meta.label} ${meta.logLabel}`,
+          icon: <><path d="M4 11a9 9 0 019 9M4 4a16 16 0 0116 16" /><circle cx="5" cy="19" r="1.5" /></>,
+        },
+        supported && hasPermission('backup') && {
+          key: 'backup',
+          label: 'Backup',
+          color: '#d97706',
+          to: `/connections/${conn._id}/backup`,
+          title: `Backup & Restore ${meta.label}`,
+          icon: <><path d="M7 18a4.5 4.5 0 01-.6-8.96A6 6 0 0117.8 8.2 4 4 0 0117 18" /><path d="M12 20v-8M9 14.5l3-3 3 3" /></>,
+        },
+      ].filter(Boolean),
+    };
+  };
+
+  const renderToolIcon = (tool) => (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {tool.icon}
+    </svg>
+  );
+
+  const renderManageButtons = (conn) => canManage(conn) && (
+    <>
+      <button type="button" onClick={() => handleOpenEditModal(conn)} className="cx-icon-btn" title={`Edit ${conn.name}`} aria-label={`Edit ${conn.name}`}>
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z" />
+        </svg>
+      </button>
+      <button type="button" onClick={() => handleDelete(conn._id, conn.name)} className="cx-icon-btn is-danger" title={`Delete ${conn.name}`} aria-label={`Delete ${conn.name}`}>
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3" />
+        </svg>
+      </button>
+    </>
+  );
+
+  const renderOpenButton = (conn) => (
+    <button type="button" onClick={() => navigate(`/connections/${conn._id}`)} className="cx-open-btn">
+      Open
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M5 12h14M13 6l6 6-6 6" />
+      </svg>
+    </button>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="cx-page min-h-screen">
       <style>{`
         .custom-focus:focus {
           border-color: #0d9da4 !important;
@@ -459,37 +635,96 @@ export default function Connections() {
           <p className="text-sm text-teal-light">Loading connections...</p>
         </div>
       ) : (
-        <div className="w-[90%] mx-auto py-8">
+        <div className="w-[92%] max-w-[1500px] mx-auto py-6">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-            <h2 className="text-2xl font-semibold text-gray-900">
-              Database Connections
-            </h2>
-            <p className="text-sm text-teal-light mt-1">
-              Connect and manage your databases
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {!showForm && (
-              <button
-                onClick={() => navigate('/query', { state: { batchMode: true } })}
-                className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 text-sm font-medium rounded-lg transition shadow-sm flex items-center gap-2"
-                title="Open All Connection Query"
-              >
-                <span>💻</span> All Connection Query
-              </button>
+          <div className="cx-hero p-5 sm:p-6 mb-5">
+            <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Connection Manager
+                </span>
+                <h2 className="mt-2 text-[28px] font-extrabold tracking-tight text-[#0b1b4d] leading-tight">
+                  Database <span className="cx-title-gradient">Connections</span>
+                </h2>
+                <p className="mt-1 text-[13px] text-slate-500">
+                  Connect, monitor and manage all your databases in one place.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {!showForm && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/query', { state: { batchMode: true } })}
+                    className="cx-btn-ghost"
+                    title="Open All Connection Query"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                      <path d="M7 9l3 3-3 3M13 15h4" />
+                    </svg>
+                    All Connection Query
+                  </button>
+                )}
+                {hasPermission('connections') && (
+                  <button
+                    type="button"
+                    onClick={() => { setShowForm(!showForm); setTestResult(null); }}
+                    className="cx-btn-primary"
+                  >
+                    {showForm ? (
+                      'Cancel'
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Add Connection
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Per-engine counts — click to filter */}
+            {connections.length > 0 && (
+              <div className="relative z-10 mt-5 flex flex-wrap gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={`cx-engine-chip ${filterType === 'all' ? 'is-active' : ''}`}
+
+                >
+                  <span className="grid h-[26px] w-[26px] place-items-center rounded-lg bg-[#0d9488] text-white">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                      <ellipse cx="12" cy="6" rx="7" ry="3" />
+                      <path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+                    </svg>
+                  </span>
+                  <span className="text-left leading-tight">
+                    <span className="block text-[13px] font-bold text-slate-900">{connections.length}</span>
+                    <span className="block text-[10px] text-slate-500">All connections</span>
+                  </span>
+                </button>
+                {Object.entries(ENGINE_META).map(([type, meta]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFilterType(filterType === type ? 'all' : type)}
+                    className={`cx-engine-chip ${filterType === type ? 'is-active' : ''}`}
+
+                  >
+                    <span className="cx-chip-logo"><EngineIcon type={type} size={20} /></span>
+                    <span className="text-left leading-tight">
+                      <span className="block text-[13px] font-bold text-slate-900">{typeCounts[type] || 0}</span>
+                      <span className="block text-[10px] text-slate-500">{meta.label}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
-            {hasPermission('connections') && (
-              <button
-                onClick={() => { setShowForm(!showForm); setTestResult(null); }}
-                className="px-4 py-2 gradient-btn text-sm rounded-lg transition"
-              >
-                {showForm ? 'Cancel' : '+ Add Connection'}
-              </button>
-            )}
           </div>
-        </div>
 
         {/* Error / Success */}
         {error && (
@@ -710,174 +945,146 @@ export default function Connections() {
           </div>
         )}
 
-        {/* Connection Filters Bar */}
+        {/* Filter toolbar */}
         {connections.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 shadow-sm">
-            <div className="flex items-center justify-between flex-wrap gap-3 mb-3 pb-2 border-b border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="text-base">🔍</span>
-                <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                  Filter Connections
-                </h3>
-                <span className="text-[11px] bg-teal-50 text-[#0d9da4] px-2.5 py-0.5 rounded-full font-bold">
-                  Showing {visibleConnections.length} of {connections.length} connections
-                </span>
+          <div className="cx-toolbar p-3.5 mb-5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <label className="cx-input flex-1 min-w-[220px]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search connections by name, host, DB..."
+                  value={searchConnText}
+                  onChange={(e) => setSearchConnText(e.target.value)}
+                />
+              </label>
+
+              <div className="cx-seg overflow-x-auto max-w-full">
+                {[['all', 'All'], ...Object.entries(ENGINE_META).map(([type, meta]) => [type, meta.label])].map(([type, label]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFilterType(type)}
+                    className={filterType === type ? 'is-active' : ''}
+                  >
+                    {label}
+                    <span className="cx-seg-count">{type === 'all' ? connections.length : (typeCounts[type] || 0)}</span>
+                  </button>
+                ))}
               </div>
 
-              {(filterType !== 'all' || filterRole !== 'all' || filterUser !== 'all' || searchConnText || tableSearchTerm) && (
-                <button
-                  onClick={() => {
-                    setFilterType('all');
-                    setFilterRole('all');
-                    setFilterUser('all');
-                    setSearchConnText('');
-                    setTableSearchQuery('');
-                    setTableSearchTerm('');
-                    setTableSearchResults([]);
-                    setTableSearchError('');
-                  }}
-                  className="text-xs font-bold text-red-600 hover:text-red-700 cursor-pointer flex items-center gap-1 bg-red-50 px-2.5 py-1 rounded-lg border border-red-100 transition-all"
-                >
-                  ✕ Reset Filters
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              {/* 1. Database Type Filter */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                  1. Database Type:
-                </label>
-                <select
-                  value={filterType}
-                  onChange={(e) => setFilterType(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
-                >
-                  <option value="all">All Database Types</option>
-                  <option value="mysql">🐬 MySQL</option>
-                  <option value="postgresql">🐘 PostgreSQL</option>
-                  <option value="mongodb">🍃 MongoDB</option>
-                  <option value="oracle">🔴 Oracle</option>
-                </select>
-              </div>
-
-              {/* 2. Role Filter */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                  2. Role:
-                </label>
+              <label className="cx-input w-[150px]" title="Filter by role">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6L12 3z" />
+                </svg>
                 <select
                   value={filterRole}
                   onChange={(e) => {
                     setFilterRole(e.target.value);
                     setFilterUser('all'); // Reset user when role changes
                   }}
-                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
+                  aria-label="Role"
                 >
                   <option value="all">All Roles</option>
-                  <option value="admin">👑 Admin</option>
-                  <option value="developer">💻 Developer</option>
+                  <option value="admin">Admin</option>
+                  <option value="developer">Developer</option>
                 </select>
-              </div>
+              </label>
 
-              {/* 3. User Filter (Cascading) */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 mb-1 flex items-center justify-between">
-                  <span>3. User:</span>
-                  <span className="text-[10px] font-extrabold text-[#0d9da4]">
-                    ({userOptions.length} {filterRole !== 'all' ? `matching ${filterRole}` : 'total'})
-                  </span>
-                </label>
-                <select
-                  value={filterUser}
-                  onChange={(e) => setFilterUser(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 font-semibold text-gray-800 outline-none focus:border-teal-500 focus:bg-white cursor-pointer"
-                >
-                  <option value="all">All Users ({userOptions.length} available)</option>
+              <label className="cx-input w-[200px]" title="Filter by user">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21a8 8 0 0116 0" />
+                </svg>
+                <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} aria-label="User">
+                  <option value="all">All Users ({userOptions.length})</option>
                   {userOptions.map((u) => (
                     <option key={u._id} value={u._id}>
-                      👤 {u.name} ({u.role || 'user'})
+                      {u.name} ({u.role || 'user'})
                     </option>
                   ))}
                 </select>
-              </div>
+              </label>
 
-              {/* Search text */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-600 mb-1">
-                  Search Connection:
-                </label>
-                <input
-                  type="text"
-                  placeholder="Name, host, DB..."
-                  value={searchConnText}
-                  onChange={(e) => setSearchConnText(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs bg-gray-50/50 outline-none focus:border-teal-500 focus:bg-white text-gray-800"
-                />
-              </div>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="h-[38px] px-3 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-100 hover:bg-rose-100 transition cursor-pointer"
+                >
+                  ✕ Reset
+                </button>
+              )}
             </div>
 
-            <form onSubmit={searchTables} className="mt-4 pt-4 border-t border-gray-100">
-              <label htmlFor="connections-table-search" className="block text-[11px] font-bold text-gray-600 mb-1">
-                Search tables across your connections:
+            <form onSubmit={searchTables} className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2.5">
+              <label htmlFor="connections-table-search" className="text-[11.5px] font-semibold text-slate-500 shrink-0">
+                Search tables across connections
               </label>
-              <div className="flex gap-2">
+              <label className="cx-input flex-1 min-w-[220px]">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <path d="M3 10h18M9 4v16" />
+                </svg>
                 <input
                   id="connections-table-search"
                   type="search"
                   placeholder="Enter a table or collection name..."
                   value={tableSearchQuery}
                   onChange={event => setTableSearchQuery(event.target.value)}
-                  className="min-w-0 flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs bg-gray-50/50 outline-none focus:border-teal-500 focus:bg-white text-gray-800"
                 />
+              </label>
+              <button
+                type="submit"
+                disabled={tableSearchLoading}
+                className="cx-btn-primary !h-[38px] disabled:opacity-60"
+              >
+                {tableSearchLoading ? 'Searching...' : 'Search Tables'}
+              </button>
+              {tableSearchTerm && (
                 <button
-                  type="submit"
-                  disabled={tableSearchLoading}
-                  className="px-4 py-2 bg-[#0d9da4] text-white text-xs font-bold rounded-lg hover:opacity-90 disabled:opacity-60 transition cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    setTableSearchQuery('');
+                    setTableSearchTerm('');
+                    setTableSearchResults([]);
+                    setTableSearchError('');
+                  }}
+                  className="cx-btn-ghost !h-[38px]"
                 >
-                  {tableSearchLoading ? 'Searching...' : 'Search Tables'}
+                  Clear
                 </button>
-                {tableSearchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTableSearchQuery('');
-                      setTableSearchTerm('');
-                      setTableSearchResults([]);
-                      setTableSearchError('');
-                    }}
-                    className="px-3 py-2 border border-gray-200 text-gray-600 text-xs font-semibold rounded-lg hover:bg-gray-50 transition cursor-pointer"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              {tableSearchError && (
-                <p role="status" className="mt-2 text-xs text-amber-700">{tableSearchError}</p>
               )}
-              {tableSearchTerm && !tableSearchLoading && (
-                <p className="mt-2 text-xs text-gray-500">
-                  {tableSearchResults.length
-                    ? `${tableSearchResults.length} matching table${tableSearchResults.length === 1 ? '' : 's'} found for "${tableSearchTerm}".`
-                    : 'No matching tables found.'}
-                </p>
-              )}
+              <span className="ml-auto text-[11.5px] font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full">
+                Showing {visibleConnections.length} of {connections.length}
+              </span>
             </form>
+            {tableSearchError && (
+              <p role="status" className="mt-2 text-xs text-amber-700">{tableSearchError}</p>
+            )}
+            {tableSearchTerm && !tableSearchLoading && (
+              <p className="mt-2 text-xs text-slate-500">
+                {tableSearchResults.length
+                  ? `${tableSearchResults.length} matching table${tableSearchResults.length === 1 ? '' : 's'} found for "${tableSearchTerm}".`
+                  : 'No matching tables found.'}
+              </p>
+            )}
           </div>
         )}
 
         {tableSearchResults.length > 0 && (
-          <div className="mb-6 overflow-hidden rounded-xl border border-teal-100 bg-white shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h4 className="text-xs font-bold text-gray-800">Matching tables</h4>
+          <div className="cx-toolbar mb-5 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <h4 className="text-xs font-bold text-slate-800">Matching tables</h4>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="grid gap-px bg-slate-100 sm:grid-cols-2 xl:grid-cols-3">
               {tableSearchResults.map((result, index) => (
-                <div key={`${result.connectionId}-${result.database}-${result.table}-${index}`} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div key={`${result.connectionId}-${result.database}-${result.table}-${index}`} className="flex items-center justify-between gap-3 bg-white px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-teal-900">{result.table}</p>
-                    <p className="truncate text-[11px] text-gray-500">
+                    <p className="truncate text-[11px] text-slate-500">
                       {result.connectionName} · {result.database} · {result.connectionType}
                     </p>
                   </div>
@@ -886,7 +1093,7 @@ export default function Connections() {
                     title={`Open ${result.table}`}
                     aria-label={`Open ${result.table} in ${result.connectionName}`}
                     onClick={() => navigate(`/connections/${result.connectionId}/db/${encodeURIComponent(result.database)}?table=${encodeURIComponent(result.table)}`)}
-                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-teal-50 text-[#0d9da4] hover:bg-teal-100 transition cursor-pointer"
+                    className="cx-icon-btn shrink-0"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 6H19v5.5M19 6l-8 8m6-1v5.5A1.5 1.5 0 0115.5 20h-11A1.5 1.5 0 013 18.5v-11A1.5 1.5 0 014.5 6H10" />
@@ -898,177 +1105,196 @@ export default function Connections() {
           </div>
         )}
 
-        {/* Connections List */}
+        {/* Connections grid */}
         {connections.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <p className="text-3xl mb-3">🗄️</p>
-            <p className="text-gray-700 font-medium mb-1">
-              No connections found
-            </p>
-            <p className="text-teal-light text-sm mb-4">
-              Add your first database connection to get started
-            </p>
-            <button
-              onClick={() => setShowForm(true)}
-              className="text-sm text-gray-900 underline"
-            >
+          <div className="cx-toolbar p-12 text-center">
+            <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-[#0d9488] text-white">
+              <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <ellipse cx="12" cy="6" rx="7" ry="3" />
+                <path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+              </svg>
+            </div>
+            <p className="text-slate-800 font-bold mb-1">No connections yet</p>
+            <p className="text-slate-500 text-sm mb-4">Add your first database connection to get started</p>
+            <button type="button" onClick={() => setShowForm(true)} className="cx-btn-primary">
               + Add Connection
             </button>
           </div>
         ) : visibleConnections.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+          <div className="cx-toolbar p-10 text-center">
             <p className="text-3xl mb-2">🔍</p>
-            <p className="text-gray-800 font-bold mb-1">
+            <p className="text-slate-800 font-bold mb-1">
               {tableSearchTerm ? 'No connections contain matching tables' : 'No matching connections found'}
             </p>
-            <p className="text-gray-500 text-xs mb-4">
+            <p className="text-slate-500 text-xs mb-4">
               No connections match your selected Database Type ({filterType}), Role ({filterRole}), or User filter.
             </p>
-            <button
-              onClick={() => {
-                setFilterType('all');
-                setFilterRole('all');
-                setFilterUser('all');
-                setSearchConnText('');
-                setTableSearchQuery('');
-                setTableSearchTerm('');
-                setTableSearchResults([]);
-                setTableSearchError('');
-              }}
-              className="px-4 py-2 bg-teal-50 text-[#0d9da4] border border-teal-200 font-bold text-xs rounded-lg hover:bg-teal-100 transition-all cursor-pointer"
-            >
+            <button type="button" onClick={resetFilters} className="cx-btn-ghost">
               Clear All Filters
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {visibleConnections.map(conn => (
-              <div key={conn._id} className="flex items-stretch gap-3">
-                <div
-                  onClick={() => navigate(`/connections/${conn._id}`)}
-                  className="flex-1 bg-white rounded-xl border border-gray-200 p-5 shadow-sm gradient-border-left cursor-pointer hover:shadow-md transition-all group"
-                >
-                  <div className="flex items-center justify-between flex-wrap gap-4">
+          <>
+          {/* View and color theme options */}
+          <div className="cx-viewbar">
+            <div className="cx-seg" role="group" aria-label="Connection view">
+              <button type="button" className={layout.view === 'cards' ? 'is-active' : ''} aria-pressed={layout.view === 'cards'} onClick={() => updateLayout({ view: 'cards' })}>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+                </svg>
+                Cards
+              </button>
+              <button type="button" className={layout.view === 'rows' ? 'is-active' : ''} aria-pressed={layout.view === 'rows'} onClick={() => updateLayout({ view: 'rows' })}>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                  <path d="M3 6h18M3 12h18M3 18h18" />
+                </svg>
+                Rows
+              </button>
+            </div>
 
-                    {/* Left — Info */}
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{getTypeIcon(conn.type)}</span>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap text-left">
-                          <p className="text-sm font-semibold text-gray-900 group-hover:text-[#0d9da4] transition-colors">
-                            {conn.name}
-                          </p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getTypeBadge(conn.type)}`}>
-                            {conn.type}
-                          </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${conn.accessMode === 'read' ? 'bg-amber-100 text-amber-700' : 'bg-teal-100 text-teal-700'}`}>
-                            {conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}
-                          </span>
-                          {/* Shared Badge */}
-                          {conn.user && conn.user._id !== (user?._id || user?.id) && (
-                            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
-                              Shared by {conn.user.name}
-                            </span>
-                          )}
+            <div className="cx-theme-picker" role="radiogroup" aria-label={`${layout.view === 'rows' ? 'Row' : 'Card'} color theme`}>
+              <span className="cx-theme-label">
+                {layout.view === 'rows' ? 'Row' : 'Card'} theme: <b>{activeTheme.label}</b>
+              </span>
+              {COLOR_THEMES.map((theme) => (
+                <button
+                  key={theme.key}
+                  type="button"
+                  role="radio"
+                  aria-checked={activeThemeKey === theme.key}
+                  aria-label={theme.label}
+                  title={theme.label}
+                  className={`cx-swatch ${activeThemeKey === theme.key ? 'is-active' : ''}`}
+                  style={{ background: theme.swatch }}
+                  onClick={() => updateLayout(layout.view === 'rows' ? { rowTheme: theme.key } : { cardTheme: theme.key })}
+                />
+              ))}
+            </div>
+          </div>
+
+          {layout.view === 'rows' ? (
+            <div ref={listRef} className={`cx-list cx-rows cxt-${activeThemeKey} ${listScrolls ? 'is-scroll' : ''}`}>
+              <div className="cx-row-head" aria-hidden="true">
+                <span>Connection</span>
+                <span>Host</span>
+                <span>Database</span>
+                <span>Status</span>
+                <span>Tools</span>
+                <span className="text-right">Actions</span>
+              </div>
+              {visibleConnections.map((conn) => {
+                const { meta, hostPort, isDisconnected, isShared, tools } = connectionDetails(conn);
+                return (
+                  <div key={conn._id} className="cx-row" style={accentStyle(conn)} onClick={() => navigate(`/connections/${conn._id}`)}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="cx-card-logo is-small"><EngineIcon type={conn.type} size={22} /></span>
+                      <div className="min-w-0">
+                        <p className="cx-name truncate text-[13.5px] font-bold">{conn.name}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                          <span className="cx-badge">{meta.label}</span>
+                          <span className="cx-badge">{conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}</span>
+                          {isShared && <span className="cx-badge">Shared by {conn.user.name}</span>}
                         </div>
-                        <p className="text-xs text-teal-light mt-0.5 text-left font-mono flex items-center gap-1.5 flex-wrap">
-                          <span>📍 Host IP: <strong className="text-gray-900 font-bold">{conn.host || 'localhost'}:{conn.port || (conn.type === 'postgresql' ? 5432 : 3306)}</strong></span>
-                          {conn.database && <span>| DB: <strong className="text-gray-800">{conn.database}</strong></span>}
-                        </p>
                       </div>
                     </div>
-
-                    {/* Right — Actions */}
-                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/connections/${conn._id}`);
-                        }}
-                        className="px-4 py-2 gradient-btn text-xs rounded-lg transition cursor-pointer"
-                      >
-                        Open →
-                      </button>
-
-                      {/* Edit Button (Only if admin or owner) */}
-                      {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditModal(conn);
-                          }}
-                          className="px-3 py-2 border border-teal-200 text-[#0d9da4] hover:bg-teal-50 text-xs rounded-lg transition font-medium cursor-pointer"
-                        >
-                          ✏️ Edit
+                    <span className="cx-row-mono" data-label="Host" title={hostPort}>{hostPort}</span>
+                    <span className="cx-row-mono" data-label="Database" title={conn.database || ''}>{conn.database || '—'}</span>
+                    <span className={`cx-status ${isDisconnected ? 'is-off' : ''}`} data-label="Status">
+                      {isDisconnected ? 'Disconnected' : 'Connected'}
+                    </span>
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {tools.map((tool) => (
+                        <button key={tool.key} type="button" onClick={() => navigate(tool.to)} className="cx-row-tool" style={{ '--t': tool.color }} title={tool.title} aria-label={tool.title}>
+                          {renderToolIcon(tool)}
                         </button>
-                      )}
-
-                      {/* Delete Button (Only if admin or owner) */}
-                      {(user?.role === 'admin' || !conn.user || conn.user._id === (user?._id || user?.id)) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(conn._id, conn.name);
-                          }}
-                          className="px-3 py-2 border border-red-200 text-red-500 text-xs rounded-lg hover:bg-red-50 transition font-medium cursor-pointer"
-                        >
-                          Delete
-                        </button>
-                      )}
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {renderOpenButton(conn)}
+                      {renderManageButtons(conn)}
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          ) : (
+          <div ref={listRef} className={`cx-list grid gap-4 md:grid-cols-2 2xl:grid-cols-3 cxt-${activeThemeKey} ${listScrolls ? 'is-scroll' : ''}`}>
+            {visibleConnections.map((conn, index) => {
+              const { meta, hostPort, isDisconnected, isShared, tools } = connectionDetails(conn);
+
+              return (
+                <div
+                  key={conn._id}
+                  onClick={() => navigate(`/connections/${conn._id}`)}
+                  className="cx-card"
+                  style={{ '--delay': `${Math.min(index, 8) * 0.05}s`, ...accentStyle(conn) }}
+                >
+                  <div className="p-4 pb-3 flex items-start gap-3">
+                    <span className="cx-card-logo">
+                      <EngineIcon type={conn.type} size={30} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="cx-name truncate text-[15px] font-bold">{conn.name}</p>
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${isDisconnected ? 'bg-rose-400' : 'bg-emerald-500 animate-pulse'}`} title={isDisconnected ? 'Disconnected' : 'Connected'} />
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="cx-badge">{meta.label}</span>
+                        <span className="cx-badge">
+                          {conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}
+                        </span>
+                        {isShared && (
+                          <span className="cx-badge">Shared by {conn.user.name}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <dl className="cx-meta mx-4">
+                    <dt>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" />
+                      </svg>
+                      Host
+                    </dt>
+                    <dd title={hostPort}>{hostPort}</dd>
+                    <dt>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+                      </svg>
+                      Database
+                    </dt>
+                    <dd title={conn.database || ''}>{conn.database || '—'}</dd>
+                  </dl>
+
+                  {tools.length > 0 && (
+                    <div className="cx-tools px-4 pt-3" onClick={(e) => e.stopPropagation()}>
+                      {tools.map((tool) => (
+                        <button
+                          key={tool.key}
+                          type="button"
+                          onClick={() => navigate(tool.to)}
+                          className="cx-tool"
+                          style={{ '--t': tool.color }}
+                          title={tool.title}
+                        >
+                          <span className="cx-tool-icon">{renderToolIcon(tool)}</span>
+                          {tool.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-auto flex items-center gap-2 p-4 pt-3" onClick={(e) => e.stopPropagation()}>
+                    {renderOpenButton(conn)}
+                    {renderManageButtons(conn)}
+                  </div>
                 </div>
-
-                {/* Action Button Cards Outside on the Right Side */}
-                <div className="flex gap-2 shrink-0 items-center">
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('userManagement') && (
-                    <button
-                      onClick={() => navigate(`/connections/${conn._id}/users`)}
-                      className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Manage MySQL Users" : conn.type === 'mongodb' ? "Manage MongoDB Users" : conn.type === 'oracle' ? "Manage Oracle Users" : "Manage PostgreSQL Users"}
-                    >
-                      <span className="text-xl">👤</span>
-                      <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Users Manage</span>
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => navigate(`/connections/${conn._id}/monitor`)}
-                    className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                    title="Monitor Database Server"
-                  >
-                    <span className="text-xl">📊</span>
-                    <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Monitor</span>
-                  </button>
-
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('binlog') && (
-                    <button
-                      onClick={() => navigate(`/connections/${conn._id}/binlog`)}
-                      className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Monitor MySQL Binlogs" : conn.type === 'postgresql' ? "Monitor PostgreSQL WAL" : conn.type === 'oracle' ? "Monitor Oracle Redo / LogMiner" : "Monitor MongoDB Oplog"}
-                    >
-                      <span className="text-xl">📡</span>
-                      <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">
-                        {conn.type === 'mysql' ? 'Binlog Monitor' : conn.type === 'postgresql' ? 'WAL Monitor' : conn.type === 'oracle' ? 'Redo Monitor' : 'Oplog Monitor'}
-                      </span>
-                    </button>
-                  )}
-
-                  {(conn.type === 'mysql' || conn.type === 'mongodb' || conn.type === 'postgresql' || conn.type === 'oracle') && hasPermission('backup') && (
-                    <button
-                      onClick={() => navigate(`/connections/${conn._id}/backup`)}
-                      className="w-[95px] h-[76px] shrink-0 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-xl shadow-sm transition flex flex-col items-center justify-center gap-1.5"
-                      title={conn.type === 'mysql' ? "Backup & Restore MySQL Server" : conn.type === 'mongodb' ? "Backup & Restore MongoDB" : conn.type === 'oracle' ? "Backup & Restore Oracle Schema" : "Backup & Restore PostgreSQL"}
-                    >
-                      <span className="text-xl">💾</span>
-                      <span className="text-[9px] font-bold tracking-wider uppercase text-gray-600 text-center leading-tight px-1">Backup / Restore</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          )}
+          </>
         )}
 
       </div>

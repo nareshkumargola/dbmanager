@@ -89,7 +89,19 @@ const getConnection = async (connectionDoc, targetDatabase = null) => {
 
   // Pehle se connected hai?
   if (activeConnections.has(key)) {
-    return activeConnections.get(key);
+    const cached = activeConnections.get(key);
+    // Oracle uses a single raw connection (not a self-healing pool), so check it is still
+    // alive before reusing it; otherwise a dropped network link breaks every request.
+    if (cached.type !== 'oracle') return cached;
+    try {
+      if (cached.conn.isHealthy() === false) throw new Error('Oracle connection is not healthy');
+      await cached.conn.ping();
+      return cached;
+    } catch (err) {
+      console.warn(`Oracle connection ${key} was broken (${err.message}); reconnecting...`);
+      activeConnections.delete(key);
+      try { await cached.conn.close(); } catch { /* already closed */ }
+    }
   }
 
   // Connection config prepare karo

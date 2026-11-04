@@ -1,15 +1,70 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
-import { socket } from '../api/socket';
 import { useAuth } from '../context/AuthContext';
 import SystemAuditLogsPanel from '../components/SystemAuditLogsPanel';
+import SystemUsersPanel from '../components/SystemUsersPanel';
+import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 import Toast from '../components/Toast';
+import AnimatedHero from '../components/AnimatedHero';
+import AppNavbar from '../components/AppNavbar';
+import useConnectionAlerts from '../hooks/useConnectionAlerts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import './Dashboard.css';
+
+const QUICK_ACTIONS = [
+  {
+    key: 'new-connection',
+    title: 'New Connection',
+    desc: 'Add a database',
+    color: '#0ea5e9',
+    icon: <path d="M12 5v14M5 12h14" />,
+  },
+  {
+    key: 'audit-logs',
+    title: 'Audit Logs',
+    desc: 'Track activity',
+    color: '#8b5cf6',
+    icon: <><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+  },
+  {
+    key: 'users',
+    title: 'Manage Users',
+    desc: 'Roles & access',
+    color: '#10b981',
+    icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 7M18 14.5a5.5 5.5 0 013.5 5.5" /></>,
+  },
+  {
+    key: 'settings',
+    title: 'Settings',
+    desc: 'Profile & prefs',
+    color: '#f59e0b',
+    icon: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z" /></>,
+  },
+];
+
+// Each view of this page has its own URL
+const VIEW_PATHS = {
+  connections: '/dashboard',
+  'audit-logs': '/audit-logs',
+  users: '/system-users',
+};
+
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // The URL decides which view is shown
+  const activeTab = Object.keys(VIEW_PATHS).find((view) => VIEW_PATHS[view] === location.pathname) || 'connections';
+  const setActiveTab = (view) => navigate(VIEW_PATHS[view]);
 
   const [toast, setToast] = useState(() => {
     const name = sessionStorage.getItem('welcomeUserName');
@@ -32,11 +87,6 @@ export default function Dashboard() {
   });
   const [performanceLoading, setPerformanceLoading] = useState(true);
   const [performanceError, setPerformanceError] = useState('');
-  const [notifications, setNotifications] = useState([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationsError, setNotificationsError] = useState('');
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const notificationsRef = useRef(null);
 
   // Filter States
   const [filterType, setFilterType] = useState('all');
@@ -44,48 +94,142 @@ export default function Dashboard() {
   const [filterUser, setFilterUser] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchConnText, setSearchConnText] = useState('');
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
-  const globalSearchRef = useRef(null);
 
-  // Active view tab (connections or audit-logs)
-  const [activeTab, setActiveTab] = useState('connections');
-  const [sidebarOpen, setSidebarOpen] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth >= 768
-  );
+  // System Users & Roles State (restored)
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
-  // User profile dropdown & theme
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const userDropdownRef = useRef(null);
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'developer',
+    accessMode: 'read',
+    permissions: {
+      userManagement: false,
+      backup: false, binlog: true, monitor: true, query: true,
+      history: true, slowQuery: true, auditLogs: true, connections: false
+    }
+  });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState('');
 
-  const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-    localStorage.setItem('theme', nextTheme);
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  const [editUserModalUser, setEditUserModalUser] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'developer', accessMode: 'read', permissions: {} });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const fetchUsers = async () => {
+    try {
+      setUsersLoading(true);
+      const res = await API.get('/users');
+      setUsers(res.data.users || []);
+    } catch (err) {
+      console.error('Failed to load users:', err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  const updateUserRoleInDashboard = async (id, newRole) => {
+    try {
+      await API.put(`/users/${id}/role`, { role: newRole });
+      showToast('User role updated successfully!');
+      fetchUsers();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update user role.', 'error');
+    }
+  };
+
+  const deleteUserInDashboard = async (id, name) => {
+    if (!window.confirm(`Are you sure you want to delete user ${name}?`)) return;
+    try {
+      await API.delete(`/users/${id}`);
+      showToast(`User account '${name}' deleted successfully!`);
+      fetchUsers();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete user.', 'error');
+    }
+  };
+
+  const handleOpenEditUser = (u) => {
+    setEditUserModalUser(u);
+    setEditForm({
+      name: u.name || '',
+      email: u.email || '',
+      password: '',
+      role: u.role === 'admin' ? 'admin' : 'developer',
+      accessMode: u.accessMode || (u.role === 'readwrite' ? 'readwrite' : 'read'),
+      allowedConnections: Array.isArray(u.allowedConnections) ? u.allowedConnections : [],
+      permissions: u.permissions ? {
+        userManagement: !!u.permissions.userManagement,
+        backup: u.permissions.backup !== undefined ? u.permissions.backup : false,
+        binlog: u.permissions.binlog !== undefined ? u.permissions.binlog : true,
+        monitor: u.permissions.monitor !== undefined ? u.permissions.monitor : true,
+        query: u.permissions.query !== undefined ? u.permissions.query : true,
+        history: u.permissions.history !== undefined ? u.permissions.history : true,
+        slowQuery: u.permissions.slowQuery !== undefined ? u.permissions.slowQuery : true,
+        auditLogs: u.permissions.auditLogs !== undefined ? u.permissions.auditLogs : true,
+        connections: u.permissions.connections !== undefined ? u.permissions.connections : true
+      } : {
+        userManagement: false,
+        backup: false, binlog: true, monitor: true, query: true,
+        history: true, slowQuery: true, auditLogs: true, connections: true
+      }
+    });
+    setEditError('');
+  };
+
+  const handleSaveEditUser = async (e) => {
+    e.preventDefault();
+    if (!editUserModalUser) return;
+    setEditLoading(true);
+    setEditError('');
+    try {
+      await API.put(`/users/${editUserModalUser._id}`, editForm);
+      showToast(`User profile & permissions for '${editForm.name}' updated successfully!`);
+      setEditUserModalUser(null);
+      fetchUsers();
+    } catch (err) {
+      setEditError(err.response?.data?.message || 'Failed to update user details.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCreateUserSubmit = async (e) => {
+    e.preventDefault();
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      await API.post('/users', createForm);
+      showToast(`User account '${createForm.name}' created successfully!`);
+      setCreateUserModalOpen(false);
+      setCreateForm({
+        name: '', email: '', password: '', role: 'developer', accessMode: 'read',
+        permissions: { userManagement: false, connections: false }
+      });
+      fetchUsers();
+    } catch (err) {
+      setCreateError(err.response?.data?.message || 'Failed to create user.');
+    } finally {
+      setCreateLoading(false);
     }
   };
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
-        setUserDropdownOpen(false);
-      }
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
-        setNotificationsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  // Sidebar starts hidden unless the user turned on "open sidebar on start" in Settings
+  const [sidebarOpen, setSidebarOpen] = useState(() => Boolean(user?.preferences?.sidebarOpenByDefault));
 
   // Display user name and role matching reference mockup
   const displayName =
     user?.name && user.name.toLowerCase() !== 'vss' ? user.name : 'Vishal Shakyavanshi';
-  const displayRole = user?.role || 'Admin';
 
   // Live Date / Time formatted
   const [currentDateTime, setCurrentDateTime] = useState({
@@ -236,7 +380,6 @@ export default function Dashboard() {
       return true;
     });
   }, [activeConnectionsList, filterType, filterRole, filterUser, filterStatus, searchConnText]);
-  const globalSearchResults = filteredConnections.slice(0, 6);
   const hasActiveFilters = Boolean(
     searchConnText.trim() || filterType !== 'all' || filterRole !== 'all' || filterStatus !== 'all'
   );
@@ -268,18 +411,11 @@ export default function Dashboard() {
     const active = measured.reduce((total, connection) => total + Number(connection.activeConnections), 0);
     return Math.round((active / capacity) * 100);
   };
-  const performanceChartPoints = performanceOverview.history.slice(-12);
-  const maxPerformanceQps = Math.max(
-    1,
-    ...performanceChartPoints.map((point) => point.queriesPerSecond || 0)
-  );
-  const performanceLinePoints = performanceChartPoints.map((point, index) => {
-    const x = performanceChartPoints.length === 1
-      ? 50
-      : (index / (performanceChartPoints.length - 1)) * 100;
-    const y = 33 - ((point.queriesPerSecond || 0) / maxPerformanceQps) * 27;
-    return `${x},${y}`;
-  }).join(' ');
+  const performanceChartData = performanceOverview.history.slice(-12).map((point) => ({
+    time: new Date(point.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    qps: point.queriesPerSecond || 0,
+    active: point.activeConnections || 0,
+  }));
   const databaseUsageTypes = [
     { type: 'mysql', label: 'MySQL', color: '#0284c7' },
     { type: 'postgresql', label: 'PostgreSQL', color: '#7c3aed' },
@@ -312,6 +448,7 @@ export default function Dashboard() {
   const pgCount = activeConnectionsList.filter((c) => c.type === 'postgresql').length;
   const mongoCount = activeConnectionsList.filter((c) => c.type === 'mongodb').length;
   const oracleCount = activeConnectionsList.filter((c) => c.type === 'oracle').length;
+  const connectedCount = activeConnectionsList.filter((c) => c.status !== 'disconnected').length;
 
   // Edit Connection Modal States
   const [editConnectionModalConn, setEditConnectionModalConn] = useState(null);
@@ -389,106 +526,9 @@ export default function Dashboard() {
     };
   }, [user?.id]);
 
-  useEffect(() => {
-    if (connections.length === 0) return undefined;
-
-    let cancelled = false;
-    const fetchNotifications = async () => {
-      setNotificationsLoading(true);
-      setNotificationsError('');
-      const results = await Promise.allSettled(
-        connections.map((connection) => API.get(`/monitor/${connection._id}/alerts`))
-      );
-      if (cancelled) return;
-
-      const alerts = [];
-      let failedRequests = 0;
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          failedRequests += 1;
-          console.error(`Failed to load alerts for connection "${connections[index].name}":`, result.reason);
-          return;
-        }
-
-        const connection = connections[index];
-        (result.value.data.alerts || []).forEach((alert) => {
-          alerts.push({ ...alert, connection: connection._id, connectionName: connection.name });
-        });
-      });
-
-      setNotifications(alerts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-      setNotificationsError(failedRequests ? 'Some connection alerts could not be loaded.' : '');
-      setNotificationsLoading(false);
-    };
-
-    fetchNotifications().catch((err) => {
-      console.error('Failed to load dashboard notifications:', err);
-      if (!cancelled) {
-        setNotificationsError('Notifications could not be loaded.');
-        setNotificationsLoading(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [connections]);
-
-  useEffect(() => {
-    if (connections.length === 0) return undefined;
-
-    socket.connect();
-    const connectionIds = new Set(connections.map((connection) => connection._id));
-    const getConnectionId = (alert) =>
-      typeof alert.connection === 'object' ? alert.connection?._id : alert.connection;
-
-    const handleNewAlert = (alert) => {
-      const connectionId = getConnectionId(alert);
-      const connection = connections.find((item) => item._id === connectionId);
-      if (!connection) return;
-
-      const notification = {
-        ...alert,
-        connection: connectionId,
-        connectionName: alert.connectionName || connection.name,
-      };
-      setNotifications((current) => [
-        notification,
-        ...current.filter((item) => item._id !== notification._id),
-      ]);
-    };
-
-    const handleAlertResolved = (alert) => {
-      const connectionId = getConnectionId(alert);
-      if (!connectionIds.has(connectionId)) return;
-
-      const connection = connections.find((item) => item._id === connectionId);
-      const notification = {
-        ...alert,
-        connection: connectionId,
-        connectionName: alert.connectionName || connection?.name,
-        resolved: true,
-      };
-      setNotifications((current) => {
-        const existing = current.some((item) => item._id === notification._id);
-        const updated = existing
-          ? current.map((item) => item._id === notification._id ? notification : item)
-          : [notification, ...current];
-        return updated.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      });
-    };
-
-    socket.on('new-alert', handleNewAlert);
-    socket.on('alert-resolved', handleAlertResolved);
-    return () => {
-      socket.off('new-alert', handleNewAlert);
-      socket.off('alert-resolved', handleAlertResolved);
-    };
-  }, [connections]);
-
-  const connectionIds = new Set(connections.map((connection) => connection._id));
-  const visibleNotifications = notifications.filter((notification) => connectionIds.has(notification.connection));
-  const activeNotifications = visibleNotifications.filter((notification) => !notification.resolved);
+  // Live alerts: shared with the navbar bell and the welcome banner
+  const dashboardAlerts = useConnectionAlerts(connections);
+  const { activeNotifications } = dashboardAlerts;
 
   const handleOpenEditConnModal = (conn) => {
     setEditConnectionModalConn(conn);
@@ -589,11 +629,6 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
   // Helper to render official engine icon badges matching photo
   const renderEngineIcon = (type, size = 'lg') => {
     const isLg = size === 'lg';
@@ -686,8 +721,8 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f4f7fb]">
-        <div className="text-center p-8 bg-white rounded-2xl shadow-sm border border-gray-150">
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f7fb] dark:bg-[#0b0f19]">
+        <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-150 dark:border-slate-800">
           <div className="w-10 h-10 border-[3px] border-blue-100 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
           <p className="text-slate-600 text-sm font-semibold">Loading Allatone DMS...</p>
         </div>
@@ -696,7 +731,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb] text-slate-800 flex font-sans antialiased selection:bg-blue-100 selection:text-blue-900">
+    <div className="dash-root min-h-screen bg-[#f4f7fb] dark:bg-[#0b0f19] text-slate-800 dark:text-slate-200 flex font-sans antialiased selection:bg-blue-100 selection:text-blue-900 transition-colors duration-300">
       {toast && (
         <Toast
           toast={toast}
@@ -716,365 +751,127 @@ export default function Dashboard() {
           className="fixed inset-0 z-20 bg-slate-900/20 md:hidden"
         />
       )}
-      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} w-56 bg-white border-r border-gray-150 shrink-0 flex-col justify-between fixed md:sticky top-0 left-0 h-screen z-30`}>
+      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} dash-sidebar w-60 shrink-0 flex-col justify-between fixed md:sticky top-0 left-0 h-screen z-30 overflow-y-auto transition-colors duration-300`} >
         <div>
-          {/* Navigation Links matching crop_sidebar.png */}
-          <nav className="p-3 space-y-1">
-            {/* 1. Dashboard (Active) */}
-            <button
-              onClick={() => setActiveTab('connections')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'connections'
-                  ? 'bg-[#eff6ff] text-[#2563eb]'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
-              }`}
-            >
-              <svg className="w-4 h-4 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              <span>Dashboard</span>
-            </button>
-
-            {/* 2. Manage Connections */}
-            <button
-              onClick={() => navigate('/connections')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
-            >
-              <svg className="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                <circle cx="12" cy="12" r="7" />
-                <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
-                <circle cx="12" cy="12" r="2" fill="currentColor" />
-              </svg>
-              <span>Manage Connections</span>
-            </button>
-
-            {/* 4. Audit Logs */}
-            <button
-              onClick={() => setActiveTab(activeTab === 'audit-logs' ? 'connections' : 'audit-logs')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                activeTab === 'audit-logs'
-                  ? 'bg-[#eff6ff] text-[#2563eb] font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-gray-50'
-              }`}
-            >
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Audit Logs</span>
-            </button>
-
-            {/* 5. Users & Roles */}
-            <button
-              onClick={() => navigate('/permissions')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
-            >
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              <span>Users &amp; Roles</span>
-            </button>
-
-            {/* 6. Permissions */}
-            <button
-              onClick={() => navigate('/permissions')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
-            >
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span>Permissions</span>
-            </button>
-
-            {/* 7. Settings */}
-            <button
-              onClick={() => navigate('/profile')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-gray-50 transition-all cursor-pointer"
-            >
-              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>Settings</span>
-            </button>
+          <nav className="p-3 pt-4">
+            {[
+              {
+                section: 'Main Menu',
+                items: [
+                  {
+                    key: 'dashboard',
+                    label: 'Dashboard',
+                    active: activeTab === 'connections',
+                    onClick: () => setActiveTab('connections'),
+                    icon: <path d="M4 13h6V4H4zM14 20h6v-9h-6zM14 4v4h6V4zM4 20h6v-3H4z" />,
+                  },
+                  {
+                    key: 'connections',
+                    label: 'Manage Connections',
+                    count: activeConnectionsList.length,
+                    onClick: () => navigate('/connections'),
+                    icon: <><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></>,
+                  },
+                  {
+                    key: 'audit-logs',
+                    label: 'Audit Logs',
+                    active: activeTab === 'audit-logs',
+                    onClick: () => setActiveTab('audit-logs'),
+                    icon: <><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 8h6M9 12h6M9 16h4" /></>,
+                  },
+                ],
+              },
+              {
+                section: 'Administration',
+                items: [
+                  {
+                    key: 'users',
+                    label: 'System Users & Roles',
+                    active: activeTab === 'users',
+                    onClick: () => setActiveTab('users'),
+                    icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0113 0M16 4.5a3.5 3.5 0 010 7M18 14.5a5.5 5.5 0 013.5 5.5" /></>,
+                  },
+                  {
+                    key: 'permissions',
+                    label: 'Permissions',
+                    onClick: () => navigate('/permissions'),
+                    icon: <><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6L12 3z" /><path d="M8.8 12.2l2.2 2.2 4.3-4.6" /></>,
+                  },
+                  {
+                    key: 'settings',
+                    label: 'Settings',
+                    onClick: () => navigate('/profile?tab=settings'),
+                    icon: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" /></>,
+                  },
+                ],
+              },
+            ].map((group, groupIndex) => (
+              <div key={group.section} className={groupIndex > 0 ? 'mt-5' : ''}>
+                <p className="dash-nav-label mb-2">{group.section}</p>
+                <div className="space-y-1">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={item.onClick}
+                      aria-current={item.active ? 'page' : undefined}
+                      className={`dash-nav-item w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-[13px] font-medium text-slate-600 cursor-pointer ${item.active ? 'is-active' : 'hover:text-slate-900 hover:bg-slate-50'}`}
+                    >
+                      <span className="dash-nav-icon">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          {item.icon}
+                        </svg>
+                      </span>
+                      <span className="truncate">{item.label}</span>
+                      {item.count > 0 && <span className="dash-nav-count">{item.count}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </nav>
         </div>
 
-        {/* Sidebar Bottom Elements matching crop_sidebar.png */}
-        <div className="p-3 space-y-3">
-          {/* Card: Secure • Manage • Monitor */}
-          <div className="bg-gradient-to-b from-[#f8fafc] to-[#eff6ff] border border-blue-100 rounded-2xl p-3 text-center">
-            <div className="w-full flex items-center justify-center mb-1">
+        {/* Sidebar bottom: live connection health + brand card */}
+        <div className="p-3">
+          <div className="dash-side-card">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-600">Connections online</span>
+              <span className="text-[11px] font-bold text-slate-900">
+                {connectedCount}/{activeConnectionsList.length}
+              </span>
+            </div>
+            <div className="dash-health-bar mt-2">
+              <span style={{ width: `${activeConnectionsList.length ? (connectedCount / activeConnectionsList.length) * 100 : 0}%` }} />
+            </div>
+
+            <div className="mt-3 flex items-center justify-center">
               <img
                 src="/assets/sidebar_graphic.png"
                 alt="3D Server Database"
-                className="w-32 h-20 object-contain drop-shadow-sm"
+                className="w-28 h-[72px] object-contain"
               />
             </div>
-            <h4 className="text-[11px] font-bold text-slate-800 tracking-tight">
+            <h4 className="mt-1 text-center text-[12px] font-bold text-slate-800 tracking-tight">
               Secure · Manage · Monitor
             </h4>
-            <p className="text-[9.5px] text-slate-400 mt-0.5 font-medium">
+            <p className="text-center text-[10.5px] text-slate-500 mt-0.5 font-medium">
               Your Database, Our Priority
             </p>
           </div>
-
         </div>
       </aside>
 
       {/* ========================================================
           2. MAIN CONTENT AREA
       ======================================================== */}
-      <div className="flex-1 min-w-0 flex flex-col overflow-y-auto">
-        {/* TOP HEADER BAR */}
-        <header className="sticky top-0 z-20 bg-white border-b border-gray-150 px-4 sm:px-6 py-2.5 flex flex-wrap xl:flex-nowrap items-center gap-3 shadow-2xs">
-          <button
-            type="button"
-            onClick={() => setSidebarOpen((isOpen) => !isOpen)}
-            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-            aria-expanded={sidebarOpen}
-            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border border-gray-200 text-slate-600 hover:bg-gray-50 hover:text-blue-600 transition cursor-pointer"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M9 4v16" />
-              {sidebarOpen ? <path d="m16 9-3 3 3 3" /> : <path d="m13 9 3 3-3 3" />}
-            </svg>
-          </button>
-
-          {/* Brand stays in the navbar instead of the sidebar */}
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2.5 shrink-0 text-left cursor-pointer"
-          >
-            <span className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 via-sky-500 to-cyan-400 p-0.5 shadow-md shadow-blue-500/20 flex items-center justify-center shrink-0">
-              <svg className="w-5 h-5 text-white drop-shadow-xs" viewBox="0 0 24 24" fill="none">
-                <ellipse cx="12" cy="6" rx="8" ry="3" fill="#ffffff" fillOpacity="0.95" />
-                <path d="M4 6v5c0 1.66 3.58 3 8 3s8-1.34 8-3V6" stroke="#ffffff" strokeWidth="1.5" />
-                <path d="M4 11v5c0 1.66 3.58 3 8 3s8-1.34 8-3v-5" stroke="#ffffff" strokeWidth="1.5" />
-                <path d="M4 16v3c0 1.66 3.58 3 8 3s8-1.34 8-3v-3" stroke="#ffffff" strokeWidth="1.5" />
-              </svg>
-            </span>
-            <span>
-              <span className="flex items-center gap-1.5">
-                <span className="text-base font-black tracking-tight text-slate-900 leading-none">Allatone</span>
-                <span className="bg-[#0ea5e9] text-white text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full leading-none">DMS</span>
-              </span>
-              <span className="hidden sm:block text-[9.5px] text-slate-400 font-medium mt-1 leading-none">
-                Database Management System
-              </span>
-            </span>
-          </button>
-
-          {/* Global Search Input */}
-          <div className="relative order-last xl:order-none w-full xl:w-auto xl:flex-1 xl:max-w-sm" ref={globalSearchRef}>
-            <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-400">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </span>
-            <input
-              type="text"
-              placeholder="Search connections, databases, hosts, ports..."
-              value={searchConnText}
-              onChange={(e) => setSearchConnText(e.target.value)}
-              onFocus={() => setGlobalSearchOpen(true)}
-              onBlur={() => setGlobalSearchOpen(false)}
-              className="w-full pl-8 pr-16 py-1.5 bg-[#f8fafc] border border-gray-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition"
-            />
-            <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-gray-200 h-5 my-auto">
-              Ctrl + K
-            </span>
-            {globalSearchOpen && searchConnText.trim() && (
-              <div className="absolute left-0 right-0 top-full mt-2 rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-40">
-                {globalSearchResults.length > 0 ? (
-                  globalSearchResults.map((conn) => (
-                    <button
-                      key={conn._id || conn.name}
-                      type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setSearchConnText(conn.name || '');
-                        setActiveTab('connections');
-                        setGlobalSearchOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-blue-50 transition flex items-center justify-between gap-3"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-semibold text-slate-800">{conn.name}</span>
-                        <span className="block truncate text-[10px] text-slate-500">{conn.database || conn.type}</span>
-                      </span>
-                      <span className="shrink-0 font-mono text-[10px] text-slate-500">
-                        {conn.host || 'localhost'}:{conn.port || 3306}
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <p className="px-3 py-2 text-xs text-slate-500">No connections found.</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Right Header Status & Controls */}
-          <div className="ml-auto flex items-center gap-3.5 shrink-0">
-            {/* System Online Badge */}
-            <div className="hidden sm:flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <div className="leading-tight">
-                <p className="text-xs font-bold text-slate-800 leading-none">System Online</p>
-                <p className="text-[9.5px] text-slate-400 mt-0.5 leading-none">All Services Running</p>
-              </div>
-            </div>
-
-            {/* Notification Bell with Live Database Alerts */}
-            <div className="relative" ref={notificationsRef}>
-              <button
-                type="button"
-                onClick={() => setNotificationsOpen((open) => !open)}
-                aria-label={`Notifications${activeNotifications.length ? `, ${activeNotifications.length} active` : ''}`}
-                aria-expanded={notificationsOpen}
-                className="relative w-8 h-8 rounded-full bg-gray-50 hover:bg-gray-100 border border-gray-200/80 flex items-center justify-center text-slate-600 transition cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                {activeNotifications.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-3.5 h-3.5 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
-                    {activeNotifications.length > 99 ? '99+' : activeNotifications.length}
-                  </span>
-                )}
-              </button>
-
-              {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl z-50 text-left">
-                  <div className="sticky top-0 bg-white border-b border-slate-100 px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
-                      <span className="text-[10px] font-semibold text-slate-500">
-                        {activeNotifications.length} active
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="p-3 space-y-3">
-                    {notificationsError && (
-                      <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[10px] text-red-700">
-                        {notificationsError}
-                      </p>
-                    )}
-
-                    {notificationsLoading ? (
-                      <p className="py-5 text-center text-xs text-slate-500">Loading database alerts...</p>
-                    ) : (
-                      activeNotifications.length === 0 ? (
-                        !notificationsError && (
-                          <p className="py-5 text-center text-xs text-slate-500">No notifications</p>
-                        )
-                      ) : (
-                        <div className="space-y-2">
-                          {activeNotifications.slice(0, 5).map((notification) => (
-                            <button
-                              key={notification._id}
-                              type="button"
-                              onClick={() => {
-                                setNotificationsOpen(false);
-                                navigate(`/connections/${notification.connection}/monitor?tab=alerts`);
-                              }}
-                              className="w-full rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-left hover:bg-amber-50 transition"
-                            >
-                              <span className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[11px] font-bold text-slate-800">
-                                  {notification.connectionName} · {(notification.type || 'alert').replace(/_/g, ' ')}
-                                </span>
-                                <span className={`shrink-0 text-[9px] font-bold uppercase ${
-                                  notification.severity === 'critical' ? 'text-red-600' : 'text-amber-600'
-                                }`}>
-                                  {notification.severity}
-                                </span>
-                              </span>
-                              <span className="mt-1 block text-[10px] leading-relaxed text-slate-600">
-                                {notification.message}
-                              </span>
-                              <span className="mt-1 block text-[9px] text-slate-400">
-                                {new Date(notification.createdAt).toLocaleString()}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Dark / Light Mode Toggle Pill */}
-            <div
-              onClick={toggleTheme}
-              className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-full cursor-pointer hover:bg-gray-200 transition"
-              title="Toggle Light / Dark mode"
-            >
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${theme === 'dark' ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-400'}`}>
-                🌙
-              </span>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${theme === 'light' ? 'bg-white text-amber-500 shadow-2xs' : 'text-slate-400'}`}>
-                ☀️
-              </span>
-            </div>
-
-            {/* User Profile Pill */}
-            <div className="relative" ref={userDropdownRef}>
-              <button
-                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-gray-100 transition cursor-pointer"
-              >
-                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-500 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
-                  VS
-                </div>
-                <div className="hidden sm:block text-left leading-tight">
-                  <p className="text-xs font-bold text-slate-800 leading-none">{displayName}</p>
-                  <p className="text-[10px] text-slate-400 capitalize mt-0.5 leading-none">{displayRole}</p>
-                </div>
-              </button>
-
-              {/* Profile Dropdown Menu */}
-              {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-150 py-2 z-50 text-slate-700 animate-fadeIn">
-                  <div className="px-4 py-2 border-b border-gray-100 mb-1">
-                    <p className="text-xs font-bold text-slate-900 truncate">{displayName}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{user?.email || 'admin@allatone.io'}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setUserDropdownOpen(false);
-                      navigate('/profile');
-                    }}
-                    className="w-full px-4 py-2 text-left text-xs hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    My Profile &amp; Settings
-                  </button>
-                  <button
-                    onClick={() => {
-                      setUserDropdownOpen(false);
-                      navigate('/status');
-                    }}
-                    className="w-full px-4 py-2 text-left text-xs hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    System Status
-                  </button>
-                  <div className="my-1 border-t border-gray-100"></div>
-                  <button
-                    onClick={handleLogout}
-                    className="w-full px-4 py-2 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <AppNavbar
+          onToggleSidebar={() => setSidebarOpen((isOpen) => !isOpen)}
+          sidebarOpen={sidebarOpen}
+          connections={connections}
+          alerts={dashboardAlerts}
+        />
 
         {/* DASHBOARD BODY CONTAINER */}
         <div className="p-4 sm:p-5 w-full mx-auto flex flex-col gap-4">
@@ -1082,78 +879,105 @@ export default function Dashboard() {
               MAIN STREAM
           ======================================================== */}
           <div className="flex-1 min-w-0 flex flex-col gap-4">
-            {/* 1. Welcome Banner (Identical to crop_welcome.png) */}
-            <div
-              style={{
-                background: 'linear-gradient(90deg, #ffffff 0%, #f7faff 45%, #eff6ff 75%, #f5f3ff 100%)',
-              }}
-              className="border border-[#bfdbfe]/70 rounded-2xl p-4.5 shadow-2xs relative overflow-hidden flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4"
-            >
-              {/* Flowing silk ribbon wave art matching crop_welcome.png */}
-              <div className="absolute inset-y-0 right-28 left-1/2 pointer-events-none opacity-50 hidden lg:block">
-                <svg className="w-full h-full" viewBox="0 0 600 120" preserveAspectRatio="none" fill="none">
-                  <path
-                    d="M 10,70 C 80,10 160,110 260,50 C 340,-10 420,80 500,40 C 540,20 580,50 600,30"
-                    stroke="#38bdf8"
-                    strokeWidth="10"
-                    strokeOpacity="0.4"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 20,80 C 100,20 180,115 280,60 C 360,5 440,85 520,45"
-                    stroke="#818cf8"
-                    strokeWidth="7"
-                    strokeOpacity="0.35"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 40,65 C 120,5 200,105 300,55 C 380,15 460,75 540,40"
-                    stroke="#c084fc"
-                    strokeWidth="6"
-                    strokeOpacity="0.3"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
+            {activeTab === 'connections' && (
+            <>
+            {/* 1. Welcome Banner — animated illustration + live status chips */}
+            <div className="dash-welcome p-5 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+              <span className="dash-welcome-blob" style={{ width: 260, height: 260, right: 120, top: -120, background: '#7dd3fc' }} aria-hidden="true" />
+              <span className="dash-welcome-blob" style={{ width: 220, height: 220, right: -60, bottom: -110, background: '#6ee7b7', animationDelay: '-6s' }} aria-hidden="true" />
+              <span className="dash-welcome-grid" aria-hidden="true" />
 
-              {/* Left Welcome text */}
-              <div className="relative z-10 min-w-0 flex-1 lg:ml-8">
-                <p className="text-xs font-semibold text-[#2563eb]">Welcome back,</p>
-                <h2 className="text-2xl font-black text-[#0f172a] tracking-tight mt-0.5 flex flex-wrap items-center gap-1.5">
-                  <span className="min-w-0 break-words">{displayName}</span>
-                  <span className="shrink-0">👏</span>
+              {/* Left: greeting, name and live stats */}
+              <div className="relative z-10 min-w-0 flex-1">
+                <span className="dash-greeting-chip">
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                  </svg>
+                  {getGreeting()}
+                </span>
+                <h2 className="mt-2 text-[26px] sm:text-[30px] font-extrabold tracking-tight text-[#0b1b4d] leading-tight break-words">
+                  Welcome back, <span className="dash-name-gradient">{displayName}</span>
                 </h2>
-                <p className="text-xs text-[#64748b] mt-1 font-medium break-words">
+                <p className="mt-1 text-[13px] text-[#55607a] font-medium">
                   Manage your database connections, monitor activity and keep your data safe.
                 </p>
+
+                <div className="mt-4 flex flex-wrap gap-2.5">
+                  <div className="dash-stat-chip" style={{ '--c': '#10b981' }}>
+                    <span className="dash-stat-chip-icon">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <ellipse cx="12" cy="6" rx="7" ry="3" />
+                        <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+                      </svg>
+                    </span>
+                    <span className="leading-tight">
+                      <span className="block text-[13px] font-bold text-[#0b1b4d]">
+                        {connectedCount}<span className="text-slate-400 font-medium"> / {activeConnectionsList.length}</span>
+                      </span>
+                      <span className="block text-[10.5px] text-slate-500">Connections online</span>
+                    </span>
+                  </div>
+
+                  <div className="dash-stat-chip" style={{ '--c': '#2563eb' }}>
+                    <span className="dash-stat-chip-icon">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 12h4l3-8 4 16 3-8h4" />
+                      </svg>
+                    </span>
+                    <span className="leading-tight">
+                      <span className="block text-[13px] font-bold text-[#0b1b4d]">
+                        {performanceTotals.queriesPerSecond.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </span>
+                      <span className="block text-[10.5px] text-slate-500">Activity / sec</span>
+                    </span>
+                  </div>
+
+                  <div className="dash-stat-chip" style={{ '--c': activeNotifications.length > 0 ? '#f59e0b' : '#10b981' }}>
+                    <span className="dash-stat-chip-icon">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" />
+                      </svg>
+                    </span>
+                    <span className="leading-tight">
+                      <span className="block text-[13px] font-bold text-[#0b1b4d]">{activeNotifications.length}</span>
+                      <span className="block text-[10.5px] text-slate-500">Active alerts</span>
+                    </span>
+                  </div>
+
+                  {totalDatabaseSizeMB > 0 && (
+                    <div className="dash-stat-chip" style={{ '--c': '#8b5cf6' }}>
+                      <span className="dash-stat-chip-icon">
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <rect x="3" y="4" width="18" height="7" rx="2" />
+                          <rect x="3" y="13" width="18" height="7" rx="2" />
+                          <path d="M7 7.5h.01M7 16.5h.01" />
+                        </svg>
+                      </span>
+                      <span className="leading-tight">
+                        <span className="block text-[13px] font-bold text-[#0b1b4d]">{formatDatabaseSize(totalDatabaseSizeMB)}</span>
+                        <span className="block text-[10.5px] text-slate-500">Total storage</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Right Side: 3D Blue Database Cylinder + Live Date/Time */}
-              <div className="relative z-10 flex w-full lg:w-auto items-center justify-end gap-4 shrink-0">
-                {/* 3D Glossy Blue Database Cylinder matching crop_welcome.png */}
-                <div className="w-12 h-12 relative flex items-center justify-center shrink-0">
-                  <img
-                    src="/assets/welcome_db_cylinder.png"
-                    alt="3D Database Cylinder"
-                    className="w-12 h-12 object-contain drop-shadow-sm"
-                  />
-                </div>
-
-                {/* Date & Time pill matching crop_welcome.png */}
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-white/95 border border-slate-200/80 flex items-center justify-center text-slate-500 shadow-2xs">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" />
-                      <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
-                      <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
-                      <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
+              {/* Right: animated illustration + live date/time */}
+              <div className="relative z-10 flex w-full md:w-auto items-center justify-between md:justify-end gap-4 shrink-0">
+                <div className="flex items-center gap-2.5 self-end md:self-center rounded-2xl bg-white/80 border border-slate-200/80 px-3 py-2 shadow-2xs">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-emerald-400 flex items-center justify-center text-white">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" />
                     </svg>
                   </div>
                   <div className="leading-tight text-left">
-                    <p className="text-[11px] font-bold text-[#334155]">{currentDateTime.date}</p>
-                    <p className="text-[10px] text-[#64748b] font-mono mt-0.5">{currentDateTime.time}</p>
+                    <p className="text-[12px] font-bold text-[#334155]">{currentDateTime.date}</p>
+                    <p className="text-[11px] text-[#64748b] font-mono mt-0.5">{currentDateTime.time}</p>
                   </div>
                 </div>
+                <AnimatedHero className="dash-welcome-hero hidden md:block" tilt={false} />
               </div>
             </div>
 
@@ -1332,9 +1156,223 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. "Database Connections" Main Table Card (matching crop_table.png) */}
+            {/* 3. Insights Row: Quick Actions, Database Usage (donut), Performance (area chart) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              {/* Card 1: Quick Actions */}
+              <div className="dash-card dash-card-hover p-4 flex flex-col" style={{ '--delay': '0.15s' }}>
+                <h4 className="dash-card-title mb-3">Quick Actions</h4>
+                <div className="grid grid-cols-2 gap-2.5 flex-1">
+                  {QUICK_ACTIONS.map((action) => (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={() => {
+                        if (action.key === 'new-connection') navigate('/connections');
+                        else if (action.key === 'audit-logs') setActiveTab('audit-logs');
+                        else if (action.key === 'users') setActiveTab('users');
+                        else navigate('/profile?tab=settings');
+                      }}
+                      className="dash-action"
+                      style={{ '--c': action.color }}
+                    >
+                      <span className="dash-action-icon">
+                        <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          {action.icon}
+                        </svg>
+                      </span>
+                      <span className="dash-action-text">
+                        <span className="dash-action-title truncate">{action.title}</span>
+                        <span className="dash-action-desc truncate">{action.desc}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card 2: Database Usage */}
+              <div className="dash-card dash-card-hover p-4 flex flex-col" style={{ '--delay': '0.22s' }}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="dash-card-title">Database Usage</h4>
+                  <span className="text-[10px] font-medium text-slate-400">
+                    {performanceOverview.updatedAt
+                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Live snapshot'}
+                  </span>
+                </div>
+
+                {performanceLoading && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">Loading database sizes...</p>
+                ) : performanceError && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
+                ) : databaseUsageTypes.length === 0 ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">
+                    No recent database size metrics available.
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-[124px] w-[124px] shrink-0">
+                      <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 124, height: 124 }}>
+                        <PieChart>
+                          <Pie
+                            data={databaseUsageTypes}
+                            dataKey="sizeMB"
+                            nameKey="label"
+                            innerRadius={40}
+                            outerRadius={58}
+                            paddingAngle={databaseUsageTypes.length > 1 ? 3 : 0}
+                            cornerRadius={4}
+                            stroke="none"
+                            animationDuration={900}
+                          >
+                            {databaseUsageTypes.map((engine) => (
+                              <Cell key={engine.type} fill={engine.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            content={({ active, payload }) => (active && payload?.length ? (
+                              <div className="dash-tooltip">
+                                <b>{payload[0].name}</b> · {formatDatabaseSize(payload[0].value)}
+                              </div>
+                            ) : null)}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span className="text-[9px] font-medium text-slate-400 leading-none">Total</span>
+                        <span className="mt-1 text-[12px] font-extrabold text-slate-900 leading-none">{formatDatabaseSize(totalDatabaseSizeMB)}</span>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 flex-1 space-y-2">
+                      {databaseUsageTypes.map((engine) => {
+                        const share = totalDatabaseSizeMB > 0
+                          ? (engine.sizeMB / totalDatabaseSizeMB) * 100
+                          : 0;
+                        return (
+                          <div key={engine.type} className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: engine.color }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] font-semibold text-slate-700">
+                                  {engine.label}
+                                  <span className="ml-1 font-normal text-slate-400">({engine.connectionCount})</span>
+                                </span>
+                                <span className="shrink-0 text-[10px] font-bold text-slate-500">{share.toFixed(0)}%</span>
+                              </div>
+                              <span className="block text-[10px] text-slate-400">{formatDatabaseSize(engine.sizeMB)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Card 3: Performance Overview */}
+              <div className="dash-card dash-card-hover p-4 flex flex-col" style={{ '--delay': '0.29s' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="dash-card-title">Performance Overview</h4>
+                  <span className="text-[10px] font-medium text-slate-400">
+                    {performanceOverview.updatedAt
+                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Live monitoring'}
+                  </span>
+                </div>
+
+                {performanceLoading && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">Loading live performance metrics...</p>
+                ) : performanceError && !performanceOverview.updatedAt ? (
+                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
+                ) : currentPerformanceConnections.length === 0 ? (
+                  <p className="py-8 text-center text-[11px] text-slate-400">
+                    No recent monitoring data available.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2.5">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="dash-metric" style={{ '--c': '#2563eb' }}>
+                        <p className="text-[9.5px] font-medium leading-tight text-slate-500">Activity / sec</p>
+                        <p className="dash-metric-value mt-1 text-sm font-extrabold">
+                          {performanceTotals.queriesPerSecond.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="dash-metric" style={{ '--c': '#059669' }}>
+                        <p className="text-[9.5px] font-medium leading-tight text-slate-500">Active connections</p>
+                        <p className="dash-metric-value mt-1 text-sm font-extrabold">
+                          {performanceTotals.activeConnections.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="dash-metric" style={{ '--c': '#d97706' }}>
+                        <p className="text-[9.5px] font-medium leading-tight text-slate-500">Slow queries</p>
+                        <p className="dash-metric-value mt-1 text-sm font-extrabold">
+                          {performanceTotals.slowQueries.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <p className="text-[10px] font-medium text-slate-400">Activity rate · last hour</p>
+                        <p className="text-[10px] text-slate-500">
+                          Monitored <b className="text-slate-800">{currentPerformanceConnections.length} / {performanceOverview.connections.length}</b>
+                          {performanceError && <span className="ml-1 text-amber-600">· refresh delayed</span>}
+                        </p>
+                      </div>
+                      {performanceChartData.length > 0 ? (
+                        <div className="h-[78px]" role="img" aria-label="Database activity rate over the last hour">
+                          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 300, height: 78 }}>
+                            <AreaChart data={performanceChartData} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+                              <defs>
+                                <linearGradient id="dashQpsFill" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#2563eb" stopOpacity={0.35} />
+                                  <stop offset="100%" stopColor="#10d9a0" stopOpacity={0.02} />
+                                </linearGradient>
+                                <linearGradient id="dashQpsStroke" x1="0" y1="0" x2="1" y2="0">
+                                  <stop offset="0%" stopColor="#10c98f" />
+                                  <stop offset="100%" stopColor="#2563eb" />
+                                </linearGradient>
+                              </defs>
+                              <XAxis dataKey="time" hide />
+                              <YAxis hide domain={[0, 'auto']} />
+                              <Tooltip
+                                cursor={{ stroke: '#94a3b8', strokeDasharray: '3 3' }}
+                                content={({ active, payload, label }) => (active && payload?.length ? (
+                                  <div className="dash-tooltip">
+                                    <div className="opacity-70">{label}</div>
+                                    <b>{payload[0].value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b> ops/sec
+                                  </div>
+                                ) : null)}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="qps"
+                                stroke="url(#dashQpsStroke)"
+                                strokeWidth={2.5}
+                                fill="url(#dashQpsFill)"
+                                dot={performanceChartData.length === 1}
+                                activeDot={{ r: 4, fill: '#2563eb', stroke: '#fff', strokeWidth: 2 }}
+                                animationDuration={900}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="flex h-[78px] items-center text-[10px] text-slate-400">
+                          Activity history is being collected.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            </>
+            )}
+
+            {/* 4. "Database Connections" Main Table Card (matching crop_table.png) */}
             {activeTab === 'connections' && (
-              <div className="bg-white border border-gray-150 rounded-2xl p-5 shadow-xs">
+              <div className="dash-card p-5" style={{ '--delay': '0.1s' }}>
                 {/* Header Row: Title + New Connection Button */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                   <div className="flex items-center gap-2.5">
@@ -1466,8 +1504,8 @@ export default function Dashboard() {
                 </div>
 
                 {/* Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                <div className="dash-table-scroll">
+                  <table className="dash-table w-full text-left text-xs">
                     <thead className="bg-[#f8fafc] text-[#64748b] font-bold uppercase text-[10px] tracking-wider">
                       <tr>
                         <th className="px-3.5 py-2.5 rounded-l-lg">#</th>
@@ -1498,7 +1536,7 @@ export default function Dashboard() {
                         };
 
                         return (
-                          <tr key={conn._id || idx} className="hover:bg-gray-50/80 transition-colors">
+                          <tr key={conn._id || idx} className="dash-row">
                             {/* # */}
                             <td className="px-3.5 py-3 text-slate-400 font-bold text-[11px]">
                               {idx + 1}
@@ -1558,7 +1596,7 @@ export default function Dashboard() {
                                     : 'bg-[#fee2e2] text-[#b91c1c]'
                                 }`}
                               >
-                                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-[#15803d]' : 'bg-[#b91c1c]'}`}></span>
+                                {isConnected ? <span className="dash-live-dot text-[#15803d]"></span> : <span className="w-1.5 h-1.5 rounded-full bg-[#b91c1c]"></span>}
                                 {isConnected ? 'Connected' : 'Inactive'}
                               </span>
                             </td>
@@ -1620,194 +1658,37 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Audit Logs View (if tab activated) */}
-            {activeTab === 'audit-logs' && (
-              <div className="bg-white border border-gray-150 rounded-2xl p-5 shadow-xs">
-                <SystemAuditLogsPanel />
-              </div>
+            {/* Audit Logs view */}
+            {activeTab === 'audit-logs' && <SystemAuditLogsPanel />}
+
+            {/* System Users & Roles view */}
+            {activeTab === 'users' && (
+              <SystemUsersPanel
+                users={users}
+                loading={usersLoading}
+                currentUser={user}
+                onCreate={() => {
+                  setCreateForm({
+                    name: '',
+                    email: '',
+                    password: '',
+                    role: 'developer',
+                    accessMode: 'read',
+                    permissions: {
+                      userManagement: false,
+                      backup: false, binlog: true, monitor: true, query: true,
+                      history: true, slowQuery: true, auditLogs: true, connections: false
+                    }
+                  });
+                  setCreateError('');
+                  setCreateUserModalOpen(true);
+                }}
+                onEdit={handleOpenEditUser}
+                onDelete={deleteUserInDashboard}
+                onRoleChange={updateUserRoleInDashboard}
+                onNotify={showToast}
+              />
             )}
-
-            {/* 4. Bottom Row: 3 Widget Cards (matching crop_bottom.png) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-              {/* Card 1: Quick Actions */}
-              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-                <h4 className="text-xs font-bold text-[#0f172a] tracking-tight mb-2.5">Quick Actions</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => navigate('/connections')}
-                    className="p-2 bg-[#0ea5e9] hover:bg-sky-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                  >
-                    <span>+</span>
-                    <span>New Connection</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('audit-logs')}
-                    className="p-2 bg-[#8b5cf6] hover:bg-purple-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                  >
-                    <span>📜</span>
-                    <span>View Audit Logs</span>
-                  </button>
-
-                  <button
-                    onClick={() => navigate('/permissions')}
-                    className="p-2 bg-[#10b981] hover:bg-emerald-600 text-white rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
-                  >
-                    <span>👥</span>
-                    <span>Manage Users</span>
-                  </button>
-
-                  <button
-                    onClick={() => navigate('/profile')}
-                    className="p-2 bg-white hover:bg-gray-50 border border-gray-200 text-slate-700 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>⚙️</span>
-                    <span>Settings</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Card 2: Database Usage */}
-              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Database Usage</h4>
-                  <span className="text-[9px] font-medium text-slate-400">
-                    {performanceOverview.updatedAt
-                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Live snapshot'}
-                  </span>
-                </div>
-
-                {performanceLoading && !performanceOverview.updatedAt ? (
-                  <p className="py-8 text-center text-[11px] text-slate-400">Loading database sizes...</p>
-                ) : performanceError && !performanceOverview.updatedAt ? (
-                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
-                ) : databaseUsageTypes.length === 0 ? (
-                  <p className="py-8 text-center text-[11px] text-slate-400">
-                    No recent database size metrics available.
-                  </p>
-                ) : (
-                  <div>
-                    <div className="mb-2 flex items-baseline justify-between border-b border-slate-100 pb-2">
-                      <span className="text-[10px] font-medium text-slate-500">Total measured storage</span>
-                      <span className="text-sm font-black text-slate-900">{formatDatabaseSize(totalDatabaseSizeMB)}</span>
-                    </div>
-                    <div className="space-y-2.5">
-                      {databaseUsageTypes.map((engine) => {
-                        const share = totalDatabaseSizeMB > 0
-                          ? (engine.sizeMB / totalDatabaseSizeMB) * 100
-                          : 0;
-                        return (
-                          <div key={engine.type} className="flex items-center gap-2">
-                            {renderEngineIcon(engine.type, 'sm')}
-                            <div className="min-w-0 flex-1">
-                              <div className="mb-1 flex items-center justify-between gap-2">
-                                <span className="truncate text-[10px] font-semibold text-slate-700">
-                                  {engine.label}
-                                  <span className="ml-1 font-normal text-slate-400">({engine.connectionCount})</span>
-                                </span>
-                                <span className="shrink-0 text-[10px] font-bold text-slate-700">
-                                  {formatDatabaseSize(engine.sizeMB)}
-                                </span>
-                              </div>
-                              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${share}%`, backgroundColor: engine.color }}
-                                />
-                              </div>
-                            </div>
-                            <span className="w-9 shrink-0 text-right text-[9px] font-semibold text-slate-400">
-                              {share.toFixed(0)}%
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Card 3: Performance Overview */}
-              <div className="bg-white border border-gray-150 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="text-xs font-bold text-[#0f172a] tracking-tight">Performance Overview</h4>
-                  <span className="text-[9px] font-medium text-slate-400">
-                    {performanceOverview.updatedAt
-                      ? `Updated ${new Date(performanceOverview.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Live monitoring'}
-                  </span>
-                </div>
-
-                {performanceLoading && !performanceOverview.updatedAt ? (
-                  <p className="py-8 text-center text-[11px] text-slate-400">Loading live performance metrics...</p>
-                ) : performanceError && !performanceOverview.updatedAt ? (
-                  <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
-                ) : currentPerformanceConnections.length === 0 ? (
-                  <p className="py-8 text-center text-[11px] text-slate-400">
-                    No recent monitoring data available.
-                  </p>
-                ) : (
-                  <div className="mt-2 space-y-3">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="rounded-lg bg-blue-50/70 px-2.5 py-2">
-                        <p className="text-[9px] font-medium leading-tight text-slate-500">Activity / sec</p>
-                        <p className="mt-1 text-sm font-black text-blue-700">
-                          {performanceTotals.queriesPerSecond.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-emerald-50/70 px-2.5 py-2">
-                        <p className="text-[9px] font-medium leading-tight text-slate-500">Active connections</p>
-                        <p className="mt-1 text-sm font-black text-emerald-700">
-                          {performanceTotals.activeConnections.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-amber-50/70 px-2.5 py-2">
-                        <p className="text-[9px] font-medium leading-tight text-slate-500">Slow queries</p>
-                        <p className="mt-1 text-sm font-black text-amber-700">
-                          {performanceTotals.slowQueries.toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="mb-1 text-[9px] font-medium text-slate-400">Activity rate · last hour</p>
-                        {performanceLinePoints ? (
-                          <svg className="h-10 w-full overflow-visible" viewBox="0 0 100 36" preserveAspectRatio="none" role="img" aria-label="Database activity rate over the last hour">
-                            <polyline
-                              points={performanceLinePoints}
-                              fill="none"
-                              stroke="#2563eb"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              vectorEffect="non-scaling-stroke"
-                            />
-                            {performanceChartPoints.length === 1 && (
-                              <circle cx="50" cy={Number(performanceLinePoints.split(',')[1])} r="2" fill="#2563eb" />
-                            )}
-                          </svg>
-                        ) : (
-                          <div className="flex h-10 items-center text-[10px] text-slate-400">
-                            Activity history is being collected.
-                          </div>
-                        )}
-                      </div>
-                      <div className="shrink-0 border-l border-slate-100 pl-3 text-right">
-                        <p className="text-[9px] text-slate-500">Monitored</p>
-                        <p className="mt-0.5 text-xs font-bold text-slate-800">
-                          {currentPerformanceConnections.length} / {performanceOverview.connections.length}
-                        </p>
-                        {performanceError && (
-                          <p className="mt-0.5 text-[8px] text-amber-600">Refresh delayed</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -1815,6 +1696,339 @@ export default function Dashboard() {
       {/* ========================================================
           MODALS
       ======================================================== */}
+
+      {/* Create User Modal */}
+      {createUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+          <div className="bg-white rounded-2xl w-[80vw] max-w-4xl border border-gray-200 shadow-xl overflow-hidden animate-fadeIn">
+            <div className="px-6 py-4 border-b border-gray-150 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>➕</span> Create New User Account
+              </h3>
+              <button
+                onClick={() => setCreateUserModalOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUserSubmit} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              {createError && (
+                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {createError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. John Doe"
+                  value={createForm.name}
+                  onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. john@example.com"
+                  value={createForm.email}
+                  onChange={e => setCreateForm({ ...createForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Minimum 6 characters"
+                  value={createForm.password}
+                  onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  System Role
+                </label>
+                <select
+                  value={createForm.role}
+                  onChange={e => setCreateForm({ ...createForm, role: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900 font-semibold cursor-pointer"
+                >
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {createForm.role === 'developer' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Developer Query Permission
+                    </label>
+                    <select
+                      value={createForm.accessMode || 'read'}
+                      onChange={e => setCreateForm({ ...createForm, accessMode: e.target.value })}
+                      className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900 font-semibold cursor-pointer"
+                    >
+                      <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
+                      <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-150 space-y-3">
+                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                      <input
+                        type="checkbox"
+                        checked={!!createForm.permissions?.userManagement}
+                        onChange={e => setCreateForm({
+                          ...createForm,
+                          permissions: {
+                            ...createForm.permissions,
+                            userManagement: e.target.checked
+                          }
+                        })}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 block">👤 Database Users Manager Access</span>
+                        <span className="text-[11px] text-gray-500 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                      <input
+                        type="checkbox"
+                        checked={!!createForm.permissions?.connections}
+                        onChange={e => setCreateForm({
+                          ...createForm,
+                          permissions: {
+                            ...createForm.permissions,
+                            connections: e.target.checked
+                          }
+                        })}
+                        className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 block">⚙️ Add &amp; Manage Connections</span>
+                        <span className="text-[11px] text-gray-500 block">Allows developer to add, edit, and delete database connections</span>
+                      </div>
+                    </label>
+
+                    <ConnectionSchemaSelector
+                      value={createForm.allowedConnections || []}
+                      onChange={allowedConnections => setCreateForm({ ...createForm, allowedConnections })}
+                      role={createForm.role}
+                      defaultAccessMode={createForm.accessMode || 'read'}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-gray-150">
+                <button
+                  type="button"
+                  onClick={() => setCreateUserModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  style={{ backgroundColor: '#0d9da4' }}
+                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {createLoading ? 'Creating...' : 'Create Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editUserModalUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs text-left">
+          <div className="bg-white rounded-2xl w-[80vw] max-w-4xl border border-gray-200 shadow-xl overflow-hidden animate-fadeIn">
+            <div className="px-6 py-4 border-b border-gray-150 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <span>✏️</span> Edit User: {editUserModalUser.name}
+                </h3>
+                <p className="text-xs text-gray-500 font-mono mt-0.5">{editUserModalUser.email}</p>
+              </div>
+              <button
+                onClick={() => setEditUserModalUser(null)}
+                className="text-gray-400 hover:text-gray-700 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+              {editError && (
+                <div className="bg-red-50 text-red-600 text-xs px-4 py-2.5 rounded-lg border border-red-200">
+                  ❌ {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.name}
+                  onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Reset Password <span className="text-[10px] text-gray-400 font-normal">(Leave blank to keep current)</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter new password"
+                  value={editForm.password}
+                  onChange={e => setEditForm({ ...editForm, password: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Account Role
+                </label>
+                <select
+                  value={editForm.role}
+                  onChange={e => setEditForm({ ...editForm, role: e.target.value })}
+                  className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900 font-semibold cursor-pointer"
+                >
+                  <option value="developer">Developer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {editForm.role === 'developer' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Developer Query Permission
+                  </label>
+                  <select
+                    value={editForm.accessMode}
+                    onChange={e => setEditForm({ ...editForm, accessMode: e.target.value })}
+                    className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4] bg-white text-gray-900 font-semibold cursor-pointer"
+                  >
+                    <option value="read">🔒 Read-Only Access (SELECT, SHOW, FIND)</option>
+                    <option value="readwrite">⚡ Read & Write Access (SELECT, INSERT, UPDATE, DELETE)</option>
+                  </select>
+                </div>
+              )}
+
+              {editForm.role !== 'admin' && (
+                <div className="pt-2 border-t border-gray-150 space-y-3">
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!editForm.permissions?.userManagement}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        permissions: {
+                          ...(editForm.permissions || {}),
+                          userManagement: e.target.checked
+                        }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 block">👤 Database Users Manager Access</span>
+                      <span className="text-[11px] text-gray-500 block">Allows developer to manage database connection users (MySQL, MongoDB, PostgreSQL)</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 bg-gray-50/50 cursor-pointer hover:bg-gray-50 transition">
+                    <input
+                      type="checkbox"
+                      checked={!!editForm.permissions?.connections}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        permissions: {
+                          ...(editForm.permissions || {}),
+                          connections: e.target.checked
+                        }
+                      })}
+                      className="rounded border-gray-300 text-teal-600 focus:ring-teal-500 w-4 h-4 accent-teal-600"
+                    />
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 block">⚙️ Add &amp; Manage Connections</span>
+                      <span className="text-[11px] text-gray-500 block">Allows developer to add, edit, and delete database connections</span>
+                    </div>
+                  </label>
+
+                  <ConnectionSchemaSelector
+                    value={editForm.allowedConnections || []}
+                    onChange={allowedConnections => setEditForm({ ...editForm, allowedConnections })}
+                    role={editForm.role}
+                    defaultAccessMode={editForm.accessMode || 'read'}
+                  />
+                </div>
+              )}
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-gray-150">
+                <button
+                  type="button"
+                  onClick={() => setEditUserModalUser(null)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 text-xs font-bold rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  style={{ backgroundColor: '#0d9da4' }}
+                  className="px-5 py-2 text-white text-xs font-bold rounded-lg hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+                >
+                  {editLoading ? 'Saving...' : 'Save User Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 1. Edit Connection Modal */}
       {editConnectionModalConn && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">

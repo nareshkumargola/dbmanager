@@ -4,6 +4,11 @@ import { useLocation } from 'react-router-dom';
 import API from '../api/axios';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
+import EditorThemeMenu from '../components/EditorThemeMenu';
+import CopyButtonContent from '../components/CopyButtonContent';
+import useEditorAppearance from '../hooks/useEditorAppearance';
+import { copyToClipboard } from '../utils/clipboard';
+import './ConnectionDashboard.css';
 
 export default function QueryEditor() {
   const { user } = useAuth();
@@ -149,6 +154,19 @@ function QueryEditorContent({ user, location }) {
   const highlightRef = useRef(null);
   const lineCounterRef = useRef(null);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Query editor appearance (shared with the connection Query Editor)
+  const appearance = useEditorAppearance();
+  const { editorTheme, editorFontSize, editorStyleVars } = appearance;
+
+  // Copy button: the tick shows for 2 seconds; a new object per click restarts the timer
+  const [copyTick, setCopyTick] = useState(null);
+  const copiedQueryText = Boolean(copyTick);
+  useEffect(() => {
+    if (!copyTick) return undefined;
+    const timer = setTimeout(() => setCopyTick(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copyTick]);
 
   // Autocomplete suggestions state
   const [suggestions, setSuggestions] = useState([]);
@@ -914,6 +932,40 @@ function QueryEditorContent({ user, location }) {
   };
 
   // Keyboard shortcut — Ctrl+Enter se query run / Auto-complete handles
+  const handleCopyQueryText = async () => {
+    const textarea = textareaRef.current;
+    const selected = textarea ? query.substring(textarea.selectionStart, textarea.selectionEnd).trim() : '';
+    const textToCopy = selected || query;
+    if (!textToCopy.trim()) {
+      setError('Nothing to copy — the editor is empty.');
+      return;
+    }
+    if (await copyToClipboard(textToCopy)) setCopyTick({});
+    else setError('Could not copy to the clipboard.');
+  };
+
+  // Ctrl+/ comments or uncomments the selected lines (the current line if nothing is selected)
+  const toggleLineComment = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { selectionStart, selectionEnd } = textarea;
+    const blockStart = query.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextBreak = query.indexOf('\n', selectionEnd);
+    const blockEnd = nextBreak === -1 ? query.length : nextBreak;
+    const lines = query.slice(blockStart, blockEnd).split('\n');
+    const commentMark = connectionType === 'mongodb' ? '//' : '--';
+    const allCommented = lines.every((line) => !line.trim() || line.trimStart().startsWith(commentMark));
+    const updated = lines.map((line) => {
+      if (!line.trim()) return line;
+      if (!allCommented) return `${commentMark} ${line}`;
+      return line.replace(new RegExp(`^(\\s*)${commentMark}\\s?`), '$1');
+    }).join('\n');
+    setQuery(query.slice(0, blockStart) + updated + query.slice(blockEnd));
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(blockStart, blockStart + updated.length);
+    });
+  };
   const handleKeyDown = (e) => {
     if (showSuggestions && suggestions.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -938,6 +990,11 @@ function QueryEditorContent({ user, location }) {
       }
     }
 
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      e.preventDefault();
+      toggleLineComment();
+      return;
+    }
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
       runQuery(false);
@@ -948,7 +1005,7 @@ function QueryEditorContent({ user, location }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-left">
+    <div className="cd-ws min-h-screen bg-[#f4f7fb] dark:bg-[#0b0f19] text-left">
 
       {/* Navbar */}
       <Navbar backTo="/dashboard" backText="Dashboard" />
@@ -1014,7 +1071,7 @@ function QueryEditorContent({ user, location }) {
 
         {/* 1. SINGLE CONNECTION SELECTOR */}
         {executionMode === 'single' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 flex flex-wrap items-end gap-4 shadow-sm text-left animate-fadeIn">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-5 mb-6 flex flex-wrap items-end gap-4 shadow-sm text-left animate-fadeIn">
             <div className="flex-1 min-w-[200px]">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                 Select Connection
@@ -1086,7 +1143,7 @@ function QueryEditorContent({ user, location }) {
 
         {/* 2. MULTI-CONNECTION & MULTI-DATABASE DISPATCHER PANEL */}
         {executionMode === 'batch' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm text-left animate-fadeIn">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm text-left animate-fadeIn">
             <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-gray-150 gap-3 mb-4">
               <div>
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -1308,7 +1365,7 @@ function QueryEditorContent({ user, location }) {
 
         {/* CSV Import Wizard Panel */}
         {showImportWizard && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 shadow-sm animate-fadeIn text-left">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-6 mb-6 shadow-sm animate-fadeIn text-left">
             <div className="flex items-center justify-between border-b border-gray-150 pb-3 mb-4">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span>📂</span> CSV / Excel Data Import Wizard
@@ -1412,89 +1469,86 @@ function QueryEditorContent({ user, location }) {
           </div>
         )}
 
-        {/* Query tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
-          {queryTabs.map(tab => (
-            <div
-              key={tab.id}
-              onClick={() => {
-                setActiveQueryTabId(tab.id);
-                setResults([]);
-                setColumns([]);
-                setError('');
-                setMessage('');
-                setBatchResults(null);
-              }}
-              onDoubleClick={() => renameQueryTab(tab)}
-              title="Double-click to rename this query tab"
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x cursor-pointer shrink-0 ${
-                tab.id === activeQueryTabId
-                  ? 'bg-white text-gray-900 border-gray-200'
-                  : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              <span>{tab.id === activeQueryTabId ? '●' : '📝'}</span>
-              <span>{tab.name}</span>
-              {queryTabs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(event) => removeQueryTab(tab.id, event)}
-                  className="w-4 h-4 rounded-full hover:bg-gray-200 text-gray-400 hover:text-gray-800 cursor-pointer"
-                  title="Close query tab"
-                >
-                  ×
+        {/* Query editor: same layout as the connection Query Editor tab */}
+        <div className={isExpanded ? 'fixed inset-4 z-50 overflow-y-auto rounded-2xl bg-[#f4f7fb] dark:bg-[#0b0f19] p-4 shadow-2xl' : ''}>
+          <div className="cd-qe-bar select-none">
+            {/* Tabs list & add button */}
+            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {queryTabs.map(tab => (
+                  <div
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveQueryTabId(tab.id);
+                      setResults([]);
+                      setColumns([]);
+                      setError('');
+                      setMessage('');
+                      setBatchResults(null);
+                    }}
+                    className={`cd-qe-tab ${tab.id === activeQueryTabId ? 'is-active' : ''}`}
+                  >
+                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" />
+                    </svg>
+                    <span className="whitespace-nowrap" title="Double-click to rename this tab" onDoubleClick={() => renameQueryTab(tab)}>
+                      {tab.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => { event.stopPropagation(); renameQueryTab(tab); }}
+                      className="cd-qe-tab-btn"
+                      title="Rename tab"
+                      aria-label={`Rename ${tab.name}`}
+                    >
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z" />
+                      </svg>
+                    </button>
+                    {queryTabs.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(event) => removeQueryTab(tab.id, event)}
+                        className="cd-qe-tab-btn"
+                        title="Close tab"
+                        aria-label={`Close ${tab.name}`}
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addQueryTab} title="Open new query tab" aria-label="Open new query tab" className="cd-qe-icon-btn shrink-0">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Tools */}
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              <button type="button" onClick={formatSQLQuery} disabled={!query.trim()} title="Beautify / format SQL" className="cd-qe-tool">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M4 6h16M4 12h10M4 18h13" />
+                </svg>
+                Beautify
+              </button>
+              {(executionMode === 'single'
+                ? connectionType && connectionType !== 'mongodb'
+                : (() => {
+                  const selectedTypes = selectedConnIds.map(id => connections.find(conn => conn._id === id)?.type);
+                  return selectedTypes.length > 0 && new Set(selectedTypes).size === 1 && selectedTypes[0] !== 'mongodb';
+                })()) && (
+                <button type="button" onClick={runExplain} disabled={!query.trim() || loading} title="Explain query execution plan" className="cd-qe-tool">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35" />
+                  </svg>
+                  Explain
                 </button>
               )}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addQueryTab}
-            title="Open a new query tab"
-            className="w-7 h-7 mb-1 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 cursor-pointer"
-          >
-            +
-          </button>
-        </div>
-
-        {/* Query Box */}
-        <div className={`bg-white rounded-xl border border-gray-200 p-6 mb-4 ${
-          isExpanded ? 'fixed inset-4 z-50 overflow-y-auto shadow-2xl' : ''
-        }`}>
-
-          {/* Query Toolbar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3 mb-4">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => runQuery(false)}
-                disabled={loading || !query.trim()}
-                title="Execute Selection or Current Statement (Ctrl+Enter)"
-                className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-              >
-                <span>⚡</span> Run Selection
-              </button>
-              <button
-                type="button"
-                onClick={() => runQuery(true)}
-                disabled={loading || !query.trim()}
-                title="Execute Entire Script"
-                className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold rounded-lg transition flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-              >
-                <span>📜</span> Run All
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={formatSQLQuery}
-                disabled={!query.trim()}
-                title="Format SQL query"
-                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
-              >
-                🧹 Beautify
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1503,267 +1557,223 @@ function QueryEditorContent({ user, location }) {
                 }}
                 disabled={!query.trim()}
                 title="Save script to your library"
-                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
+                className="cd-qe-tool"
               >
-                💾 Save Script
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" /><path d="M17 21v-8H7v8M7 3v5h8" />
+                </svg>
+                Save
               </button>
-              <button
-                type="button"
-                onClick={() => setShowSavedQueriesModal(true)}
-                title="Open saved scripts library"
-                className="px-2.5 py-1.5 border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                📁 Saved Scripts ({savedQueries.length})
+              <button type="button" onClick={() => setShowSavedQueriesModal(true)} title="Open saved scripts" className="cd-qe-tool">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                </svg>
+                Scripts
+                <span className="cd-qe-count">{savedQueries.length}</span>
               </button>
-              {(executionMode === 'single'
-                ? connectionType && connectionType !== 'mongodb'
-                : (() => {
-                  const selectedTypes = selectedConnIds.map(id => connections.find(conn => conn._id === id)?.type);
-                  return selectedTypes.length > 0 && new Set(selectedTypes).size === 1 && selectedTypes[0] !== 'mongodb';
-                })()) && (
-                <button
-                  type="button"
-                  onClick={runExplain}
-                  disabled={!query.trim() || loading}
-                  title="Explain query execution plan"
-                  className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-teal-700 rounded-lg text-xs font-bold disabled:opacity-50 cursor-pointer"
-                >
-                  🔍 Explain Plan
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setShowHistory(previous => !previous)}
-                title="Toggle query history"
-                className={`px-2.5 py-1.5 border rounded-lg text-xs font-bold cursor-pointer ${
-                  showHistory ? 'bg-teal-600 border-teal-600 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
+                title="Toggle query history panel"
+                className={`cd-qe-tool ${showHistory ? 'is-active' : ''}`}
               >
-                📜 History
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+                </svg>
+                History
               </button>
-              <button
-                type="button"
-                onClick={() => setIsExpanded(!isExpanded)}
-                title={isExpanded ? 'Exit fullscreen editor' : 'Open fullscreen editor'}
-                className="px-2.5 py-1.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                {isExpanded ? '↙️ Exit Fullscreen' : '↗️ Fullscreen'}
-              </button>
+              <EditorThemeMenu appearance={appearance} />
             </div>
           </div>
 
-          {showHistory && (
-            <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-700">Recent Queries ({queryHistory.length})</h3>
-                {queryHistory.length > 0 && (
+          <div className="flex gap-4 items-start relative mb-4">
+            {/* Main editor box */}
+            <div className="flex-1 min-w-0">
+              <div className="cd-panel p-4 relative">
+                <div className={`sql-editor-container ${isExpanded ? 'h-[calc(100vh-210px)]' : 'h-[320px]'}`} style={editorStyleVars}>
                   <button
                     type="button"
-                    onClick={() => {
-                      setQueryHistory([]);
-                      try {
-                        localStorage.removeItem(`dms_query_history_${user?.id || user?._id || 'guest'}`);
-                      } catch (err) {
-                        console.error('Failed to clear query history:', err);
-                      }
-                    }}
-                    className="text-[11px] font-semibold text-red-600 hover:underline cursor-pointer"
+                    onClick={handleCopyQueryText}
+                    title="Copy query text to clipboard"
+                    aria-live="polite"
+                    className={`cd-copy-btn ${copiedQueryText ? 'is-copied' : ''}`}
                   >
-                    Clear history
+                    <CopyButtonContent copied={copiedQueryText} />
                   </button>
+
+                  {/* Gutter Line Numbers */}
+                  <div ref={lineCounterRef} className="sql-editor-gutter">
+                    {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
+                      <div key={i} className="sql-editor-line-number">{i + 1}</div>
+                    ))}
+                  </div>
+
+                  <textarea
+                    ref={textareaRef}
+                    value={query}
+                    onChange={(e) => handleTextareaChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onScroll={handleScroll}
+                    placeholder="Write your query — press Ctrl+Enter to run, Ctrl+/ to comment/uncomment"
+                    className="sql-editor-textarea"
+                  />
+                  <pre
+                    ref={highlightRef}
+                    className="sql-editor-highlight"
+                    dangerouslySetInnerHTML={{
+                      __html: highlightSQL(query) + '\n'
+                    }}
+                  />
+
+                  {/* Floating Suggestions List */}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div
+                      className="absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden w-64 max-h-48 overflow-y-auto"
+                      style={{
+                        bottom: '10px',
+                        left: '60px',
+                      }}
+                    >
+                      <div className="bg-gray-50 dark:bg-gray-900 px-2 py-1 border-b border-gray-150 dark:border-gray-750 flex justify-between items-center text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                        <span>Suggestions</span>
+                        <span>Tab/Enter</span>
+                      </div>
+                      {suggestions.map((s, idx) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => selectSuggestion(s)}
+                          className={`w-full px-3 py-1.5 text-left text-xs font-semibold font-mono flex items-center justify-between transition-colors border-none ${
+                            selectedSuggestionIdx === idx
+                              ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400'
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                          }`}
+                        >
+                          <span>{s}</span>
+                          <span className="text-[9px] text-gray-400 font-normal">
+                            {SQL_KEYWORDS.includes(s) ? 'keyword' : 'table'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Run bar */}
+                <div className="mt-3 flex items-center justify-between flex-wrap gap-3 select-none">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => runQuery(false)}
+                      disabled={loading || !query.trim()}
+                      title="Run the selected text or the statement at the cursor (Ctrl+Enter)"
+                      className="cd-btn !h-10 !px-5"
+                    >
+                      {loading ? (
+                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M7 4.5v15l12-7.5z" />
+                        </svg>
+                      )}
+                      {loading
+                        ? (executionMode === 'batch' ? `Running (${totalBatchTargetsCount} targets)...` : 'Running...')
+                        : (executionMode === 'batch' ? `Run Batch (${totalBatchTargetsCount} Target${totalBatchTargetsCount !== 1 ? 's' : ''})` : 'Run Query')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => runQuery(true)}
+                      disabled={loading || !query.trim()}
+                      title="Run the entire script"
+                      className="cd-btn-outline !h-10"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+                      </svg>
+                      Run All
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[12px] text-slate-500">
+                    <span className="hidden md:inline-flex items-center gap-1.5">
+                      <kbd className="cd-kbd">Ctrl</kbd>+<kbd className="cd-kbd">Enter</kbd> run
+                      <span className="mx-1 text-slate-300">|</span>
+                      <kbd className="cd-kbd">Ctrl</kbd>+<kbd className="cd-kbd">/</kbd> comment
+                    </span>
+                    <span className="hidden lg:inline text-slate-300">|</span>
+                    <span className="hidden lg:inline">{editorTheme.label} · {editorFontSize}px</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsExpanded(!isExpanded)}
+                      title={isExpanded ? 'Exit fullscreen editor' : 'Open the editor in fullscreen'}
+                      className="cd-btn-outline"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d={isExpanded ? 'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7' : 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7'} />
+                      </svg>
+                      {isExpanded ? 'Exit Fullscreen' : 'Fullscreen'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Collapsible history drawer */}
+            {showHistory && (
+              <div className="cd-panel w-80 p-4 flex flex-col h-[412px] shrink-0">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3 select-none">
+                  <h4 className="text-[13px] font-bold text-slate-900">Query History ({queryHistory.length})</h4>
+                  <div className="flex items-center gap-1">
+                    {queryHistory.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQueryHistory([]);
+                          try {
+                            localStorage.removeItem(`dms_query_history_${user?.id || user?._id || 'guest'}`);
+                          } catch (err) {
+                            console.error('Failed to clear query history:', err);
+                          }
+                        }}
+                        className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setShowHistory(false)} className="cd-icon-btn !w-7 !h-7" aria-label="Close history">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                </div>
+                {queryHistory.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-center p-4">
+                    <p className="text-[12px] text-slate-400">Queries you run will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                    {queryHistory.map((item, index) => (
+                      <button
+                        key={`${item.timestamp}-${index}`}
+                        type="button"
+                        onClick={() => {
+                          setQuery(item.query);
+                          setResults([]);
+                          setColumns([]);
+                          setBatchResults(null);
+                          setError('');
+                          setShowHistory(false);
+                        }}
+                        title="Click to restore query"
+                        className="block w-full p-2.5 rounded-lg bg-slate-50 border border-slate-100 hover:border-teal-500 text-left cursor-pointer transition"
+                      >
+                        <code className="text-[11px] text-slate-700 font-mono line-clamp-2 block break-all whitespace-pre-wrap">{item.query}</code>
+                        <span className="mt-1 block text-[10px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-              {queryHistory.length === 0 ? (
-                <p className="text-xs text-gray-500">Queries you run will appear here.</p>
-              ) : (
-                <div className="max-h-48 space-y-1 overflow-y-auto">
-                  {queryHistory.map((item, index) => (
-                    <button
-                      key={`${item.timestamp}-${index}`}
-                      type="button"
-                      onClick={() => {
-                        setQuery(item.query);
-                        setResults([]);
-                        setColumns([]);
-                        setBatchResults(null);
-                        setError('');
-                        setShowHistory(false);
-                      }}
-                      className="block w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-left hover:border-teal-400 cursor-pointer"
-                    >
-                      <code className="block truncate text-[11px] text-gray-700">{item.query}</code>
-                      <span className="text-[10px] text-gray-400">{new Date(item.timestamp).toLocaleString()}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Scoped styles for overlay syntax highlighter */}
-          <style>{`
-            .sql-editor-container {
-              position: relative;
-              width: 100%;
-              border: 1px solid #d1d5db;
-              border-radius: 12px;
-              background-color: #f9fafb;
-              overflow: hidden;
-              box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
-            }
-            .sql-editor-gutter {
-              position: absolute;
-              top: 0;
-              left: 0;
-              width: 44px;
-              height: 100%;
-              padding: 16px 0;
-              background-color: #f3f4f6;
-              border-right: 1px solid #e5e7eb;
-              color: #9ca3af;
-              text-align: right;
-              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-              font-size: 14px;
-              line-height: 1.5;
-              overflow: hidden;
-              user-select: none;
-              box-sizing: border-box;
-              z-index: 3;
-            }
-            .sql-editor-line-number {
-              padding-right: 10px;
-              height: 21px; /* 14px * 1.5 = 21px */
-            }
-            .sql-editor-textarea,
-            .sql-editor-highlight {
-              position: absolute !important;
-              top: 0;
-              left: 44px !important;
-              width: calc(100% - 44px) !important;
-              height: 100%;
-              margin: 0;
-              padding: 16px;
-              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-              font-size: 14px;
-              line-height: 1.5;
-              white-space: pre !important;
-              word-wrap: normal !important;
-              box-sizing: border-box;
-              border: none;
-              outline: none;
-              text-align: left;
-              overflow: auto !important;
-            }
-            .sql-editor-textarea {
-              color: transparent !important;
-              -webkit-text-fill-color: transparent !important;
-              background: transparent !important;
-              caret-color: #0d9da4 !important;
-              z-index: 2;
-              resize: none;
-            }
-            .sql-editor-highlight {
-              z-index: 1;
-              color: #1f2937;
-              background: transparent !important;
-              pointer-events: none;
-              -ms-overflow-style: none;
-              scrollbar-width: none;
-            }
-            .sql-editor-highlight::-webkit-scrollbar {
-              display: none;
-            }
-            .sql-keyword {
-              color: #0d9da4 !important;
-              font-weight: bold !important;
-            }
-            .sql-string {
-              color: #d97706 !important;
-            }
-            .sql-number {
-              color: #4f46e5 !important;
-            }
-            .sql-comment {
-              color: #16a34a !important;
-              font-style: italic !important;
-            }
-          `}</style>
-
-          {/* Textarea Overlay Container */}
-          <div className={`sql-editor-container ${isExpanded ? 'h-[calc(100vh-190px)]' : 'h-[280px]'}`}>
-            {/* Gutter Line Numbers */}
-            <div ref={lineCounterRef} className="sql-editor-gutter">
-              {Array.from({ length: query.split('\n').length || 1 }, (_, i) => (
-                <div key={i} className="sql-editor-line-number">{i + 1}</div>
-              ))}
-            </div>
-            
-            <textarea
-              ref={textareaRef}
-              value={query}
-              onChange={(e) => handleTextareaChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onScroll={handleScroll}
-              placeholder="SQL query yahan likho..."
-              className="sql-editor-textarea"
-            />
-            <pre
-              ref={highlightRef}
-              className="sql-editor-highlight"
-              dangerouslySetInnerHTML={{
-                __html: highlightSQL(query) + '\n'
-              }}
-            />
-
-            {/* Floating Suggestions List */}
-            {showSuggestions && suggestions.length > 0 && (
-              <div 
-                className="absolute bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden w-64 max-h-48 overflow-y-auto"
-                style={{
-                  bottom: '10px',
-                  left: '60px',
-                }}
-              >
-                <div className="bg-gray-50 dark:bg-gray-900 px-2 py-1 border-b border-gray-150 dark:border-gray-750 flex justify-between items-center text-[9px] font-bold text-gray-400 uppercase tracking-wider">
-                  <span>Suggestions</span>
-                  <span>Tab/Enter</span>
-                </div>
-                {suggestions.map((s, idx) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => selectSuggestion(s)}
-                    className={`w-full px-3 py-1.5 text-left text-xs font-semibold font-mono flex items-center justify-between transition-colors border-none ${
-                      selectedSuggestionIdx === idx
-                        ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    <span>{s}</span>
-                    <span className="text-[9px] text-gray-400 font-normal">
-                      {SQL_KEYWORDS.includes(s) ? 'keyword' : 'table'}
-                    </span>
-                  </button>
-                ))}
-              </div>
             )}
-          </div>
-
-          {/* Run Button */}
-          <div className="flex items-center justify-between mt-3">
-            <p className="text-xs text-gray-400">
-              {/* ⚠️ DROP, TRUNCATE, ALTER, CREATE allowed nahi hai */}
-              please use quiry and manage 
-            </p>
-            <button
-              onClick={() => runQuery(false)}
-              disabled={loading || !query.trim()}
-              className="px-6 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-700 transition disabled:opacity-60 font-semibold flex items-center gap-2 cursor-pointer"
-            >
-              {loading 
-                ? (executionMode === 'batch' ? `Running (${totalBatchTargetsCount} targets)...` : 'Running...') 
-                : (executionMode === 'batch' ? `▶ Run Batch (${totalBatchTargetsCount} Target${totalBatchTargetsCount !== 1 ? 's' : ''})` : '▶ Run Query')}
-            </button>
           </div>
         </div>
 
@@ -1811,7 +1821,7 @@ function QueryEditorContent({ user, location }) {
 
         {/* MULTI-DATABASE BATCH EXECUTION RESULTS DASHBOARD */}
         {executionMode === 'batch' && batchResults && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6 text-left animate-fadeIn">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6 text-left animate-fadeIn">
             {/* Top Metrics Row */}
             <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 text-white flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -2061,7 +2071,7 @@ function QueryEditorContent({ user, location }) {
 
         {/* Results Table (Single Mode) */}
         {executionMode === 'single' && results.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm animate-fadeIn">
+          <div className="cd-panel bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm animate-fadeIn">
             <div className="px-4 py-3 border-b border-gray-100">
               <p className="text-sm font-medium text-gray-700">
                 Results — {results.length} rows

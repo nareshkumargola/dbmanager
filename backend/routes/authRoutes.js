@@ -13,6 +13,9 @@ router.post('/reset-password/:token', authController.resetPassword);
 
 // Protected route — sirf logged in user
 router.get('/profile', protect, authController.getProfile);
+router.put('/profile', protect, authController.updateProfile);
+router.put('/change-password', protect, authController.changePassword);
+router.put('/preferences', protect, authController.updatePreferences);
 router.post('/logout', protect, authController.logout);
 
 module.exports = router;
