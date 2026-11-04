@@ -13,30 +13,27 @@ export default function DatabaseSelector() {
   const [connectionType, setConnectionType] = useState('');
 
   useEffect(() => {
-    fetchDatabases();
-  }, [id]);
+    let active = true;
+    const loadDatabases = async () => {
+      try {
+        const connRes = await API.get('/connections');
+        const conn = connRes.data.connections.find(c => c._id === id);
+        if (active && conn) {
+          setConnectionName(conn.name);
+          setConnectionType(conn.type);
+        }
 
-  const fetchDatabases = async () => {
-    try {
-      setLoading(true);
-
-      // Connection info lo
-      const connRes = await API.get('/connections');
-      const conn = connRes.data.connections.find(c => c._id === id);
-      if (conn) {
-        setConnectionName(conn.name);
-        setConnectionType(conn.type);
+        const res = await API.get(`/connections/${id}/databases`);
+        if (active) setDatabases(res.data.databases);
+      } catch {
+        if (active) setError('Failed to load databases');
+      } finally {
+        if (active) setLoading(false);
       }
-
-      // Databases list lo
-      const res = await API.get(`/connections/${id}/databases`);
-      setDatabases(res.data.databases);
-    } catch (err) {
-      setError('Failed to load databases');
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    loadDatabases();
+    return () => { active = false; };
+  }, [id]);
 
   const getTypeIcon = (type) => {
     if (type === 'mysql') return '🐬';

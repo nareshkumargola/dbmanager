@@ -34,8 +34,8 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
     }
   };
 
-  const fetchDatabasesForConnection = async (connId) => {
-    if (dbMap[connId] || loadingDbs[connId]) return;
+  const fetchDatabasesForConnection = async (connId, { refresh = false } = {}) => {
+    if (loadingDbs[connId] || (dbMap[connId] && !refresh)) return;
     try {
       setLoadingDbs(prev => ({ ...prev, [connId]: true }));
       setErrorMap(prev => ({ ...prev, [connId]: null }));
@@ -247,7 +247,7 @@ export default function ConnectionSchemaSelector({ value = [], onChange, role = 
                 {isConnEnabled && (
                   <button
                     type="button"
-                    onClick={() => fetchDatabasesForConnection(conn._id)}
+                    onClick={() => fetchDatabasesForConnection(conn._id, { refresh: true })}
                     className="text-[10px] px-2.5 py-1 font-bold text-teal-700 dark:text-teal-300 bg-teal-100/70 dark:bg-teal-900/50 hover:bg-teal-200 rounded-lg transition"
                   >
                     {isFetchingDbs ? '🌀 Fetching...' : dbMap[conn._id] ? '🔄 Refresh DBs' : '🔍 Load DBs'}

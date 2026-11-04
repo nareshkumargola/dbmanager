@@ -4,7 +4,6 @@ import { NavbarProvider } from './context/NavbarContext';
 import Layout from './components/Layout';
 
 import Login from './pages/Login';
-import Signup from './pages/Signup';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -37,20 +36,6 @@ function ProtectedRoute({ children }) {
     );
   }
   if (!user) return <Navigate to="/login" />;
-  return children;
-}
-
-// Admin Only Route
-function AdminRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500 text-sm">Loading...</p>
-      </div>
-    );
-  }
-  if (!user || user.role !== 'admin') return <Navigate to="/dashboard" replace />;
   return children;
 }
 

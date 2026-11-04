@@ -18,9 +18,11 @@ const SORTS = {
 };
 
 const accessLabel = (u) => (u.accessMode === 'readwrite' ? 'Read & Write' : 'Read Only');
+// "Pending" means MFA is due at their next sign-in
+const mfaLabel = (u) => (u.mfa?.enabled ? 'On' : u.mfa?.optedOut ? 'Off' : 'Pending');
 const connectionsLabel = (u) => (u.role === 'admin' ? 'All' : String(u.allowedConnections?.length || 0));
 
-export default function SystemUsersPanel({ users, loading, currentUser, onCreate, onEdit, onDelete, onRoleChange, onNotify }) {
+export default function SystemUsersPanel({ users, loading, currentUser, onCreate, onEdit, onDelete, onRoleChange, onResetMfa, onNotify }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -57,7 +59,7 @@ export default function SystemUsersPanel({ users, loading, currentUser, onCreate
   const exportUsers = () => {
     downloadCsv(
       `system_users_${toLocalDateInput(new Date())}.csv`,
-      ['Name', 'Email', 'Job Title', 'Role', 'Access Mode', 'Permissions Enabled', 'Connections', 'Last Sign-in', 'Created'],
+      ['Name', 'Email', 'Job Title', 'Role', 'Access Mode', 'Permissions Enabled', 'Connections', 'MFA', 'Last Sign-in', 'Created'],
       visibleUsers.map((u) => [
         u.name,
         u.email,
@@ -66,6 +68,7 @@ export default function SystemUsersPanel({ users, loading, currentUser, onCreate
         u.role === 'admin' ? 'Full' : accessLabel(u),
         `${enabledPermissionCount(u)}/${PERMISSIONS.length}`,
         connectionsLabel(u),
+        mfaLabel(u),
         u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '',
         u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '',
       ])
@@ -169,6 +172,7 @@ export default function SystemUsersPanel({ users, loading, currentUser, onCreate
                     <th>Role</th>
                     <th>Access</th>
                     <th>Connections</th>
+                    <th>MFA</th>
                     <th>Last sign-in</th>
                     <th>Joined</th>
                     <th className="!text-right">Actions</th>
@@ -221,6 +225,9 @@ export default function SystemUsersPanel({ users, loading, currentUser, onCreate
                           </div>
                         </td>
                         <td className="tabular-nums">{connectionsLabel(u)}</td>
+                        <td>
+                          <span className={`ap-tag ${u.mfa?.enabled ? '' : u.mfa?.optedOut ? 'is-neutral' : 'is-warn'}`}>{mfaLabel(u)}</span>
+                        </td>
                         <td className="whitespace-nowrap text-slate-600" title={u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'No sign-in recorded yet'}>
                           {timeAgo(u.lastLoginAt)}
                         </td>
@@ -237,6 +244,11 @@ export default function SystemUsersPanel({ users, loading, currentUser, onCreate
                                 <button type="button" onClick={() => onEdit(u)} className="ap-icon-btn" title="Edit details and password" aria-label={`Edit ${u.name}`}>
                                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z" /></svg>
                                 </button>
+                                {u.mfa?.enabled && (
+                                  <button type="button" onClick={() => onResetMfa(u._id, u.name)} className="ap-icon-btn" title="Reset MFA" aria-label={`Reset MFA of ${u.name}`}>
+                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 017.4-2" /></svg>
+                                  </button>
+                                )}
                                 <button type="button" onClick={() => onDelete(u._id, u.name)} className="ap-icon-btn is-danger" title="Delete user" aria-label={`Delete ${u.name}`}>
                                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3" /></svg>
                                 </button>

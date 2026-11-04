@@ -4,6 +4,7 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
+import MfaSettings from '../components/MfaSettings';
 import useTheme from '../hooks/useTheme';
 import './Profile.css';
 
@@ -202,12 +203,14 @@ export default function Profile() {
     setSavingPassword(true);
     setPasswordMessage(null);
     try {
-      await API.put('/auth/change-password', {
+      const res = await API.put('/auth/change-password', {
         currentPassword: passwords.current,
         newPassword: passwords.next,
       });
+      // The old token stopped working with this change
+      localStorage.setItem('token', res.data.token);
       setPasswords({ current: '', next: '', confirm: '' });
-      setPasswordMessage({ type: 'success', text: 'Password changed. Use your new password next time you sign in.' });
+      setPasswordMessage({ type: 'success', text: 'Password changed. Any other devices have been signed out.' });
     } catch (err) {
       setPasswordMessage({ type: 'error', text: err.response?.data?.message || 'Could not change your password.' });
     } finally {
@@ -566,6 +569,7 @@ export default function Profile() {
 
           <section id="pf-section-security" className="pf-section">
             {sectionHeading('security')}
+            <div className="mb-5"><MfaSettings /></div>
           <div className="grid gap-5 lg:grid-cols-5">
             <form onSubmit={handleChangePassword} className="pf-card p-5 sm:p-6 lg:col-span-3">
               <h3 className="pf-card-title">Change password</h3>

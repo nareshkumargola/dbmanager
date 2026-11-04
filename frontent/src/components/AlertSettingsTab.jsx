@@ -11,36 +11,35 @@ export default function AlertSettingsTab({ connectionId }) {
   const [threshold, setThreshold] = useState(90);
   const [slowQueryThreshold, setSlowQueryThreshold] = useState(100);
   const [loading, setLoading] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchSettings();
-  }, [connectionId]);
-
-  const fetchSettings = async () => {
-    setFetching(true);
-    setError('');
-    try {
-      // Fetch connection details to pre-populate settings
-      const res = await API.get('/connections');
-      const conn = res.data.connections.find(c => c._id === connectionId);
-      if (conn) {
-        setEnabled(conn.alertsEnabled || false);
-        setEmail(conn.alertEmail || (user && user.email) || '');
-        setSlackWebhook(conn.alertSlackWebhook || '');
-        setDiscordWebhook(conn.alertDiscordWebhook || '');
-        setThreshold(conn.alertThreshold || 90);
-        setSlowQueryThreshold(conn.slowQueryThreshold || 100);
+    let active = true;
+    const loadSettings = async () => {
+      try {
+        const res = await API.get('/connections');
+        const conn = res.data.connections.find(c => c._id === connectionId);
+        if (active && conn) {
+          setError('');
+          setEnabled(conn.alertsEnabled || false);
+          setEmail(conn.alertEmail || user?.email || '');
+          setSlackWebhook(conn.alertSlackWebhook || '');
+          setDiscordWebhook(conn.alertDiscordWebhook || '');
+          setThreshold(conn.alertThreshold || 90);
+          setSlowQueryThreshold(conn.slowQueryThreshold || 100);
+        }
+      } catch (e) {
+        console.error(e);
+        if (active) setError('Failed to load alert configurations.');
+      } finally {
+        if (active) setFetching(false);
       }
-    } catch (e) {
-      console.error(e);
-      setError('Failed to load alert configurations.');
-    } finally {
-      setFetching(false);
-    }
-  };
+    };
+    loadSettings();
+    return () => { active = false; };
+  }, [connectionId, user]);
 
   const handleSave = async (e) => {
     e.preventDefault();

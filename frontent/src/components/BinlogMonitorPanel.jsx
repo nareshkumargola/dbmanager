@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import API from '../api/axios';
 import { socket } from '../api/socket';
 import { useAuth } from '../context/AuthContext';
 import {
-  AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
 export default function BinlogMonitorPanel({ connectionId, database, connectionType }) {
@@ -16,14 +15,13 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [monitoring, setMonitoring] = useState(false);
-  const [error, setError] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  const [, setError] = useState('');
   const [pauseFeed, setPauseFeed] = useState(false);
   
   // Coordinates & Mode (from backend poller)
-  const [mode, setMode] = useState(''); // 'real' or 'simulation'
-  const [logFile, setLogFile] = useState('');
-  const [position, setPosition] = useState(null);
+  const [, setMode] = useState('');
+  const [, setLogFile] = useState('');
+  const [, setPosition] = useState(null);
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,14 +116,14 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     monitoringRef.current = monitoring;
   }, [monitoring]);
 
-  const stopMonitoring = async () => {
+  const stopMonitoring = useCallback(async () => {
     try {
       setMonitoring(false);
       socket.emit('stop_binlog_monitoring', { connectionId });
     } catch (err) {
       console.error('Failed to stop live monitoring:', err);
     }
-  };
+  }, [connectionId]);
 
   const isFirstMountRef = useRef(true);
 
@@ -136,7 +134,31 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     }
     setCurrentPage(1);
     stopMonitoring();
-  }, [filterType, timeFilter, searchQuery, database]);
+  }, [filterType, timeFilter, searchQuery, database, stopMonitoring]);
+
+  const fetchAuditHistory = useCallback(async () => {
+    try {
+      setHistoryLoading(true);
+      const params = {
+        filterType,
+        searchQuery: searchQuery || '',
+        database: database || ''
+      };
+      if (timeFilter !== 'ALL') {
+        params.timeFilter = timeFilter;
+        if (timeFilter === 'custom') {
+          if (customStartDate) params.startDate = customStartDate;
+          if (customEndDate) params.endDate = customEndDate;
+        }
+      }
+      const res = await API.get(`/connections/${connectionId}/binlog/history`, { params });
+      setAuditHistory(res.data.history || []);
+    } catch (err) {
+      console.error('History fetch failed:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [connectionId, filterType, searchQuery, database, timeFilter, customStartDate, customEndDate]);
 
   // Connect socket, fetch audit history and start monitoring automatically
   useEffect(() => {
@@ -208,7 +230,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
       socket.disconnect();
       setMonitoring(false);
     };
-  }, [connectionId, authUser]);
+  }, [connectionId, authUser, fetchAuditHistory]);
 
   useEffect(() => {
     const fetchConnectionSettings = async () => {
@@ -232,44 +254,9 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     fetchConnectionSettings();
   }, [connectionId]);
 
-  const fetchAuditHistory = async () => {
-    try {
-      setHistoryLoading(true);
-      const params = {
-        filterType,
-        searchQuery: searchQuery || '',
-        database: database || ''
-      };
-      if (timeFilter !== 'ALL') {
-        params.timeFilter = timeFilter;
-        if (timeFilter === 'custom') {
-          if (customStartDate) params.startDate = customStartDate;
-          if (customEndDate) params.endDate = customEndDate;
-        }
-      }
-      const res = await API.get(`/connections/${connectionId}/binlog/history`, { params });
-      setAuditHistory(res.data.history || []);
-    } catch (err) {
-      console.error('History fetch failed:', err);
-    } finally {
-      setHistoryLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchAuditHistory();
-  }, [timeFilter, customStartDate, customEndDate, connectionId, filterType, searchQuery, database]);
-
-  const deleteMongoAuditLogs = async () => {
-    if (!window.confirm('Are you sure you want to clear the database query history?')) return;
-    try {
-      setError('');
-      await API.delete(`/connections/${connectionId}/binlog/history`);
-      setAuditHistory([]);
-    } catch (err) {
-      setError('Failed to clear database query history.');
-    }
-  };
+  }, [fetchAuditHistory]);
 
   const toggleDiffPanel = (id) => {
     setExpandedDiffs(prev => ({ ...prev, [id]: !prev[id] }));
@@ -313,7 +300,7 @@ export default function BinlogMonitorPanel({ connectionId, database, connectionT
     
     sortedEvents.forEach(event => {
       const date = new Date(event.timestamp);
-      let key = '';
+      let key;
       
       if (timeFilter === '1month' || timeFilter === '3month') {
         key = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });

@@ -29,32 +29,76 @@ export default function SlowQueryPanel({ connectionId }) {
   const [databasesList, setDatabasesList] = useState([]);
 
   useEffect(() => {
-    fetchAvailableConnections();
+    let active = true;
+    API.get('/connections')
+      .then(res => { if (active) setConnectionsList(res.data.connections || []); })
+      .catch(err => console.error('Failed to load connections list:', err.message));
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
-    if (selectedConnection && selectedConnection !== 'all') {
-      fetchDatabasesForConnection(selectedConnection);
-    } else {
-      setDatabasesList([]);
-      setSelectedDatabase('all');
+    if (!selectedConnection || selectedConnection === 'all') {
+      return undefined;
     }
+    let active = true;
+    API.get(`/connections/${selectedConnection}/databases`)
+      .then(res => { if (active) setDatabasesList(res.data.databases || []); })
+      .catch(err => {
+        console.error('Failed to load databases for connection:', err.message);
+        if (active) setDatabasesList([]);
+      });
+    return () => { active = false; };
   }, [selectedConnection]);
 
   useEffect(() => {
-    if (connectionId) {
-      fetchConnectionSettings();
-    }
+    if (!connectionId) return undefined;
+    let active = true;
+    API.get(`/connections/${connectionId}`)
+      .then(res => {
+        if (active && res.data.connection?.slowQueryThreshold !== undefined) {
+          setThreshold(res.data.connection.slowQueryThreshold);
+        }
+      })
+      .catch(err => console.error('Failed to load connection settings:', err.message));
+    return () => { active = false; };
   }, [connectionId]);
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+    const loadQueries = async () => {
+      const minMs = parseInt(threshold) || 0;
+      const connParam = selectedConnection || 'all';
+      const dbParam = selectedDatabase || 'all';
+      const liveMode = activeTab === 'live';
+      const url = liveMode
+        ? `/slow-queries/live?connectionId=${connParam}&database=${dbParam}&minMs=${minMs}`
+        : `/slow-queries?connectionId=${connParam}&database=${dbParam}&minMs=${minMs}`;
+      try {
+        const res = await API.get(url);
+        if (!active) return;
+        if (liveMode) {
+          setLiveProcesses(res.data.processes || []);
+        } else {
+          setQueries(res.data.queries || []);
+          setStats(res.data.stats || null);
+        }
+        setError('');
+      } catch {
+        if (active) setError(liveMode ? 'Failed to fetch live server processes.' : 'Failed to load slow query history.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadQueries();
+    return () => { active = false; };
   }, [connectionId, selectedConnection, selectedDatabase, threshold, activeTab]);
 
   useEffect(() => {
     if (autoRefresh && activeTab === 'live') {
       refreshTimerRef.current = setInterval(() => {
-        fetchLiveProcesses(false);
+        API.get(`/slow-queries/live?connectionId=${selectedConnection || 'all'}&database=${selectedDatabase || 'all'}&minMs=${parseInt(threshold) || 0}`)
+          .then(res => setLiveProcesses(res.data.processes || []))
+          .catch(() => setError('Failed to fetch live server processes.'));
       }, 3000);
     } else {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
@@ -63,36 +107,6 @@ export default function SlowQueryPanel({ connectionId }) {
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
     };
   }, [autoRefresh, activeTab, connectionId, selectedConnection, selectedDatabase, threshold]);
-
-  const fetchAvailableConnections = async () => {
-    try {
-      const res = await API.get('/connections');
-      setConnectionsList(res.data.connections || []);
-    } catch (err) {
-      console.error('Failed to load connections list:', err.message);
-    }
-  };
-
-  const fetchDatabasesForConnection = async (connId) => {
-    try {
-      const res = await API.get(`/connections/${connId}/databases`);
-      setDatabasesList(res.data.databases || []);
-    } catch (err) {
-      console.error('Failed to load databases for connection:', err.message);
-      setDatabasesList([]);
-    }
-  };
-
-  const fetchConnectionSettings = async () => {
-    try {
-      const res = await API.get(`/connections/${connectionId}`);
-      if (res.data.connection && res.data.connection.slowQueryThreshold !== undefined) {
-        setThreshold(res.data.connection.slowQueryThreshold);
-      }
-    } catch (err) {
-      console.error('Failed to load connection settings:', err.message);
-    }
-  };
 
   const saveThresholdSetting = async () => {
     if (!connectionId) return;
@@ -108,14 +122,6 @@ export default function SlowQueryPanel({ connectionId }) {
     }
   };
 
-  const fetchData = () => {
-    if (activeTab === 'live') {
-      fetchLiveProcesses(true);
-    } else {
-      fetchSlowQueries();
-    }
-  };
-
   const fetchLiveProcesses = async (showLoading = true) => {
     try {
       if (showLoading) setLoading(true);
@@ -125,7 +131,7 @@ export default function SlowQueryPanel({ connectionId }) {
       const dbParam = selectedDatabase || 'all';
       const res = await API.get(`/slow-queries/live?connectionId=${connParam}&database=${dbParam}&minMs=${minMs}`);
       setLiveProcesses(res.data.processes || []);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch live server processes.');
     } finally {
       if (showLoading) setLoading(false);
@@ -143,18 +149,20 @@ export default function SlowQueryPanel({ connectionId }) {
       const res = await API.get(url);
       setQueries(res.data.queries || []);
       setStats(res.data.stats || null);
-    } catch (err) {
+    } catch {
       setError('Failed to load slow query history.');
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchData = () => activeTab === 'live' ? fetchLiveProcesses(true) : fetchSlowQueries();
+
   const deleteOne = async (id) => {
     try {
       await API.delete(`/slow-queries/${id}`);
       setQueries(queries.filter(q => q._id !== id));
-    } catch (err) {
+    } catch {
       setError('Failed to delete query.');
     }
   };
@@ -166,7 +174,7 @@ export default function SlowQueryPanel({ connectionId }) {
       await API.delete(url);
       setQueries([]);
       setStats({ totalSlowQueries: 0, avgExecutionTime: 0, slowestTime: 0 });
-    } catch (err) {
+    } catch {
       setError('Failed to clear history.');
     }
   };
@@ -208,13 +216,13 @@ export default function SlowQueryPanel({ connectionId }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `slow_queries_history_${Date.now()}.csv`);
+    link.setAttribute('download', 'slow_queries_history.csv');
     document.body.appendChild(link);
     link.click();
     link.remove();
   };
 
-  const useQuery = (queryText) => {
+  const openQuery = (queryText) => {
     if (!queryText) return;
     if (location.pathname.startsWith('/connections/')) {
       navigate(location.pathname, { state: { openTab: 'query', query: queryText, openNewTab: true } });
@@ -234,7 +242,7 @@ export default function SlowQueryPanel({ connectionId }) {
       } else {
         fallbackCopy(text, id);
       }
-    } catch (e) {
+    } catch {
       fallbackCopy(text, id);
     }
   };
@@ -284,11 +292,6 @@ export default function SlowQueryPanel({ connectionId }) {
   const [historyRowsPerPage, setHistoryRowsPerPage] = useState(10);
 
   // Reset pages on search or filter change
-  useEffect(() => {
-    setLivePage(1);
-    setHistoryPage(1);
-  }, [searchQuery, threshold, selectedConnection, selectedDatabase]);
-
   // Filter live processes
   const filteredLiveProcesses = liveProcesses.filter(p => {
     if (!searchQuery.trim()) return true;
@@ -352,6 +355,9 @@ export default function SlowQueryPanel({ connectionId }) {
                   onChange={(e) => {
                     setSelectedConnection(e.target.value);
                     setSelectedDatabase('all');
+                    setDatabasesList([]);
+                    setLivePage(1);
+                    setHistoryPage(1);
                   }}
                   className="px-2 py-1 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg outline-none focus:border-teal-500 cursor-pointer"
                 >
@@ -371,7 +377,11 @@ export default function SlowQueryPanel({ connectionId }) {
                 <span className="text-xs font-bold text-gray-600">🗄️ Database:</span>
                 <select
                   value={selectedDatabase}
-                  onChange={(e) => setSelectedDatabase(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedDatabase(e.target.value);
+                    setLivePage(1);
+                    setHistoryPage(1);
+                  }}
                   className="px-2 py-1 text-xs font-bold text-gray-800 bg-white border border-gray-300 rounded-lg outline-none focus:border-teal-500 cursor-pointer"
                 >
                   <option value="all">All Databases ({databasesList.length})</option>
@@ -390,7 +400,11 @@ export default function SlowQueryPanel({ connectionId }) {
                 min="0"
                 step="10"
                 value={threshold}
-                onChange={(e) => setThreshold(e.target.value)}
+                onChange={(e) => {
+                  setThreshold(e.target.value);
+                  setLivePage(1);
+                  setHistoryPage(1);
+                }}
                 className="w-24 px-2 py-1 text-xs font-mono font-bold text-teal-800 bg-white border border-gray-300 rounded-lg outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-400 text-center"
                 placeholder="100"
               />
@@ -467,7 +481,11 @@ export default function SlowQueryPanel({ connectionId }) {
               type="text"
               placeholder="🔍 Search user, host, query..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setLivePage(1);
+                setHistoryPage(1);
+              }}
               className="px-3 py-1.5 border border-gray-250 rounded-lg text-xs outline-none bg-white focus:border-teal-400 w-48 sm:w-60"
             />
           </div>
@@ -620,7 +638,7 @@ export default function SlowQueryPanel({ connectionId }) {
                                 {copiedId === p.Id ? '✓ Copied' : '📋 Copy'}
                               </button>
                               <button
-                                onClick={() => useQuery(p.Info)}
+                                onClick={() => openQuery(p.Info)}
                                 className="text-[10px] text-blue-600 hover:underline font-bold"
                               >
                                 ⚡ Open in Editor
@@ -770,7 +788,7 @@ export default function SlowQueryPanel({ connectionId }) {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => useQuery(item.query)}
+                            onClick={() => openQuery(item.query)}
                             className="px-2.5 py-1 bg-gray-900 text-white rounded text-[10px] font-bold hover:bg-gray-800 transition"
                           >
                             Open in Editor

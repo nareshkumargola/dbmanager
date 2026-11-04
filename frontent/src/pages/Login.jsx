@@ -4,6 +4,7 @@ import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import AnimatedHero from '../components/AnimatedHero';
 import useTheme from '../hooks/useTheme';
+import BackupCodes from '../components/BackupCodes';
 import './Login.css';
 
 const FEATURES = [
@@ -84,14 +85,16 @@ function Laurel({ flipped = false }) {
 export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
-  const [requiresOtp, setRequiresOtp] = useState(false);
+  // Set after a correct password when the account has MFA on
+  const [mfaToken, setMfaToken] = useState('');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-  const [userEmail, setUserEmail] = useState('');
-  const [timer, setTimer] = useState(60);
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  // First sign-in: the QR code to scan, then the finished login held back until codes are saved
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [finishedSetup, setFinishedSetup] = useState(null);
+  const [backupCode, setBackupCode] = useState('');
   const [error, setError] = useState('');
-  const [infoMsg, setInfoMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
 
   const inputRefs = useRef([]);
   const { login } = useAuth();
@@ -120,41 +123,25 @@ export default function Login() {
     navigate(userData?.preferences?.defaultLanding || '/dashboard');
   };
 
-  // Mask Email for privacy (e.g. vi*****@gmail.com)
-  const maskEmail = (email) => {
-    if (!email) return '';
-    const [name, domain] = email.split('@');
-    if (!domain) return email;
-    if (name.length <= 2) return `${name}***@${domain}`;
-    return `${name.slice(0, 2)}${'*'.repeat(Math.max(name.length - 2, 4))}@${domain}`;
-  };
-
-  // Timer countdown for OTP expiry
-  useEffect(() => {
-    let interval = null;
-    if (requiresOtp && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [requiresOtp, timer]);
-
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
   // Handle normal email/password login submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setInfoMsg('');
     setLoading(true);
     try {
       const res = await API.post('/auth/login', form);
-      if (res.data.requiresOtp) {
-        setRequiresOtp(true);
-        setUserEmail(res.data.email || form.email);
-        setTimer(60);
+      if (res.data.requiresMfaSetup) {
+        const setup = await API.post('/auth/mfa/login-setup', { mfaToken: res.data.mfaToken });
+        setMfaSetup(setup.data);
+        setMfaToken(res.data.mfaToken);
         setOtpDigits(['', '', '', '', '', '']);
+      } else if (res.data.requiresMfa) {
+        setMfaToken(res.data.mfaToken);
+        setOtpDigits(['', '', '', '', '', '']);
+        setBackupCode('');
+        setUseBackupCode(false);
       } else {
         finishLogin(res.data.user, res.data.token);
       }
@@ -217,45 +204,80 @@ export default function Login() {
     if (inputRefs.current[lastIdx]) inputRefs.current[lastIdx].focus();
   };
 
-  // Submit OTP Verification
-  const handleOtpSubmit = async (e) => {
-    e.preventDefault();
-    const fullOtp = otpDigits.join('');
-    if (fullOtp.length !== 6) {
-      setError('Please enter all 6 digits of the OTP code.');
-      return;
-    }
-
+  const backToPassword = () => {
+    setMfaToken('');
+    setForm((current) => ({ ...current, password: '' }));
+    setOtpDigits(['', '', '', '', '', '']);
+    setBackupCode('');
+    setUseBackupCode(false);
+    setMfaSetup(null);
     setError('');
-    setInfoMsg('');
+  };
+
+  // Second sign-in step: authenticator or backup code
+  const handleMfaSubmit = async (e) => {
+    e.preventDefault();
+    const code = useBackupCode ? backupCode.trim() : otpDigits.join('');
+    setError('');
     setLoading(true);
     try {
-      const res = await API.post('/auth/verify-otp', { email: userEmail, otp: fullOtp });
+      const res = await API.post('/auth/mfa/verify', { mfaToken, code });
       finishLogin(res.data.user, res.data.token);
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid or expired OTP code.');
+      const message = err.response?.data?.message || 'Could not verify the code. Please try again.';
+      if (err.response?.data?.sessionExpired) backToPassword();
+      setError(message);
+      setOtpDigits(['', '', '', '', '', '']);
+      setBackupCode('');
+      if (inputRefs.current[0]) inputRefs.current[0].focus();
     } finally {
       setLoading(false);
     }
   };
 
-  // Resend OTP
-  const handleResendOtp = async () => {
+  const handleSetupSubmit = async (e) => {
+    e.preventDefault();
     setError('');
-    setInfoMsg('');
-    setResending(true);
+    setLoading(true);
     try {
-      const res = await API.post('/auth/resend-otp', { email: userEmail });
-      setInfoMsg(res.data.message || 'New OTP sent to your email address!');
-      setTimer(60);
+      const res = await API.post('/auth/mfa/login-enable', { mfaToken, code: otpDigits.join('') });
+      setFinishedSetup(res.data);
+    } catch (err) {
+      const message = err.response?.data?.message || 'Could not verify the code. Please try again.';
+      if (err.response?.data?.sessionExpired) backToPassword();
+      setError(message);
       setOtpDigits(['', '', '', '', '', '']);
       if (inputRefs.current[0]) inputRefs.current[0].focus();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to resend OTP. Please try again.');
     } finally {
-      setResending(false);
+      setLoading(false);
     }
   };
+
+  const digitBoxes = (
+    <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+      {otpDigits.map((digit, idx) => (
+        <input
+          key={idx}
+          ref={(el) => (inputRefs.current[idx] = el)}
+          type="text"
+          inputMode="numeric"
+          aria-label={`Digit ${idx + 1}`}
+          autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+          maxLength={idx === 0 ? 6 : 1}
+          value={digit}
+          onChange={(e) => handleDigitChange(idx, e.target.value)}
+          onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+          onPaste={handleOtpPaste}
+          autoFocus={idx === 0}
+          className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-extrabold font-mono rounded-xl border outline-none transition-all ${
+            digit
+              ? 'border-[#0d9da4] bg-teal-50/40 text-[#0b7f86] ring-2 ring-teal-100'
+              : 'border-gray-200 bg-gray-50/60 text-gray-900 focus:border-[#0d9da4] focus:bg-white focus:ring-2 focus:ring-teal-100'
+          }`}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div className="login-page relative min-h-screen w-full overflow-hidden text-left">
@@ -342,7 +364,7 @@ export default function Login() {
 
           {/* Right: sign-in card */}
           <section className="w-full max-w-[450px] mx-auto lg:mx-0 lg:justify-self-end">
-      {!requiresOtp ? (
+      {!mfaToken ? (
         /* STEP 1: Sign In card */
         <div className="login-card w-full">
           <div className="flex items-center gap-3">
@@ -447,159 +469,117 @@ export default function Login() {
           </div>
           </div>
         </div>
-      ) : (
-        /* STEP 2: Beautiful Premium OTP Verification Card (Matching Screenshot UI with Application Colors) */
-        <div className="login-card w-full text-left">
-          {/* Card Top Brand Header */}
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-            <div className="flex items-center gap-2.5">
-              <img src={MARK_SRC} alt="" className="login-mark is-small" draggable="false" />
-              <img src={LOGO_SRC} className="h-5 w-auto object-contain" alt="Allatone" draggable="false" />
-              <span className="text-xs font-extrabold text-gray-900 font-mono tracking-tight">Allatone DMS</span>
-            </div>
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400 font-mono">
-              OTP VERIFICATION
-            </span>
-          </div>
-
-          {/* Shield Badge Icon */}
-          <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#0d9da4] mb-5 shadow-2xs">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
-
-          {/* Title & Subtitle */}
-          <h2 className="text-2xl font-black text-gray-900 mb-1 tracking-tight">
-            Enter your OTP
-          </h2>
-          <p className="text-xs text-gray-500 mb-6 font-medium leading-relaxed">
-            A 6-digit code was sent to <span className="font-bold text-gray-800 font-mono">{maskEmail(userEmail)}</span>
+      ) : finishedSetup ? (
+        /* First sign-in: backup codes, shown once before the app opens */
+        <div className="login-card login-card-scroll w-full text-left">
+          <h2 className="text-2xl font-bold login-ink mb-1 tracking-tight">MFA is on</h2>
+          <p className="text-[14px] login-muted mb-4">One last step before you continue.</p>
+          <BackupCodes
+            codes={finishedSetup.backupCodes}
+            doneLabel="Continue"
+            onDone={() => finishLogin(finishedSetup.user, finishedSetup.token)}
+          />
+        </div>
+      ) : mfaSetup ? (
+        /* First sign-in: set up the authenticator app */
+        <div className="login-card login-card-scroll w-full text-left">
+          <h2 className="text-2xl font-bold login-ink mb-1 tracking-tight">Secure your account</h2>
+          <p className="text-[14px] login-muted mb-4 leading-relaxed">
+            Two-step sign-in is required to continue. You will need an app such as Google Authenticator or Microsoft Authenticator.
           </p>
 
-          {infoMsg && (
-            <div className="bg-teal-50 border border-teal-200 text-teal-800 text-xs px-3.5 py-2.5 rounded-xl mb-5 font-semibold flex items-center gap-2">
-              <span>✉️</span> {infoMsg}
-            </div>
-          )}
-
           {error && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-5 font-semibold">
+            <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-4 font-semibold">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleOtpSubmit}>
-            {/* 6 Individual Digit Boxes */}
-            <div className="flex items-center justify-between gap-1.5 sm:gap-2 mb-6">
-              {otpDigits.map((digit, idx) => (
-                <input
-                  key={idx}
-                  ref={(el) => (inputRefs.current[idx] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleDigitChange(idx, e.target.value)}
-                  onKeyDown={(e) => handleDigitKeyDown(idx, e)}
-                  onPaste={handleOtpPaste}
-                  autoFocus={idx === 0}
-                  className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-extrabold font-mono rounded-xl border outline-none transition-all shadow-3xs ${
-                    digit
-                      ? 'border-[#0d9da4] bg-teal-50/40 text-[#0b7f86] ring-2 ring-teal-100'
-                      : 'border-gray-200 bg-gray-50/60 text-gray-900 focus:border-[#0d9da4] focus:bg-white focus:ring-2 focus:ring-teal-100'
-                  }`}
-                />
-              ))}
-            </div>
+          <p className="text-[13px] font-semibold login-ink mb-2">1. Scan this QR code in the app</p>
+          <img src={mfaSetup.qrCode} alt="QR code to scan with your authenticator app" className="login-setup-qr" width="150" height="150" />
+          <p className="mt-2 text-[12px] login-muted">Can't scan it? Enter this key by hand:</p>
+          <code className="login-setup-key">{mfaSetup.secret}</code>
 
-            {/* Timer & Resend OTP Row */}
-            <div className="flex items-center justify-between text-xs mb-6 px-1">
-              <div className="flex items-center gap-2 text-gray-500 font-medium">
-                <div className="relative w-6 h-6 flex items-center justify-center">
-                  <svg className="w-6 h-6 transform -rotate-90" viewBox="0 0 36 36">
-                    <path
-                      className="text-gray-200"
-                      strokeWidth="3"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <path
-                      className="text-[#0d9da4] transition-all duration-1000"
-                      strokeDasharray={`${(timer / 60) * 100}, 100`}
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      stroke="currentColor"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                  </svg>
-                  <span className="absolute text-[10px] font-bold text-gray-700">{timer}s</span>
-                </div>
-                <span>Code expires in</span>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleResendOtp}
-                disabled={timer > 0 || resending}
-                className={`font-bold transition-colors cursor-pointer ${
-                  timer > 0 || resending
-                    ? 'text-gray-300 cursor-not-allowed'
-                    : 'text-[#0b7f86] hover:text-[#0d9da4] hover:underline'
-                }`}
-              >
-                {resending ? 'Sending…' : 'Resend OTP'}
-              </button>
-            </div>
-
-            {/* Primary Action Button */}
+          <p className="mt-4 text-[13px] font-semibold login-ink mb-2">2. Enter the 6-digit code the app shows</p>
+          <form onSubmit={handleSetupSubmit}>
+            {digitBoxes}
             <button
               type="submit"
               disabled={loading || otpDigits.join('').length !== 6}
-              className="w-full py-3.5 px-4 rounded-xl text-white text-sm font-bold shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 mb-6"
-              style={{ backgroundColor: '#0d9da4' }}
+              className="login-btn mt-4 flex w-full items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
             >
-              {loading ? (
-                <span>Verifying OTP…</span>
-              ) : (
-                <>
-                  <span>Verify OTP</span>
-                  <span className="text-base">→</span>
-                </>
-              )}
+              {loading ? 'Verifying…' : 'Turn on and continue'}
+            </button>
+          </form>
+          <div className="mt-4 text-[14px] text-right">
+            <button type="button" onClick={backToPassword} className="font-medium login-muted hover:underline cursor-pointer">
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* STEP 2: Authenticator code */
+        <div className="login-card w-full text-left">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+            <img src={MARK_SRC} alt="" className="login-mark is-small" draggable="false" />
+            <img src={LOGO_SRC} className="h-5 w-auto object-contain" alt="Allatone" draggable="false" />
+          </div>
+
+          <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#0d9da4] mb-5">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+
+          <h2 className="text-2xl font-bold login-ink mb-1 tracking-tight">Two-step verification</h2>
+          <p className="text-[14px] login-muted mb-6 leading-relaxed">
+            {useBackupCode ? 'Enter one of your saved backup codes. Each code works once.' : 'Enter the 6-digit code from your authenticator app.'}
+          </p>
+
+          {error && (
+            <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-600 text-xs px-3.5 py-2.5 rounded-xl mb-5 font-semibold">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleMfaSubmit}>
+            {useBackupCode ? (
+              <label className="login-input-wrap mb-6">
+                <input
+                  type="text"
+                  aria-label="Backup code"
+                  placeholder="XXXXX-XXXXX"
+                  value={backupCode}
+                  onChange={(e) => setBackupCode(e.target.value)}
+                  autoComplete="off"
+                  autoFocus
+                  required
+                />
+              </label>
+            ) : (
+              <div className="mb-6">{digitBoxes}</div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading || (useBackupCode ? !backupCode.trim() : otpDigits.join('').length !== 6)}
+              className="login-btn flex w-full items-center justify-center gap-3 cursor-pointer disabled:opacity-60"
+            >
+              {loading ? 'Verifying…' : 'Verify and sign in'}
             </button>
 
-            {/* Divider SECURE LOGIN */}
-            <div className="relative flex py-1 items-center justify-center mb-5">
-              <div className="flex-grow border-t border-gray-150"></div>
-              <span className="shrink-0 px-3 text-[10px] font-extrabold uppercase tracking-widest text-gray-400 font-mono bg-white">
-                SECURE LOGIN
-              </span>
-              <div className="flex-grow border-t border-gray-150"></div>
-            </div>
-
-            {/* Bottom Info Box */}
-            <div className="login-otp-info bg-teal-50/60 border border-teal-100/80 rounded-2xl p-4 text-[11.5px] text-teal-900 flex items-start gap-2.5 leading-relaxed">
-              <span className="text-base shrink-0 text-[#0d9da4]">ⓘ</span>
-              <span>
-                Didn't receive a code? Check your spam folder or request a new one after the timer ends.
-              </span>
-            </div>
-
-            {/* Back to Login Link */}
-            <div className="text-center mt-5">
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[14px]">
               <button
                 type="button"
                 onClick={() => {
-                  setRequiresOtp(false);
+                  setUseBackupCode(!useBackupCode);
                   setError('');
-                  setInfoMsg('');
                 }}
-                className="text-xs text-gray-500 hover:text-gray-800 font-semibold cursor-pointer transition hover:underline"
+                className="font-medium login-link hover:underline cursor-pointer"
               >
-                ← Back to Login
+                {useBackupCode ? 'Use authenticator app' : 'Use a backup code'}
+              </button>
+              <button type="button" onClick={backToPassword} className="font-medium login-muted hover:underline cursor-pointer">
+                Back to sign in
               </button>
             </div>
           </form>

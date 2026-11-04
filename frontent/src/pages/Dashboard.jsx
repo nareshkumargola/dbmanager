@@ -91,7 +91,7 @@ export default function Dashboard() {
   // Filter States
   const [filterType, setFilterType] = useState('all');
   const [filterRole, setFilterRole] = useState('all');
-  const [filterUser, setFilterUser] = useState('all');
+  const [filterUser] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchConnText, setSearchConnText] = useState('');
 
@@ -150,6 +150,17 @@ export default function Dashboard() {
       fetchUsers();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to delete user.', 'error');
+    }
+  };
+
+  const resetUserMfa = async (id, name) => {
+    if (!window.confirm(`Reset MFA for ${name}? They will be able to sign in with only their password until they turn it on again.`)) return;
+    try {
+      await API.delete(`/users/${id}/mfa`);
+      showToast(`MFA was reset for ${name}.`);
+      fetchUsers();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Could not reset MFA.', 'error');
     }
   };
 
@@ -219,9 +230,13 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === 'users') {
-      fetchUsers();
-    }
+    if (activeTab !== 'users') return undefined;
+    let active = true;
+    API.get('/users')
+      .then(res => { if (active) setUsers(res.data.users || []); })
+      .catch(error => console.error('Failed to load users:', error))
+      .finally(() => { if (active) setUsersLoading(false); });
+    return () => { active = false; };
   }, [activeTab]);
 
   // Sidebar starts hidden unless the user turned on "open sidebar on start" in Settings
@@ -497,8 +512,13 @@ export default function Dashboard() {
       navigate('/login');
       return;
     }
-    fetchConnections();
-  }, [user]);
+    let active = true;
+    API.get('/connections')
+      .then(res => { if (active) setConnections(res.data.connections || []); })
+      .catch(error => console.error('Error fetching connections:', error))
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [user, navigate]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -552,7 +572,11 @@ export default function Dashboard() {
     setEditConnError('');
     setEditConnTestResult(null);
     try {
-      const res = await API.post('/connections/test', editConnForm);
+      const res = await API.post('/connections/test', {
+        ...editConnForm,
+        // The rows shown when there is no data have no saved connection
+        connectionId: editConnectionModalConn._id?.startsWith('mock-') ? undefined : editConnectionModalConn._id,
+      });
       setEditConnTestResult({ success: true, message: res.data.message || 'Connection successful!' });
     } catch (err) {
       setEditConnTestResult({ success: false, message: err.response?.data?.message || 'Connection test failed!' });
@@ -1686,6 +1710,7 @@ export default function Dashboard() {
                 onEdit={handleOpenEditUser}
                 onDelete={deleteUserInDashboard}
                 onRoleChange={updateUserRoleInDashboard}
+                onResetMfa={resetUserMfa}
                 onNotify={showToast}
               />
             )}

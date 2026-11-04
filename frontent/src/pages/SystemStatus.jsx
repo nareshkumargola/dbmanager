@@ -112,7 +112,7 @@ export default function SystemStatus() {
               { name: 'Gateway Tunnels API', desc: 'Handles client queries, database listing protocols.', status: 'Operational', uptime: '99.99%' },
               { name: 'Database Proxy Connection Tunnels', desc: 'Secure connection streams to remote databases.', status: 'Operational', uptime: '99.98%' },
               { name: 'System Auditing Logger System', desc: 'Encrypted storage for query history and admin changes.', status: 'Operational', uptime: '100.00%' },
-              { name: 'Developer User Management Engine', desc: 'Session tokens validation, account signups and roles.', status: 'Operational', uptime: '99.99%' }
+              { name: 'Developer User Management Engine', desc: 'Session tokens validation, accounts and roles.', status: 'Operational', uptime: '99.99%' }
             ].map(srv => (
               <div key={srv.name} className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition">
                 <div>

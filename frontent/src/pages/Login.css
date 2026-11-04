@@ -272,6 +272,26 @@
 .login-secure-row svg { transition: transform 0.4s; }
 .login-secure-row:hover svg { transform: rotate(-10deg) scale(1.12); }
 
+/* ===== First sign-in MFA setup ===== */
+/* These cards are taller than the sign-in form, and the page itself does not scroll */
+.login-card-scroll { max-height: calc(100dvh - 200px); overflow-y: auto; }
+@media (max-width: 1023px) {
+  .login-card-scroll { max-height: none; }
+}
+.login-setup-qr { width: 150px; height: 150px; padding: 5px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.login-setup-key {
+  display: block;
+  margin-top: 4px;
+  padding: 7px 9px;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: #0b1b4d;
+  background: #f1f5f9;
+  user-select: all;
+}
+html.dark .login-setup-key { color: #e2e8f0; background: #1e293b; }
+
 /* ===== Shared text colors ===== */
 .login-ink { color: #0b1b4d; }
 .login-muted { color: #4b5673; }

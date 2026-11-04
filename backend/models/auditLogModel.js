@@ -42,7 +42,13 @@ const auditLogSchema = new mongoose.Schema({
       'DELETE_USER',
       'UPDATE_USER',
       'PROFILE_UPDATE',
-      'PASSWORD_CHANGE'
+      'PASSWORD_CHANGE',
+      'MFA_ENABLE',
+      'MFA_DISABLE',
+      'MFA_RESET',
+      'MFA_FAILED',
+      'MFA_BACKUP_USED',
+      'MFA_BACKUP_CODES'
     ],
     required: true,
   },

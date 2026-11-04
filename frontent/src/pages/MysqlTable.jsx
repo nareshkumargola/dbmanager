@@ -12,21 +12,18 @@ export default function MysqlTable() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchTableData();
+    let active = true;
+    API.get(`/db/mysql/table/${tableName}`)
+      .then(res => {
+        if (active) {
+          setRows(res.data.rows);
+          setColumns(res.data.columns);
+        }
+      })
+      .catch(err => { if (active) setError(err.response?.data?.message || 'Failed to fetch data'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [tableName]);
-
-  const fetchTableData = async () => {
-    try {
-      setLoading(true);
-      const res = await API.get(`/db/mysql/table/${tableName}`);
-      setRows(res.data.rows);
-      setColumns(res.data.columns);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (

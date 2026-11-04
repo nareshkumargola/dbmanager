@@ -1,8 +1,10 @@
+const mongoose = require('mongoose');
 const Connection = require('../models/connectionModel');
 const { getConnection, testConnection, closeConnection } = require('../connections/connectionManager');
 const { saveHistory } = require('./queryHistoryController');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 const { logAuditTrail } = require('../utils/auditLogger');
+const { restoreMaskedPassword } = require('../utils/connectionString');
 const { mergeViews } = require('../utils/viewUtils');
 const { splitOracleStatements } = require('../utils/oracleQueryUtils');
 const BinlogState = require('../models/binlogStateModel');
@@ -123,7 +125,7 @@ const sendConnectionError = (res, err) => {
       error: err.message,
     });
   }
-  return res.status(500).json({ message: 'Error', error: err.message });
+  return res.status(500).json({ message: `Database error: ${err.message}`, error: err.message });
 };
 
 // ─── SAARE CONNECTIONS DEKHO ──────────────────────
@@ -142,30 +144,6 @@ exports.getConnections = async (req, res) => {
       .populate('user', 'name email role')
       .populate('allowedUsers', 'name email role')
       .select('-password') // Password hide karo
-      .sort({ createdAt: -1 });
-
-    res.status(200).json({ success: true, connections });
-  } catch (err) {
-    res.status(500).json({ message: 'Error', error: err.message });
-  }
-};
-
-// ─── SAARE SYSTEM CONNECTIONS DEKHO (USER CREATION & MANAGEMENT) ───
-exports.getAllConnectionsAdmin = async (req, res) => {
-  try {
-    const query = (req.user.role === 'admin' || req.user.permissions?.userManagement)
-      ? {}
-      : {
-          $or: [
-            { user: req.user.id },
-            { allowedUsers: req.user.id }
-          ]
-        };
-
-    const connections = await Connection.find(query)
-      .populate('user', 'name email role')
-      .populate('allowedUsers', 'name email role')
-      .select('-password')
       .sort({ createdAt: -1 });
 
     res.status(200).json({ success: true, connections });
@@ -218,8 +196,7 @@ exports.createConnection = async (req, res) => {
       success: true,
       message: 'Connection save ho gaya!',
       connection: {
-        ...connection.toObject(),
-        password: undefined, // Password hide karo
+        ...connection.toJSON(),
       }
     });
   } catch (err) {
@@ -252,7 +229,11 @@ exports.updateConnection = async (req, res) => {
     const connUsername = username !== undefined ? username : connection.username;
     const connPassword = password ? password : connection.password;
     const connDatabase = database !== undefined ? database : connection.database;
-    const connString = connectionString !== undefined ? connectionString : connection.connectionString;
+    const restored = restoreMaskedPassword(connectionString, connection.connectionString);
+    if (restored.error) {
+      return res.status(400).json({ message: restored.error });
+    }
+    const connString = connectionString !== undefined ? restored.value : connection.connectionString;
     const connSsl = ssl !== undefined ? ssl : connection.ssl;
     const connAccessMode = ['read', 'readwrite'].includes(accessMode) ? accessMode : (connection.accessMode || 'readwrite');
 
@@ -283,7 +264,7 @@ exports.updateConnection = async (req, res) => {
     if (username !== undefined) connection.username = username;
     if (password) connection.password = password;
     if (database !== undefined) connection.database = database;
-    if (connectionString !== undefined) connection.connectionString = connectionString;
+    if (connectionString !== undefined) connection.connectionString = connString;
     if (ssl !== undefined) connection.ssl = ssl;
     connection.accessMode = connAccessMode;
 
@@ -301,8 +282,7 @@ exports.updateConnection = async (req, res) => {
       success: true,
       message: 'Connection updated successfully!',
       connection: {
-        ...connection.toObject(),
-        password: undefined
+        ...connection.toJSON(),
       }
     });
   } catch (err) {
@@ -313,10 +293,28 @@ exports.updateConnection = async (req, res) => {
 // ─── CONNECTION TEST KARO ─────────────────────────
 exports.testConnectionRoute = async (req, res) => {
   try {
-    const {
-      type, host, port, username,
-      password, database, connectionString, ssl
-    } = req.body;
+    const { type, host, port, username, database, ssl, connectionId } = req.body;
+    let { password, connectionString } = req.body;
+
+    // Testing a saved connection: the form has no password, so use the saved one
+    if (connectionId) {
+      if (!mongoose.isValidObjectId(connectionId)) {
+        return res.status(400).json({ message: 'Invalid connection.' });
+      }
+      const saved = await Connection.findById(connectionId);
+      if (!saved) {
+        return res.status(404).json({ message: 'Connection not found!' });
+      }
+      if (saved.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Permission denied!' });
+      }
+      const restored = restoreMaskedPassword(connectionString, saved.connectionString);
+      if (restored.error) {
+        return res.status(400).json({ message: restored.error });
+      }
+      connectionString = restored.value;
+      if (!password) password = saved.password;
+    }
 
     const result = await testConnection({
       type, host, port, username,
@@ -1459,7 +1457,10 @@ exports.getDatabases = async (req, res) => {
       return res.status(403).json({ message: 'You do not have access to this connection!' });
     }
 
-    const { conn, type } = await getConnection(connection);
+    // An Oracle connection has one saved service name, so listing it needs no login
+    const { conn, type } = connection.type === 'oracle'
+      ? { type: 'oracle' }
+      : await getConnection(connection);
     let databases = [];
 
     if (type === 'mysql') {
@@ -1517,9 +1518,8 @@ exports.getAllConnectionsAdmin = async (req, res) => {
       .select('-password')
       .sort({ createdAt: -1 });
 
-    const activeUserConnections = connections.filter(c => c.user !== null);
-
-    res.status(200).json({ success: true, connections: activeUserConnections });
+    // Includes connections whose owner was deleted, so they can still be shared
+    res.status(200).json({ success: true, connections });
   } catch (err) {
     res.status(500).json({ message: 'Error', error: err.message });
   }

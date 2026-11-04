@@ -1,30 +1,22 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import API from '../api/axios';
 import Navbar from '../components/Navbar';
 
 export default function MongoCollection() {
   const { collectionName } = useParams();
-  const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchData();
+    let active = true;
+    API.get(`/db/mongo/collection/${collectionName}`)
+      .then(res => { if (active) setData(res.data.data); })
+      .catch(err => { if (active) setError(err.response?.data?.message || 'Failed to fetch data'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [collectionName]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const res = await API.get(`/db/mongo/collection/${collectionName}`);
-      setData(res.data.data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (

@@ -7,12 +7,28 @@ export default function AlertLogsList({ connectionId }) {
   const { user } = useAuth();
   const canResolveAlerts = user?.role === 'admin' || user?.permissions?.monitor === true;
   const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [resolvingId, setResolvingId] = useState(null);
 
   useEffect(() => {
-    fetchAlerts();
+    let active = true;
+    const loadAlerts = async () => {
+      try {
+        const res = await API.get(`/monitor/${connectionId}/alerts`);
+        if (active) {
+          setAlerts(res.data.alerts || []);
+          setError('');
+        }
+      } catch (err) {
+        console.error(err);
+        if (active) setError('Failed to load alert logs.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadAlerts();
+    return () => { active = false; };
   }, [connectionId]);
 
   useEffect(() => {
@@ -42,20 +58,6 @@ export default function AlertLogsList({ connectionId }) {
       socket.off('alert-resolved', handleAlertResolved);
     };
   }, [connectionId]);
-
-  const fetchAlerts = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await API.get(`/monitor/${connectionId}/alerts`);
-      setAlerts(res.data.alerts || []);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load alert logs.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleResolveAlert = async (alertId) => {
     setResolvingId(alertId);

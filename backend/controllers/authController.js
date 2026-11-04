@@ -3,77 +3,10 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 require("dotenv").config();
 const { sendGenericEmail } = require("../services/notificationService");
+const { completeLogin, generateToken } = require("../utils/authSession");
+const { MFA_TOKEN_AUDIENCE, mfaTokenSecret } = require("../utils/mfa");
 
-// Generate token
-const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || "1h",
-  });
-};
 
-exports.signup = async (req, res) => {
-  try {
-    console.log("Request Body:", req.body);
-
-    const { name, email, password, role } = req.body;
-
-    console.log("Password:", password);
-    console.log("Password type:", typeof password);
-
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(400).json({ message: "Email already registered" });
-    }
-
-    const hashed = await bcrypt.hash(password, 12);
-
-    console.log("Hash generated:", hashed);
-
-    const user = await User.create({
-      name,
-      email,
-      password: hashed,
-      role: "developer",
-      accessMode: "read",
-    });
-
-    const token = generateToken(user._id, user.role);
-
-    try {
-      const { logAuditTrail } = require("../utils/auditLogger");
-      await logAuditTrail(
-        null,
-        user._id,
-        "SIGNUP",
-        `User signed up successfully: ${user.email}`,
-      );
-    } catch (auditErr) {
-      console.error("Signup audit log failed:", auditErr.message);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: "User registered successfully!",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        accessMode: user.accessMode || "read",
-        permissions: user.permissions,
-      },
-    });
-  } catch (err) {
-    console.error(err);
-    console.error(err.stack);
-
-    res.status(500).json({
-      message: "Server error",
-      error: err.message,
-    });
-  }
-};
 // LOGIN
 exports.login = async (req, res) => {
   try {
@@ -105,162 +38,37 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    // First-time OTP flow is intentionally disabled. New users log in directly.
+    // The old first-sign-in email code is no longer used, so clear any left on the account
     if (user.isFirstLogin === true) {
       user.isFirstLogin = false;
       user.loginOtp = null;
       user.loginOtpExpires = null;
-    }
-    user.lastLoginAt = new Date();
-    await user.save();
-
-    // Subsequent logins: Direct Login
-    const token = generateToken(user._id, user.role);
-
-    // Log to shared connection audit trail
-    try {
-      const { logAuditTrail } = require("../utils/auditLogger");
-      await logAuditTrail(
-        null,
-        user._id,
-        "LOGIN",
-        `User logged in successfully: ${user.email}`,
-      );
-    } catch (auditErr) {
-      console.error("Login audit log failed:", auditErr.message);
+      await user.save();
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Login successful!",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        accessMode: user.accessMode || "read",
-        permissions: user.permissions,
-        preferences: user.preferences,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-};
-
-// VERIFY FIRST-TIME LOGIN OTP
-exports.verifyLoginOtp = async (req, res) => {
-  try {
-    const { email, otp } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ message: "Email and OTP are required!" });
+    // Password is correct but a second step is due: no session yet, only a short-lived token.
+    // Setting up gets longer, since the person may need to install an authenticator app.
+    const mfaEnabled = Boolean(user.mfa?.enabled);
+    if (mfaEnabled || !user.mfa?.optedOut) {
+      const mfaToken = jwt.sign({ id: user._id, tv: user.tokenVersion || 0 }, mfaTokenSecret(), {
+        audience: MFA_TOKEN_AUDIENCE,
+        expiresIn: mfaEnabled ? "5m" : "15m",
+      });
+      return res.status(200).json({
+        success: true,
+        mfaToken,
+        ...(mfaEnabled ? { requiresMfa: true } : { requiresMfaSetup: true }),
+      });
     }
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found!" });
-    }
-
-    if (!user.loginOtp || user.loginOtp !== otp.trim()) {
-      return res.status(400).json({ message: "Invalid OTP code. Please check and try again." });
-    }
-
-    if (user.loginOtpExpires && user.loginOtpExpires < Date.now()) {
-      return res.status(400).json({ message: "OTP code has expired. Please request a new OTP." });
-    }
-
-    // OTP Verification Success -> Disable OTP for future logins
-    user.isFirstLogin = false;
-    user.loginOtp = null;
-    user.loginOtpExpires = null;
-    user.lastLoginAt = new Date();
-    await user.save();
-
-    const token = generateToken(user._id, user.role);
-
-    try {
-      const { logAuditTrail } = require("../utils/auditLogger");
-      await logAuditTrail(
-        null,
-        user._id,
-        "LOGIN",
-        `First-time login OTP verified successfully: ${user.email}`,
-      );
-    } catch (auditErr) {
-      console.error("Login OTP audit log failed:", auditErr.message);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "First-time login verified successfully!",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        accessMode: user.accessMode || "read",
-        permissions: user.permissions,
-        preferences: user.preferences,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-};
-
-// RESEND LOGIN OTP
-exports.resendLoginOtp = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: "Email is required!" });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ message: "User not found!" });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.loginOtp = otp;
-    user.loginOtpExpires = Date.now() + 10 * 60 * 1000;
-    await user.save();
-
-    console.log(`🔑 [RESEND LOGIN OTP SIMULATION] Email: ${user.email} | OTP: ${otp}`);
-
-    const subject = "🔒 Resent First-Time Login OTP - Allatone DMS";
-    const htmlContent = `
-      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #eee; border-radius: 12px;">
-        <h2 style="color: #0d9da4; margin-top: 0;">New First-Time Login OTP</h2>
-        <p>Hello <strong>${user.name}</strong>,</p>
-        <p>Your new OTP code for first-time login verification is:</p>
-        <div style="text-align: center; margin: 25px 0;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0d9da4; background: #f0fdfa; padding: 12px 24px; border-radius: 8px; border: 1px solid #ccfbf1; font-family: monospace;">${otp}</span>
-        </div>
-        <p style="font-size: 12px; color: #777;">This OTP will expire in 10 minutes.</p>
-      </div>
-    `;
-
-    try {
-      await sendGenericEmail(user.email, subject, htmlContent);
-    } catch (mailErr) {
-      console.error("Failed to send OTP email:", mailErr.message);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "New OTP has been sent to your email address!",
-      debugOtp: process.env.NODE_ENV !== 'production' ? otp : undefined
-    });
+    return completeLogin(user, res);
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
 // Fields never sent to the browser
-const PRIVATE_USER_FIELDS = "-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires";
+const PRIVATE_USER_FIELDS = "-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires -tokenVersion";
 
 // GET PROFILE
 exports.getProfile = async (req, res) => {
@@ -334,6 +142,7 @@ exports.changePassword = async (req, res) => {
     }
 
     user.password = await bcrypt.hash(newPassword, 12);
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     try {
@@ -343,7 +152,8 @@ exports.changePassword = async (req, res) => {
       console.error("Password change audit log failed:", auditErr.message);
     }
 
-    res.status(200).json({ success: true, message: "Password changed successfully!" });
+    // Other devices are signed out; this one continues with a new token
+    res.status(200).json({ success: true, message: "Password changed successfully!", token: generateToken(user) });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
@@ -454,19 +264,6 @@ exports.forgotPassword = async (req, res) => {
       </div>
     `;
 
-    // Print simulated email link to console logs
-    console.log(
-      "\n================================================================",
-    );
-    console.log(
-      `✉️ [EMAIL SIMULATION] Password Reset Request for: ${user.email}`,
-    );
-    console.log(`Click this link to reset password:`);
-    console.log(`👉 ${resetUrl}`);
-    console.log(
-      "================================================================\n",
-    );
-
     try {
       await sendGenericEmail(user.email, subject, htmlContent);
       res.status(200).json({
@@ -475,10 +272,10 @@ exports.forgotPassword = async (req, res) => {
       });
     } catch (mailErr) {
       console.error("Failed to send reset email:", mailErr.message);
-      res.status(200).json({
-        success: true,
+      res.status(503).json({
+        success: false,
         message:
-          "Password reset link generated on console logs (email delivery failed).",
+          "We could not send the email right now. Please try again later or contact an admin.",
       });
     }
   } catch (err) {
@@ -513,6 +310,7 @@ exports.resetPassword = async (req, res) => {
     // Encrypt and update new password
     const hashed = await bcrypt.hash(password, 12);
     user.password = hashed;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     user.passwordResetToken = null;
     user.passwordResetExpires = null;
     await user.save();

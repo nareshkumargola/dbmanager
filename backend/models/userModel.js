@@ -83,6 +83,21 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Raised when the password changes; login tokens carrying an older number stop working
+  tokenVersion: { type: Number, default: 0 },
+  // Two-step sign-in. Everything except "enabled" and "enabledAt" stays out of normal queries.
+  mfa: {
+    enabled: { type: Boolean, default: false },
+    // MFA is on by default: set up at first sign-in, unless the person turned it off in Settings
+    optedOut: { type: Boolean, default: false },
+    enabledAt: { type: Date, default: null },
+    secret: { type: String, default: null, select: false },
+    pendingSecret: { type: String, default: null, select: false },
+    backupCodes: { type: [String], default: undefined, select: false },
+    lastUsedStep: { type: Number, default: null, select: false },
+    failedAttempts: { type: Number, default: 0, select: false },
+    lockedUntil: { type: Date, default: null, select: false },
+  },
   // Self-service profile details (editable from the Profile page)
   jobTitle: { type: String, trim: true, default: '', maxlength: 80 },
   phone: { type: String, trim: true, default: '', maxlength: 30 },

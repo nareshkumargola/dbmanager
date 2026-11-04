@@ -137,9 +137,10 @@ dbmanager/
 ### 6.1 Authentication and Authorization
 The backend exposes authentication flows for:
 - Login
-- Signup
-- OTP-based verification
+- Two-step sign-in (TOTP authenticator codes and backup codes), on by default: set up at first sign-in, and each person can turn it off in their profile
 - Password reset and forgot-password flows
+
+There is no public signup: admins create users from System Users. On a new install, create the first admin on the server with `node scripts/create-admin.js admin@example.com "Admin Name"`.
 
 Auth is handled through JWT tokens and protected routes. Middleware validates session state and permission scopes before exposing database actions.
 
@@ -215,10 +216,8 @@ This creates a structured audit log useful for governance and compliance review.
 The backend exposes multiple route groups under the `/api` namespace.
 
 ### 7.1 Authentication Routes
-- `/api/auth/signup`
 - `/api/auth/login`
-- `/api/auth/verify-otp`
-- `/api/auth/resend-otp`
+- `/api/auth/mfa/verify`
 - `/api/auth/forgot-password`
 - `/api/auth/reset-password`
 

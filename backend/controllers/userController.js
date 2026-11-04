@@ -4,7 +4,7 @@ const Connection = require('../models/connectionModel');
 const { closeConnection } = require('../connections/connectionManager');
 
 // Fields never sent to the browser (reset tokens and OTPs could be used to take over an account)
-const PRIVATE_USER_FIELDS = '-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires';
+const PRIVATE_USER_FIELDS = '-password -passwordResetToken -passwordResetExpires -loginOtp -loginOtpExpires -tokenVersion';
 
 // Saare users dekho — sirf admin
 exports.getAllUsers = async (req, res) => {
@@ -307,6 +307,7 @@ exports.updateUser = async (req, res) => {
     if (password && password.trim() !== '') {
       const hashed = await bcrypt.hash(password, 12);
       user.password = hashed;
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
     }
 
     if (role && id !== req.user.id) {

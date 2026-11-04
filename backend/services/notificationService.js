@@ -369,7 +369,7 @@ exports.sendGenericEmail = async (emailAddress, subject, htmlContent) => {
     console.log(`To:      ${emailAddress}`);
     console.log(`Subject: ${subject}`);
     console.log(`Body:    (HTML content printed to console logs)`);
-    console.log(htmlContent);
+    if (process.env.NODE_ENV !== 'production') console.log(htmlContent);
     console.log(`============================================================\n`);
   }
 };

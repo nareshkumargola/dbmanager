@@ -9,25 +9,10 @@ export default function ConnectionBinlog() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { id } = useParams();
-
-  if (user?.role !== 'admin' && user?.permissions && !user.permissions.binlog) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
-          <p className="text-4xl mb-4">🚫</p>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-sm text-gray-500 mb-6">You do not have permission to access Binlog/WAL Monitor features.</p>
-          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
-            Go to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const isDenied = user?.role !== 'admin' && user?.permissions && !user.permissions.binlog;
 
   const [connectionName, setConnectionName] = useState('');
   const [connectionType, setConnectionType] = useState('');
-  const [defaultDatabase, setDefaultDatabase] = useState('');
   const [databases, setDatabases] = useState([]);
   const [selectedDb, setSelectedDb] = useState('');
   const [loading, setLoading] = useState(true);
@@ -63,6 +48,7 @@ export default function ConnectionBinlog() {
         : 'Binlog';
 
   useEffect(() => {
+    if (isDenied) return;
     const fetchConnectionAndDatabases = async () => {
       try {
         setLoading(true);
@@ -74,13 +60,13 @@ export default function ConnectionBinlog() {
         }
         setConnectionName(conn.name);
         setConnectionType(conn.type);
-        setDefaultDatabase(conn.database || '');
 
         // 2. Fetch list of databases
         const dbRes = await API.get(`/connections/${id}/databases`);
-        if (dbRes.data.databases) {
-          setDatabases(dbRes.data.databases);
-        }
+        const databaseList = dbRes.data.databases || [];
+        setDatabases(databaseList);
+        const defaultSchema = databaseList.find(name => name.toLowerCase() === conn.database?.toLowerCase());
+        setSelectedDb(defaultSchema || databaseList[0] || '');
       } catch (err) {
         console.error('Error loading binlog page configs:', err);
         setError(err.response?.data?.message || err.message || 'Failed to load connection and database configurations.');
@@ -89,15 +75,22 @@ export default function ConnectionBinlog() {
       }
     };
     fetchConnectionAndDatabases();
-  }, [id]);
+  }, [id, isDenied]);
 
-  // Auto-select connection's default database or first database schema
-  useEffect(() => {
-    if (databases.length > 0 && !selectedDb) {
-      const found = databases.find(d => d.toLowerCase() === defaultDatabase?.toLowerCase());
-      setSelectedDb(found || databases[0]);
-    }
-  }, [databases, defaultDatabase, selectedDb]);
+  if (isDenied) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
+          <p className="text-4xl mb-4">🚫</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-gray-500 mb-6">You do not have permission to access Binlog/WAL Monitor features.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

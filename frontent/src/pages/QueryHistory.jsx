@@ -7,8 +7,32 @@ import { useAuth } from '../context/AuthContext';
 export default function QueryHistory() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isDenied = user?.role !== 'admin' && user?.permissions && !user.permissions.history;
 
-  if (user?.role !== 'admin' && user?.permissions && !user.permissions.history) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [copiedQueryId, setCopiedQueryId] = useState(null);
+
+  useEffect(() => {
+    if (isDenied) return;
+    let active = true;
+    API.get('/history')
+      .then(res => {
+        if (active) setHistory(res.data.history);
+      })
+      .catch(() => {
+        if (active) setError('Failed to load query history');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isDenied]);
+
+  if (isDenied) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
         <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
@@ -23,29 +47,8 @@ export default function QueryHistory() {
     );
   }
 
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [copiedQueryId, setCopiedQueryId] = useState(null);
-
-  useEffect(() => {
-    fetchHistory();
-  }, []);
-
-  const fetchHistory = async () => {
-    try {
-      setLoading(true);
-      const res = await API.get('/history');
-      setHistory(res.data.history);
-    } catch (err) {
-      setError('Failed to load query history');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Query Editor mein bhejo
-  const useQuery = (query) => {
+  const openQuery = (query) => {
     navigate('/query', { state: { query } });
   };
 
@@ -194,7 +197,7 @@ export default function QueryHistory() {
           </div>
         ) : (
           <div className="space-y-3">
-            {history.map((item, i) => (
+            {history.map((item) => (
               <div
                 key={item._id}
                 className="bg-white rounded-xl border border-gray-200 p-5"
@@ -252,7 +255,7 @@ export default function QueryHistory() {
                     {copiedQueryId === item._id ? '✓ Copied' : '📋 Copy'}
                   </button>
                   <button
-                    onClick={() => useQuery(item.query)}
+                    onClick={() => openQuery(item.query)}
                     className="text-xs px-3 py-1.5 bg-gray-900 text-white rounded-lg hover:bg-gray-700 transition font-bold"
                   >
                     Use this query

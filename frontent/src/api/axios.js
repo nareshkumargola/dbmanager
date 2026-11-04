@@ -27,9 +27,15 @@ API.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
+    const sentAuth = error?.config?.headers?.Authorization;
 
-    if (status === 401) {
+    // Ignore a 401 for a token that was already replaced, such as a request still
+    // running when the person changed their password.
+    if (status === 401 && sentAuth && sentAuth === `Bearer ${localStorage.getItem("token")}`) {
       localStorage.removeItem("token");
+      if (window.location.pathname !== "/login") {
+        window.location.replace("/login");
+      }
     }
 
     return Promise.reject(error);

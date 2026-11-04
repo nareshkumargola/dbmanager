@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useEffectEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import SlowQueryPanel from '../components/SlowQueryPanel';
@@ -38,11 +38,8 @@ export default function ConnectionDashboard() {
   const [connectionDetails, setConnectionDetails] = useState(null);
   const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [tableSortOrder, setTableSortOrder] = useState('size-desc');
-  const [largestTablesPage, setLargestTablesPage] = useState(1);
-  const [largestTablesPerPage, setLargestTablesPerPage] = useState(5);
   const [unreadAuditCount, setUnreadAuditCount] = useState(0);
   const [dbSelectorDropdownOpen, setDbSelectorDropdownOpen] = useState(false);
-  const [openTableActionMenu, setOpenTableActionMenu] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -167,7 +164,9 @@ export default function ConnectionDashboard() {
     try {
       const savedId = localStorage.getItem(storageKeyActive);
       if (savedId) return savedId;
-    } catch (e) { }
+    } catch (e) {
+      console.warn('Failed to restore active query tab:', e);
+    }
     return 'tab-1';
   });
 
@@ -389,7 +388,11 @@ export default function ConnectionDashboard() {
   };
 
   useEffect(() => {
-    fetchSavedQueries();
+    let active = true;
+    API.get('/saved-queries')
+      .then(res => { if (active) setSavedQueries(res.data.queries || []); })
+      .catch(error => console.error('Failed to load saved queries:', error));
+    return () => { active = false; };
   }, []);
 
   const handleSaveScript = async () => {
@@ -437,7 +440,7 @@ export default function ConnectionDashboard() {
       await API.delete(`/saved-queries/${queryId}`);
       setQueryMsg('Saved script deleted successfully.');
       fetchSavedQueries();
-    } catch (err) {
+    } catch {
       alert('Failed to delete saved query');
     }
   };
@@ -460,7 +463,7 @@ export default function ConnectionDashboard() {
     try {
       const saved = localStorage.getItem(`dms_query_history_${id}`);
       return saved ? JSON.parse(saved) : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   });
@@ -628,10 +631,10 @@ export default function ConnectionDashboard() {
     textarea.focus();
     textarea.setSelectionRange(selectionStartLineIndex, selectionEndLineIndex);
 
-    let success = false;
+    let success;
     try {
       success = document.execCommand('insertText', false, updatedTarget);
-    } catch (e) {
+    } catch {
       success = false;
     }
 
@@ -799,29 +802,20 @@ export default function ConnectionDashboard() {
   const [historyStatus, setHistoryStatus] = useState('all');
   const [expandedHistory, setExpandedHistory] = useState({});
 
-  // Backup
-  const [backupLoading, setBackupLoading] = useState(false);
-  const [restoreLoading, setRestoreLoading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [backupMsg, setBackupMsg] = useState('');
-  const [backupError, setBackupError] = useState('');
-
   // Monitoring
   const [monitorData, setMonitorData] = useState(null);
-  const [monitorLoading, setMonitorLoading] = useState(false);
-  const [monitorHistory, setMonitorHistory] = useState([]);
+  const [, setMonitorLoading] = useState(false);
+  const [, setMonitorHistory] = useState([]);
   const [tableDetails, setTableDetails] = useState([]);
   const [tableDetailsOffset, setTableDetailsOffset] = useState(0);
-  const [tableDetailsHasMore, setTableDetailsHasMore] = useState(false);
+  const [, setTableDetailsHasMore] = useState(false);
   const [tableDetailsLoading, setTableDetailsLoading] = useState(false);
   const [databaseTableOffset, setDatabaseTableOffset] = useState(0);
   const [databaseTablesHasMore, setDatabaseTablesHasMore] = useState(false);
   const [databaseTablesLoading, setDatabaseTablesLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
 
   // Table search, sort, unit filters, and pagination
   const [tableSearch, setTableSearch] = useState('');
-  const [tableSort, setTableSort] = useState('asc'); // 'asc' or 'desc'
   const [tableSizeUnit, setTableSizeUnit] = useState('MB'); // 'Bytes', 'KB', 'MB', 'GB'
   const [tablesListPage, setTablesListPage] = useState(1);
   const [tablesListRowsPerPage, setTablesListRowsPerPage] = useState(10);
@@ -898,97 +892,107 @@ export default function ConnectionDashboard() {
   };
 
   useEffect(() => {
+    let active = true;
     const initializeConnection = async () => {
       try {
-        setLoading(true);
-        // 1. Fetch connection details to check default database config
         const connRes = await API.get('/connections');
         const conn = connRes.data.connections.find(c => c._id === id);
-        const configuredDefault = conn ? conn.database : null;
+        const dbRes = await API.get(`/connections/${id}/databases`);
+        if (!active) return;
 
+        const dbList = dbRes.data.databases || [];
+        setDatabases(dbList);
         if (conn) {
           setConnectionName(conn.name);
           setConnectionDetails(conn);
-          const ownerCheck = conn.user?._id === user?._id || user?.role === 'admin';
-          setIsOwner(ownerCheck);
+          setIsOwner(conn.user?._id === user?._id || user?.role === 'admin');
         }
 
-        // 2. Fetch list of databases on this connection
-        const dbRes = await API.get(`/connections/${id}/databases`);
-        const dbList = dbRes.data.databases || [];
-        setDatabases(dbList);
-
-        // 3. Determine initial database to activate
-        const initialDb = database || configuredDefault || dbList[0] || '';
+        const initialDb = database || conn?.database || dbList[0] || '';
         setActiveDb(initialDb);
-
         if (initialDb) {
-          await selectDatabase(initialDb);
+          setDbLoading(true);
+          const [objRes, statsRes] = await Promise.all([
+            API.get(`/connections/${id}/objects?database=${encodeURIComponent(initialDb)}&summary=true`),
+            API.get(`/connections/${id}/stats?database=${encodeURIComponent(initialDb)}`)
+          ]);
+          if (!active) return;
+          setObjects(objRes.data);
+          setStats(statsRes.data.stats);
+          const tableOffset = objRes.data.tableOffset || objRes.data.result?.tableOffset || 0;
+          const tables = objRes.data.result?.tables || [];
+          setDatabaseTableOffset(tableOffset + tables.length);
+          setDatabaseTablesHasMore(objRes.data.tablesHasMore || objRes.data.result?.tablesHasMore || false);
+          const detailRes = await API.get(`/monitor/${id}/tables?limit=50&offset=0&database=${encodeURIComponent(initialDb)}`);
+          if (active) {
+            const details = detailRes.data.tables || [];
+            setTableDetails(details);
+            setTableDetailsOffset(details.length);
+            setTableDetailsHasMore(details.length === 50);
+          }
         }
       } catch (err) {
-        // 503 = database server unreachable (expected, shown on the page); log anything else
+        if (!active) return;
         if (err.response?.status !== 503) console.error('Failed to initialize connection:', err);
-        setError(
-          err.response?.status === 503
-            ? err.response.data.message
-            : 'Failed to load databases - connection check query failed'
-        );
+        setError(err.response?.status === 503
+          ? err.response.data.message
+          : 'Failed to load databases - connection check query failed');
       } finally {
-        setLoading(false);
+        if (active) {
+          setDbLoading(false);
+          setLoading(false);
+        }
       }
     };
     initializeConnection();
+    return () => { active = false; };
   }, [id, user, database]);
 
   // Handle external requests to open a specific tab (e.g., slow query -> query editor)
   const location = useLocation();
-  useEffect(() => {
-    if (location?.state?.openTab) {
-      if (location.state.query) {
-        openInNewQueryTab(location.state.query, location.state.tabName || 'External Query');
-        window.history.replaceState({}, document.title);
-      } else {
-        setActiveTab(location.state.openTab);
-      }
+  const handleExternalTabRequest = useEffectEvent((state) => {
+    if (state.query) {
+      openInNewQueryTab(state.query, state.tabName || 'External Query');
+      window.history.replaceState({}, document.title);
+    } else {
+      setActiveTab(state.openTab);
     }
+  });
+  useEffect(() => {
+    const state = location?.state;
+    if (!state?.openTab) return undefined;
+    const timer = window.setTimeout(() => {
+      handleExternalTabRequest(state);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [location]);
 
-  // Auto refresh
   useEffect(() => {
-    let interval;
-    if (autoRefresh) {
-      interval = setInterval(() => {
-        fetchMonitoring();
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [autoRefresh, id]);
-
-  const checkUnreadAuditLogs = useCallback(async () => {
-    if (!id) return;
-    try {
-      const res = await API.get(`/connections/${id}/audit-logs`);
-      const logs = res.data?.logs || [];
-      const lastSeenStr = localStorage.getItem(`lastSeenAudit_${id}`);
-      if (!lastSeenStr) {
-        setUnreadAuditCount(logs.length > 0 ? Math.min(logs.length, 3) : 0);
-      } else {
-        const lastSeenTime = Number(lastSeenStr);
-        const newLogs = logs.filter((l) => new Date(l.createdAt).getTime() > lastSeenTime);
-        setUnreadAuditCount(newLogs.length);
+    let active = true;
+    const loadUnreadAuditLogs = async () => {
+      if (!id) return;
+      try {
+        const res = await API.get(`/connections/${id}/audit-logs`);
+        if (!active) return;
+        const logs = res.data?.logs || [];
+        const lastSeenStr = localStorage.getItem(`lastSeenAudit_${id}`);
+        const count = lastSeenStr
+          ? logs.filter(log => new Date(log.createdAt).getTime() > Number(lastSeenStr)).length
+          : Math.min(logs.length, 3);
+        setUnreadAuditCount(count);
+      } catch {
+        return;
       }
-    } catch (err) {
-      // ignore
-    }
+    };
+    loadUnreadAuditLogs();
+    const interval = setInterval(loadUnreadAuditLogs, 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [id]);
 
-  useEffect(() => {
-    checkUnreadAuditLogs();
-    const interval = setInterval(checkUnreadAuditLogs, 15000);
-    return () => clearInterval(interval);
-  }, [checkUnreadAuditLogs]);
-
-  const selectDatabase = async (dbName) => {
+  async function selectDatabase(dbName) {
     if (!dbName) return;
     setActiveDb(dbName);
     setSelectedTable(null);
@@ -1030,7 +1034,7 @@ export default function ConnectionDashboard() {
     try {
       const res = await API.get(`/connections/${id}/objects?database=${encodeURIComponent(activeDb)}`);
       setObjects(res.data);
-    } catch (err) {
+    } catch {
       setError('Failed to load database metadata');
     }
   };
@@ -1063,7 +1067,7 @@ export default function ConnectionDashboard() {
       }));
       setDatabaseTableOffset((res.data.tableOffset || databaseTableOffset) + nextTables.length);
       setDatabaseTablesHasMore(res.data.tablesHasMore || false);
-    } catch (err) {
+    } catch {
       setError('Failed to load more tables');
     } finally {
       setDatabaseTablesLoading(false);
@@ -1092,7 +1096,7 @@ export default function ConnectionDashboard() {
       setDatabaseTableOffset(loadedTables.length);
       setDatabaseTablesHasMore(res.data.tablesHasMore || false);
       setTablesListPage(1);
-    } catch (err) {
+    } catch {
       setError('Failed to load selected number of tables');
     } finally {
       setDatabaseTablesLoading(false);
@@ -1111,16 +1115,10 @@ export default function ConnectionDashboard() {
       setTableDetails(prev => append ? [...prev, ...loadedTables] : loadedTables);
       setTableDetailsOffset(offset + loadedTables.length);
       setTableDetailsHasMore(loadedTables.length === 50);
-    } catch (err) {
+    } catch {
       console.log('Table details not available');
     } finally {
       setTableDetailsLoading(false);
-    }
-  };
-
-  const fetchAll = () => {
-    if (activeDb) {
-      selectDatabase(activeDb);
     }
   };
 
@@ -1135,7 +1133,7 @@ export default function ConnectionDashboard() {
       );
       setTableData(res.data.rows);
       setTableColumns(res.data.columns);
-    } catch (err) {
+    } catch {
       setError('Failed to load table data');
     } finally {
       setTableLoading(false);
@@ -1183,7 +1181,7 @@ export default function ConnectionDashboard() {
       const jsonStr = JSON.stringify(row, null, 2);
       navigator.clipboard.writeText(jsonStr);
       showToast('📋 Row data copied to clipboard as JSON!');
-    } catch (err) {
+    } catch {
       showToast('Failed to copy row data', 'error');
     }
   };
@@ -1208,7 +1206,7 @@ export default function ConnectionDashboard() {
           setClauses.push(`\`${k}\` = '${String(v).replace(/'/g, "''")}'`);
         }
       });
-      return `UPDATE \`${activeDb || connection?.database}\`.\`${selectedTable}\`\nSET ${setClauses.join(', ')}\nWHERE ${whereClause};`;
+      return `UPDATE \`${activeDb || connectionDetails?.database}\`.\`${selectedTable}\`\nSET ${setClauses.join(', ')}\nWHERE ${whereClause};`;
     }
   };
 
@@ -1233,7 +1231,7 @@ export default function ConnectionDashboard() {
           }
         }
       });
-      return `INSERT INTO \`${activeDb || connection?.database}\`.\`${selectedTable}\` (${cols.join(', ')})\nVALUES (${vals.join(', ')});`;
+      return `INSERT INTO \`${activeDb || connectionDetails?.database}\`.\`${selectedTable}\` (${cols.join(', ')})\nVALUES (${vals.join(', ')});`;
     }
   };
 
@@ -1243,7 +1241,7 @@ export default function ConnectionDashboard() {
     if (dbType === 'mongodb') {
       return `db.${selectedTable}.deleteOne({\n  ${whereClause.replace(/`/g, '"')}\n});`;
     } else {
-      return `DELETE FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\`\nWHERE ${whereClause};`;
+      return `DELETE FROM \`${activeDb || connectionDetails?.database}\`.\`${selectedTable}\`\nWHERE ${whereClause};`;
     }
   };
 
@@ -1260,15 +1258,18 @@ export default function ConnectionDashboard() {
     setActiveTab('query');
     showToast('⚡ Query transferred to Query Editor! Executing...');
 
-    setQueryResult(null);
+    setQueryResults([]);
     setQueryError('');
     setQueryLoading(true);
     try {
       const res = await API.post(`/connections/${id}/query`, {
         query: queryText,
-        database: activeDb || connection?.database
+        database: activeDb || connectionDetails?.database
       });
-      setQueryResult(res.data);
+      setQueryResults(res.data.results || []);
+      setQueryColumns(Array.isArray(res.data.results) && res.data.results.length > 0
+        ? Object.keys(res.data.results[0])
+        : []);
       showToast(successMsg);
 
       if (selectedTable) {
@@ -1301,7 +1302,7 @@ export default function ConnectionDashboard() {
 
       await API.post(`/connections/${id}/query`, {
         query: updateQuery,
-        database: activeDb || connection?.database
+        database: activeDb || connectionDetails?.database
       });
 
       showToast(`✏️ Row updated successfully in ${selectedTable}!`);
@@ -1344,7 +1345,7 @@ export default function ConnectionDashboard() {
 
       await API.post(`/connections/${id}/query`, {
         query: insertQuery,
-        database: activeDb || connection?.database
+        database: activeDb || connectionDetails?.database
       });
 
       showToast(`➕ New row inserted successfully into ${selectedTable}!`);
@@ -1378,7 +1379,7 @@ export default function ConnectionDashboard() {
       const deleteQuery = generateDeleteQuery(targetRow);
       await API.post(`/connections/${id}/query`, {
         query: deleteQuery,
-        database: activeDb || connection?.database
+        database: activeDb || connectionDetails?.database
       });
       showToast(`🗑️ Row deleted successfully from ${selectedTable}!`);
       fetchTableData(selectedTable);
@@ -1396,7 +1397,7 @@ export default function ConnectionDashboard() {
     if (dbType === 'mongodb') {
       editorQuery = `// Query for collection ${selectedTable}\ndb.${selectedTable}.find({ ${whereClause.replace(/`/g, '"')} });`;
     } else {
-      editorQuery = `-- Query for table ${selectedTable}\nSELECT * FROM \`${activeDb || connection?.database}\`.\`${selectedTable}\` WHERE ${whereClause};`;
+      editorQuery = `-- Query for table ${selectedTable}\nSELECT * FROM \`${activeDb || connectionDetails?.database}\`.\`${selectedTable}\` WHERE ${whereClause};`;
     }
 
     setQueryTabs(prev => prev.map(tab => {
@@ -1800,7 +1801,6 @@ export default function ConnectionDashboard() {
     ];
 
     keywords.sort((a, b) => b.length - a.length);
-    const keywordRegex = new RegExp(`\\b(${keywords.join('|')})\\b`, 'gi');
     const combinedRegex = /(?:(\/\*[\s\S]*?\*\/|--.*|#.*))|('(?:\\'|[^'])*'|"(?:\\"|[^"])*")|(\b\d+\b)|(\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
 
     return escaped.replace(combinedRegex, (match, comment, string, number, word) => {
@@ -1918,7 +1918,7 @@ export default function ConnectionDashboard() {
     }
   };
 
-  const getTablesWithMetadata = () => {
+  const getTablesWithMetadata = useCallback(() => {
     const rawList = objects?.result?.tables || objects?.result?.collections || [];
     return tables.map(tableName => {
       const detail = tableDetails.find(d => d.table === tableName);
@@ -1929,7 +1929,7 @@ export default function ConnectionDashboard() {
         sizeMB: detail ? detail.sizeMB : (rawObj?.sizeMB ?? null)
       };
     });
-  };
+  }, [objects, tables, tableDetails]);
 
   const [tablesListSortCol, setTablesListSortCol] = useState(null);
   const [tablesListSortDir, setTablesListSortDir] = useState(null); // 'asc' | 'desc' | null
@@ -1988,7 +1988,7 @@ export default function ConnectionDashboard() {
   );
 
   const displayedLargestTables = useMemo(() => {
-    let list = [];
+    let list;
     const metaList = getTablesWithMetadata();
 
     if (tableDetails && tableDetails.length > 0) {

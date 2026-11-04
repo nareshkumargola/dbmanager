@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import API from '../api/axios';
 
 export default function MongoDBUsersPanel({ connectionId }) {
   const [users, setUsers] = useState([]);
   const [databases, setDatabases] = useState([]);
   const [selectedDb, setSelectedDb] = useState('admin');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -29,35 +29,47 @@ export default function MongoDBUsersPanel({ connectionId }) {
 
   const AVAILABLE_ROLES = ['read', 'readWrite', 'dbAdmin', 'userAdmin', 'dbOwner', 'root'];
 
-  useEffect(() => {
-    fetchDatabases();
-  }, [connectionId]);
-
-  useEffect(() => {
-    fetchUsers();
-  }, [connectionId, selectedDb]);
-
-  const fetchDatabases = async () => {
-    try {
-      const res = await API.get(`/connections/${connectionId}/databases`);
-      setDatabases(res.data.databases || []);
-    } catch (e) {
-      console.error('Error loading databases:', e);
-    }
-  };
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
       const res = await API.get(`/connections/${connectionId}/mongo-users?database=${selectedDb}`);
       setUsers(res.data.users || []);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load MongoDB users.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [connectionId, selectedDb]);
+
+  useEffect(() => {
+    let active = true;
+    API.get(`/connections/${connectionId}/databases`)
+      .then(res => { if (active) setDatabases(res.data.databases || []); })
+      .catch(error => console.error('Error loading databases:', error))
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [connectionId]);
+
+  useEffect(() => {
+    let active = true;
+    const loadUsers = async () => {
+      try {
+        const res = await API.get(`/connections/${connectionId}/mongo-users?database=${selectedDb}`);
+        if (active) {
+          setUsers(res.data.users || []);
+          setError('');
+        }
+      } catch (err) {
+        if (active) setError(err.response?.data?.message || 'Failed to load MongoDB users.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadUsers();
+    return () => { active = false; };
+  }, [connectionId, selectedDb]);
 
   const handleOpenManage = (user) => {
     setManageUser(user);

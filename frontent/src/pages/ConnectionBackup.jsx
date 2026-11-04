@@ -8,21 +8,7 @@ export default function ConnectionBackup() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { id } = useParams();
-
-  if (user?.role !== 'admin' && user?.permissions && !user.permissions.backup) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
-          <p className="text-4xl mb-4">🚫</p>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
-          <p className="text-sm text-gray-500 mb-6">You do not have permission to access Backup & Restore features.</p>
-          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
-            Go to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const isDenied = user?.role !== 'admin' && user?.permissions && !user.permissions.backup;
 
   const [connectionName, setConnectionName] = useState('');
   const [connection, setConnection] = useState(null);
@@ -45,6 +31,7 @@ export default function ConnectionBackup() {
    const [importLoading, setImportLoading] = useState(false);
 
   useEffect(() => {
+    if (isDenied) return;
     const fetchConnectionDetails = async () => {
       try {
         setLoading(true);
@@ -55,21 +42,43 @@ export default function ConnectionBackup() {
         }
         setConnectionName(conn.name);
         setConnection(conn);
+
+        setDbsLoading(true);
+        const dbRes = await API.get(`/connections/${id}/databases`);
+        if (dbRes.data?.success) {
+          setDatabases(dbRes.data.databases.map(dbName => ({
+            name: dbName,
+            tables: [],
+            tableSizes: {},
+            loaded: false,
+            expanded: false
+          })));
+        }
       } catch (err) {
         console.error('Error loading backup page connection configs:', err);
         setBackupError(err.response?.data?.message || err.message || 'Failed to load connection details.');
       } finally {
+        setDbsLoading(false);
         setLoading(false);
       }
     };
     fetchConnectionDetails();
-  }, [id]);
+  }, [id, isDenied]);
 
-  useEffect(() => {
-    if (connection) {
-      fetchDatabases();
-    }
-  }, [connection]);
+  if (isDenied) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6 text-left">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 max-w-md text-center shadow-lg">
+          <p className="text-4xl mb-4">🚫</p>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Access Denied</h2>
+          <p className="text-sm text-gray-500 mb-6">You do not have permission to access Backup & Restore features.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 transition font-bold shadow-sm">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const formatSizeMB = (sizeMB) => {
     const val = parseFloat(sizeMB || 0);
@@ -95,29 +104,6 @@ export default function ConnectionBackup() {
       });
     });
     return totalSizeMB;
-  };
-
-  const fetchDatabases = async () => {
-    setDbsLoading(true);
-    setBackupError('');
-    try {
-      const res = await API.get(`/connections/${id}/databases`);
-      if (res.data?.success) {
-        const dbList = res.data.databases.map(dbName => ({
-          name: dbName,
-          tables: [],
-          tableSizes: {},
-          loaded: false,
-          expanded: false
-        }));
-        setDatabases(dbList);
-      }
-    } catch (err) {
-      console.error('Error loading databases:', err);
-      setBackupError('Failed to load databases of this server.');
-    } finally {
-      setDbsLoading(false);
-    }
   };
 
   const toggleExpandDb = async (dbName) => {
@@ -287,6 +273,27 @@ export default function ConnectionBackup() {
     }
   };
 
+  const refreshDatabases = async () => {
+    setDbsLoading(true);
+    try {
+      const res = await API.get(`/connections/${id}/databases`);
+      if (res.data?.success) {
+        setDatabases(res.data.databases.map(dbName => ({
+          name: dbName,
+          tables: [],
+          tableSizes: {},
+          loaded: false,
+          expanded: false
+        })));
+      }
+    } catch (err) {
+      console.error('Error refreshing databases:', err);
+      setBackupError('Failed to refresh databases of this server.');
+    } finally {
+      setDbsLoading(false);
+    }
+  };
+
   const handleImportBackup = async () => {
     if (!importFile) return;
     if (!importDbName.trim()) {
@@ -319,7 +326,7 @@ export default function ConnectionBackup() {
       }
       setImportFile(null);
       setImportDbName('');
-      fetchDatabases();
+      await refreshDatabases();
     } catch (err) {
       setBackupError(err.response?.data?.message || err.response?.data?.error || 'Import failed!');
     } finally {
@@ -358,7 +365,7 @@ export default function ConnectionBackup() {
   const getSelectedCountLabel = () => {
     let dbs = 0;
     let tbls = 0;
-    Object.entries(selections).forEach(([dbName, tables]) => {
+    Object.entries(selections).forEach(([, tables]) => {
       if (tables.length > 0) {
         dbs++;
         tbls += tables.length;

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import API from '../api/axios';
 
 export default function PostgreSQLUsersPanel({ connectionId }) {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -29,23 +29,29 @@ export default function PostgreSQLUsersPanel({ connectionId }) {
   const [newPasswordValue, setNewPasswordValue] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  useEffect(() => {
-    fetchUsers();
-  }, [connectionId]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
       const res = await API.get(`/connections/${connectionId}/pg-users`);
       setUsers(res.data.users || []);
+      setError('');
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || 'Failed to load PostgreSQL users.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [connectionId]);
+
+  useEffect(() => {
+    let active = true;
+    API.get(`/connections/${connectionId}/pg-users`)
+      .then(res => { if (active) { setUsers(res.data.users || []); setError(''); } })
+      .catch(err => { if (active) setError(err.response?.data?.message || 'Failed to load PostgreSQL users.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [connectionId]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();

@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import Navbar from '../components/Navbar';
 
 export default function Backup() {
-  const navigate = useNavigate();
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [backupLoading, setBackupLoading] = useState(false);
@@ -14,19 +12,13 @@ export default function Backup() {
   const [selectedFile, setSelectedFile] = useState(null);
 
   useEffect(() => {
-    fetchInfo();
+    let active = true;
+    API.get('/backup/info')
+      .then(res => { if (active) setInfo(res.data.info); })
+      .catch(() => { if (active) setError('Failed to load backup information'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
-
-  const fetchInfo = async () => {
-    try {
-      const res = await API.get('/backup/info');
-      setInfo(res.data.info);
-    } catch (err) {
-      setError('Failed to load backup information');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const takeBackup = async () => {
     setBackupLoading(true);
@@ -47,7 +39,7 @@ export default function Backup() {
       window.URL.revokeObjectURL(url);
 
       setSuccess('Backup downloaded successfully!');
-    } catch (err) {
+    } catch {
       setError('Backup failed!');
     } finally {
       setBackupLoading(false);
@@ -87,7 +79,8 @@ export default function Backup() {
 
       setSuccess(`Database restored successfully! Executed ${res.data.statements} statements.`);
       setSelectedFile(null);
-      fetchInfo();
+      const infoRes = await API.get('/backup/info');
+      setInfo(infoRes.data.info);
     } catch (err) {
       setError(err.response?.data?.error || 'Restore failed!');
     } finally {

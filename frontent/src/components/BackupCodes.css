@@ -1,0 +1,64 @@
+.mfa-codes-note {
+  padding: 9px 12px;
+  border: 1px solid #ccfbf1;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+.mfa-codes-help { margin-top: 9px; font-size: 13px; color: #475569; }
+.mfa-codes-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 7px;
+  margin: 10px 0;
+  padding: 11px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.mfa-codes-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mfa-codes-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  background: #fff;
+  transition: border-color 0.2s, color 0.2s;
+  cursor: pointer;
+}
+.mfa-codes-btn:hover { border-color: #0d9488; color: #0f766e; }
+.mfa-codes-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; font-weight: 500; color: #0f172a; cursor: pointer; }
+.mfa-codes-done {
+  height: 40px;
+  margin-top: 12px;
+  padding: 0 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #0d9488;
+  transition: background 0.2s;
+  cursor: pointer;
+}
+.mfa-codes-done:hover:not(:disabled) { background: #0f766e; }
+.mfa-codes-done:disabled { opacity: 0.55; cursor: not-allowed; }
+
+html.dark .mfa-codes-note { color: #5eead4; background: rgba(13, 148, 136, 0.15); border-color: rgba(13, 148, 136, 0.45); }
+html.dark .mfa-codes-help { color: #cbd5e1; }
+html.dark .mfa-codes-list { color: #f1f5f9; background: #111827; border-color: #334155; }
+html.dark .mfa-codes-btn { color: #cbd5e1; background: #0f172a; border-color: #334155; }
+html.dark .mfa-codes-btn:hover { color: #5eead4; border-color: #0f766e; }
+html.dark .mfa-codes-check { color: #e2e8f0; }

@@ -254,7 +254,7 @@ export default function Connections() {
     setEditConnError('');
     setEditConnTestResult(null);
     try {
-      const res = await API.post('/connections/test', editConnForm);
+      const res = await API.post('/connections/test', { ...editConnForm, connectionId: editConnectionModalConn._id });
       setEditConnTestResult({ success: true, message: res.data.message || 'Connection successful!' });
     } catch (err) {
       setEditConnTestResult({ success: false, message: err.response?.data?.message || 'Connection test failed!' });
@@ -295,20 +295,25 @@ export default function Connections() {
   const [mongoMode, setMongoMode] = useState('structured');
 
   useEffect(() => {
-    fetchConnections();
+    let active = true;
+    API.get('/connections')
+      .then(res => { if (active) setConnections(res.data.connections); })
+      .catch(() => { if (active) setError('Failed to load connections'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
-  const fetchConnections = async () => {
+  async function fetchConnections() {
     try {
       setLoading(true);
       const res = await API.get('/connections');
       setConnections(res.data.connections);
-    } catch (err) {
+    } catch {
       setError('Failed to load connections');
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   // Type change hone pe default port set karo
   const handleTypeChange = (type) => {
@@ -392,60 +397,8 @@ export default function Connections() {
       await API.delete(`/connections/${id}`);
       setConnections(connections.filter(c => c._id !== id));
       setSuccess('Connection deleted successfully!');
-    } catch (err) {
+    } catch {
       setError('Delete failed!');
-    }
-  };
-
-  // Sharing Modal State
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [sharingConn, setSharingConn] = useState(null);
-  const [usersList, setUsersList] = useState([]);
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
-  const [shareLoading, setShareLoading] = useState(false);
-  const [shareError, setShareError] = useState('');
-  const [shareSuccess, setShareSuccess] = useState('');
-  const [shareSearch, setShareSearch] = useState('');
-
-  const handleOpenShareModal = async (conn) => {
-    setSharingConn(conn);
-    setShareModalOpen(true);
-    setShareError('');
-    setShareSuccess('');
-    setSelectedUserIds([]);
-    setShareSearch('');
-    try {
-      const res = await API.get(`/connections/${conn._id}/share`);
-      setUsersList(res.data.users);
-      setSelectedUserIds(res.data.allowedUsers);
-    } catch (err) {
-      setShareError('Failed to load sharing details.');
-    }
-  };
-
-  const handleToggleUser = (userId) => {
-    if (selectedUserIds.includes(userId)) {
-      setSelectedUserIds(selectedUserIds.filter(id => id !== userId));
-    } else {
-      setSelectedUserIds([...selectedUserIds, userId]);
-    }
-  };
-
-  const handleSaveShare = async () => {
-    setShareLoading(true);
-    setShareError('');
-    setShareSuccess('');
-    try {
-      await API.put(`/connections/${sharingConn._id}/share`, {
-        developerIds: selectedUserIds
-      });
-      setShareSuccess('Access updated successfully!');
-      fetchConnections();
-      setTimeout(() => setShareModalOpen(false), 1000);
-    } catch (err) {
-      setShareError(err.response?.data?.message || 'Failed to update access.');
-    } finally {
-      setShareLoading(false);
     }
   };
 
@@ -1448,6 +1401,9 @@ export default function Connections() {
                     onChange={e => setEditConnForm({ ...editConnForm, connectionString: e.target.value })}
                     className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4]"
                   />
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    The password is hidden as ****. Leave it to keep the current one. If you change the host, enter the password again.
+                  </p>
                 </div>
               )}
 

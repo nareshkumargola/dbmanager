@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { maskConnectionString } = require('../utils/connectionString');
 
 const connectionSchema = new mongoose.Schema({
   user: {
@@ -115,6 +116,16 @@ const connectionSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now,
+  },
+}, {
+  toJSON: {
+    // Every API response goes through toJSON, so passwords stay on the server.
+    // toObject is left alone because connecting to the database needs the real values.
+    transform(doc, ret) {
+      delete ret.password;
+      if (ret.connectionString) ret.connectionString = maskConnectionString(ret.connectionString);
+      return ret;
+    },
   },
 });
 
