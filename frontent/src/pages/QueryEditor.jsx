@@ -9,6 +9,22 @@ import CopyButtonContent from '../components/CopyButtonContent';
 import useEditorAppearance from '../hooks/useEditorAppearance';
 import { copyToClipboard } from '../utils/clipboard';
 import './ConnectionDashboard.css';
+import './QueryEditor.css';
+import EngineIcon from '../components/EngineIcon';
+import { cloudLabel } from '../utils/cloudProviders';
+
+const ENGINE_INFO = {
+  mysql: { label: 'MySQL', color: '#0284c7', port: 3306 },
+  postgresql: { label: 'PostgreSQL', color: '#4f46e5', port: 5432 },
+  mongodb: { label: 'MongoDB', color: '#15803d', port: 27017 },
+  oracle: { label: 'Oracle', color: '#dc2626', port: 1521 },
+};
+
+// Where a connection points: the host of its connection string, or host and port
+const connectionHost = (conn) => {
+  if (conn.connectionString) return conn.connectionString.replace(/^[a-z+]+:\/\//i, '').split('@').pop().split(/[/?]/)[0];
+  return `${conn.host || 'localhost'}:${conn.port || ENGINE_INFO[conn.type]?.port || ''}`;
+};
 
 export default function QueryEditor() {
   const { user } = useAuth();
@@ -372,6 +388,11 @@ function QueryEditorContent({ user, location }) {
       return true;
     });
   }, [connections, batchTypeFilter, batchConnSearch]);
+
+  const batchTypeCounts = useMemo(() => connections.reduce((counts, conn) => {
+    counts[conn.type] = (counts[conn.type] || 0) + 1;
+    return counts;
+  }, {}), [connections]);
 
   const totalBatchTargetsCount = useMemo(() => {
     let count = 0;
@@ -1013,60 +1034,71 @@ function QueryEditorContent({ user, location }) {
       <div className="w-[90%] max-w-none mx-auto py-8">
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 text-left flex items-center gap-2">
-              <span>SQL Query Editor</span>
-              {executionMode === 'batch' && (
-                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-teal-100 text-teal-800 border border-teal-200">
-                  Batch Multi-Target Active
-                </span>
-              )}
-            </h2>
-            <p className="text-sm text-gray-500 mt-1 text-left">
-              {executionMode === 'batch' 
-                ? 'Run one SQL script across selected connections and databases, review each result, and export successful results to CSV.'
-                : 'Choose a connection and database, run the selected statement or full script, and import CSV data into a table.'}
-            </p>
+        <div className="aq-hero mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div className="min-w-0">
+              <span className="aq-pill"><span className="aq-pill-dot" />Query Workspace</span>
+              <h2 className="aq-title">
+                {executionMode === 'batch' ? <>All Connection <span>Query</span></> : <>SQL Query <span>Editor</span></>}
+              </h2>
+              <p className="aq-subtitle">
+                {executionMode === 'batch'
+                  ? 'Run one SQL script across selected connections and databases, review each result, and export successful results to CSV.'
+                  : 'Choose a connection and database, run the selected statement or full script, and import CSV data into a table.'}
+              </p>
+            </div>
+
+            {/* Mode Switcher Tabs */}
+            <div className="aq-mode" role="tablist" aria-label="Query mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={executionMode === 'single'}
+                onClick={() => setExecutionMode('single')}
+                className={executionMode === 'single' ? 'is-active' : ''}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.5" /></svg>
+                Single Connection
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={executionMode === 'batch'}
+                onClick={() => {
+                  setExecutionMode('batch');
+                  if (selectedConnIds.length === 0 && connections.length > 0) {
+                    const initialId = selectedConnection || connections[0]._id;
+                    setSelectedConnIds([initialId]);
+                    if (!connDatabasesMap[initialId]) fetchDatabasesForConn(initialId);
+                  }
+                }}
+                className={executionMode === 'batch' ? 'is-active' : ''}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5" /></svg>
+                All Connection Query
+                {totalBatchTargetsCount > 0 && (
+                  <span className="aq-mode-count">{totalBatchTargetsCount}</span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Mode Switcher Tabs */}
-          <div className="flex items-center p-1 bg-gray-200/80 rounded-xl border border-gray-300 self-start sm:self-auto shadow-inner">
-            <button
-              type="button"
-              onClick={() => setExecutionMode('single')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                executionMode === 'single'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span>🎯</span> Single Connection
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setExecutionMode('batch');
-                if (selectedConnIds.length === 0 && connections.length > 0) {
-                  const initialId = selectedConnection || connections[0]._id;
-                  setSelectedConnIds([initialId]);
-                  if (!connDatabasesMap[initialId]) fetchDatabasesForConn(initialId);
-                }
-              }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                executionMode === 'batch'
-                  ? 'bg-[#0d9da4] text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <span>⚡</span> All Connection Query
-              {totalBatchTargetsCount > 0 && (
-                <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px] ml-0.5">
-                  {totalBatchTargetsCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {executionMode === 'batch' && (
+            <div className="aq-stats">
+              <div className="aq-stat">
+                <span className="aq-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" /></svg></span>
+                <span><b>{connections.length}</b><small>Connections available</small></span>
+              </div>
+              <div className="aq-stat is-teal">
+                <span className="aq-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+                <span><b>{selectedConnIds.length}</b><small>Connections selected</small></span>
+              </div>
+              <div className="aq-stat is-blue">
+                <span className="aq-stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5" /></svg></span>
+                <span><b>{totalBatchTargetsCount}</b><small>Database targets</small></span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 1. SINGLE CONNECTION SELECTOR */}
@@ -1141,19 +1173,18 @@ function QueryEditorContent({ user, location }) {
           </div>
         )}
 
-        {/* 2. MULTI-CONNECTION & MULTI-DATABASE DISPATCHER PANEL */}
+        {/* 2. Connections and databases the query runs on */}
         {executionMode === 'batch' && (
-          <div className="cd-panel bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm text-left animate-fadeIn">
-            <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-gray-150 gap-3 mb-4">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                  <span>🌐</span> Multi-Connection & Multi-Database Target Dispatcher
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Select database engine type, check connections, and select multiple databases per connection.
-                </p>
+          <div className="aq-panel mb-6 text-left animate-fadeIn">
+            <div className="aq-panel-head">
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="aq-head-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5" /></svg></span>
+                <div className="min-w-0">
+                  <h3>Choose Connections &amp; Databases</h3>
+                  <p>Tick a connection, then pick the databases your query should run on.</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -1161,65 +1192,54 @@ function QueryEditorContent({ user, location }) {
                     selectedConnIds.forEach(id => fetchDatabasesForConn(id));
                   }}
                   title="Refresh Connections & Databases"
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-600 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                  className="aq-btn"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 7.89M21 4v5h-5" />
-                  </svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 01-14.3 4.9M4 12a8 8 0 0114.3-4.9M18 3v4.5h-4.5M6 21v-4.5h4.5" /></svg>
                   Refresh
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowImportWizard(!showImportWizard)}
-                  className={`px-3 py-1.5 border rounded-lg transition text-xs font-bold flex items-center gap-1.5 cursor-pointer ${
-                    showImportWizard ? 'bg-teal-600 text-white border-teal-650' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'
-                  }`}
+                  className={`aq-btn ${showImportWizard ? 'is-on' : ''}`}
+                  aria-pressed={showImportWizard}
                 >
-                  <span>📂</span> Import Wizard
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" /></svg>
+                  Import Wizard
                 </button>
               </div>
             </div>
 
-            {/* Engine Type Filter & Search Bar */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-              {/* Type Filter Buttons */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { id: 'all', label: 'All Engines', icon: '🗄️' },
-                  { id: 'mysql', label: 'MySQL', icon: '🐬' },
-                  { id: 'postgresql', label: 'PostgreSQL', icon: '🐘' },
-                  { id: 'mongodb', label: 'MongoDB', icon: '🍃' },
-                  { id: 'oracle', label: 'Oracle', icon: '🔴' }
-                ].map(type => (
+            <div className="aq-toolbar">
+              <div className="aq-chips" role="group" aria-label="Database type">
+                {['all', ...Object.keys(ENGINE_INFO)].map((type) => (
                   <button
-                    key={type.id}
+                    key={type}
                     type="button"
-                    onClick={() => setBatchTypeFilter(type.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition flex items-center gap-1 cursor-pointer ${
-                      batchTypeFilter === type.id
-                        ? 'bg-[#0d9da4] text-white border-[#0d9da4] shadow-xs'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                    }`}
+                    aria-pressed={batchTypeFilter === type}
+                    onClick={() => setBatchTypeFilter(type)}
+                    className={`aq-chip ${batchTypeFilter === type ? 'is-active' : ''}`}
+                    style={type === 'all' ? undefined : { '--chip': ENGINE_INFO[type].color }}
                   >
-                    <span>{type.icon}</span> {type.label}
+                    {type === 'all'
+                      ? <span className="aq-chip-all"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" /></svg></span>
+                      : <EngineIcon type={type} size={18} />}
+                    {type === 'all' ? 'All' : ENGINE_INFO[type].label}
+                    <span className="aq-chip-count">{type === 'all' ? connections.length : (batchTypeCounts[type] || 0)}</span>
                   </button>
                 ))}
               </div>
-
-              {/* Search & Bulk Select */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Filter connections..."
-                  value={batchConnSearch}
-                  onChange={(e) => setBatchConnSearch(e.target.value)}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-gray-50 focus:bg-white outline-none focus:border-[#0d9da4] transition w-44 font-medium"
-                />
-                <button
-                  type="button"
-                  onClick={handleSelectAllFilteredConnections}
-                  className="px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:text-teal-700 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-300 transition cursor-pointer"
-                >
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="aq-search">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+                  <input
+                    type="text"
+                    placeholder="Filter connections..."
+                    aria-label="Filter connections"
+                    value={batchConnSearch}
+                    onChange={(e) => setBatchConnSearch(e.target.value)}
+                  />
+                </div>
+                <button type="button" onClick={handleSelectAllFilteredConnections} className="aq-btn">
                   {filteredBatchConnections.length > 0 && filteredBatchConnections.every(c => selectedConnIds.includes(c._id))
                     ? 'Deselect All'
                     : 'Select All'}
@@ -1229,111 +1249,80 @@ function QueryEditorContent({ user, location }) {
 
             {/* Connection & DB Tree List */}
             {filteredBatchConnections.length === 0 ? (
-              <div className="py-8 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                <p className="text-sm text-gray-500 font-medium">No database connections found matching this filter.</p>
-              </div>
+              <div className="aq-empty">No database connections found matching this filter.</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto p-1">
+              <div className="aq-conn-grid">
                 {filteredBatchConnections.map(conn => {
                   const isChecked = selectedConnIds.includes(conn._id);
                   const connDbs = connDatabasesMap[conn._id] || (conn.database ? [conn.database] : []);
                   const selectedDbs = selectedDatabasesMap[conn._id] || [];
                   const isLoadingDbs = !!connDbLoadingMap[conn._id];
+                  const cloudText = cloudLabel(conn.cloudProvider, conn.cloudService);
 
                   return (
                     <div
                       key={conn._id}
-                      className={`border rounded-xl p-3.5 transition-all flex flex-col justify-between ${
-                        isChecked
-                          ? 'border-teal-400 bg-teal-50/20 shadow-xs'
-                          : 'border-gray-200 bg-white hover:border-gray-300'
-                      }`}
+                      className={`aq-conn ${isChecked ? 'is-selected' : ''}`}
+                      style={{ '--engine': ENGINE_INFO[conn.type]?.color || '#0d9488' }}
                     >
-                      {/* Connection Header */}
                       <div className="flex items-start justify-between gap-2">
-                        <label className="flex items-start gap-2.5 cursor-pointer flex-1 select-none">
+                        <label className="aq-conn-main">
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => toggleSelectConnection(conn._id)}
-                            className="mt-0.5 rounded text-teal-600 focus:ring-teal-500 h-4 w-4 cursor-pointer"
                           />
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-base">
-                                {conn.type === 'mysql' ? '🐬' : conn.type === 'postgresql' ? '🐘' : conn.type === 'mongodb' ? '🍃' : '🔴'}
-                              </span>
-                              <span className="text-xs font-bold text-gray-900">{conn.name}</span>
-                              <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 border border-gray-200">
-                                {conn.type}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-gray-500 font-mono mt-0.5">
-                              {conn.host}:{conn.port || (conn.type === 'mysql' ? 3306 : 5432)}
-                            </p>
-                          </div>
+                          <span className="aq-conn-logo"><EngineIcon type={conn.type} size={24} /></span>
+                          <span className="min-w-0">
+                            <span className="aq-conn-name">{conn.name}</span>
+                            <span className="aq-conn-tags">
+                              <span className="aq-type">{ENGINE_INFO[conn.type]?.label || conn.type}</span>
+                              {cloudText && <span className="aq-cloud">{cloudText}</span>}
+                            </span>
+                            <span className="aq-conn-host" title={connectionHost(conn)}>{connectionHost(conn)}</span>
+                          </span>
                         </label>
 
                         {isChecked && (
-                          <span className="text-[11px] font-bold text-teal-700 bg-teal-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          <span className="aq-db-count">
                             {selectedDbs.length} DB{selectedDbs.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </div>
 
-                      {/* Databases Multi-Select area (shown when connection is checked) */}
+                      {/* Databases to run on (shown when the connection is ticked) */}
                       {isChecked && (
-                        <div className="mt-3 pt-2.5 border-t border-teal-100/80">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">
-                              Select Databases:
-                            </span>
-                            <div className="flex items-center gap-1">
-                              {connDbs.length > 1 && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => selectAllDatabasesForConn(conn._id)}
-                                    className="text-[10px] font-bold text-teal-700 hover:underline cursor-pointer"
-                                  >
-                                    All
-                                  </button>
-                                  <span className="text-gray-300">|</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => clearAllDatabasesForConn(conn._id)}
-                                    className="text-[10px] font-bold text-gray-500 hover:underline cursor-pointer"
-                                  >
-                                    None
-                                  </button>
-                                </>
-                              )}
-                            </div>
+                        <div className="aq-dbs">
+                          <div className="aq-dbs-head">
+                            <span>Databases</span>
+                            {connDbs.length > 1 && (
+                              <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => selectAllDatabasesForConn(conn._id)} className="aq-mini">All</button>
+                                <button type="button" onClick={() => clearAllDatabasesForConn(conn._id)} className="aq-mini">None</button>
+                              </div>
+                            )}
                           </div>
 
                           {isLoadingDbs ? (
-                            <div className="py-2 flex items-center gap-1.5 text-xs text-teal-700">
-                              <div className="w-3 h-3 border-2 border-teal-600/30 border-t-teal-600 rounded-full animate-spin"></div>
-                              <span>Loading databases...</span>
+                            <div className="aq-dbs-note">
+                              <span className="aq-spinner" />
+                              Loading databases...
                             </div>
                           ) : connDbs.length === 0 ? (
-                            <div className="text-[11px] text-gray-400 italic">No accessible databases listed</div>
+                            <div className="aq-dbs-note">No accessible databases listed</div>
                           ) : (
-                            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                            <div className="aq-db-list">
                               {connDbs.map(dbName => {
                                 const isDbSelected = selectedDbs.includes(dbName);
                                 return (
                                   <button
                                     key={dbName}
                                     type="button"
+                                    aria-pressed={isDbSelected}
                                     onClick={() => toggleSelectDatabase(conn._id, dbName)}
-                                    className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer flex items-center gap-1 border ${
-                                      isDbSelected
-                                        ? 'bg-teal-600 text-white border-teal-700 font-bold shadow-xs'
-                                        : 'bg-white text-gray-700 border-gray-300 hover:border-gray-400'
-                                    }`}
+                                    className={`aq-db ${isDbSelected ? 'is-on' : ''}`}
                                   >
-                                    <span>{isDbSelected ? '✓' : '+'}</span>
+                                    {isDbSelected ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>}
                                     <span>{dbName}</span>
                                   </button>
                                 );
@@ -1348,17 +1337,15 @@ function QueryEditorContent({ user, location }) {
               </div>
             )}
 
-            {/* Target Summary Status Banner */}
-            <div className="mt-4 pt-3 border-t border-gray-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="font-semibold text-gray-700">
-                  Ready Target Dispatch: <span className="text-teal-700 font-bold">{selectedConnIds.length}</span> Connection{selectedConnIds.length !== 1 ? 's' : ''} &middot; <span className="text-teal-700 font-bold">{totalBatchTargetsCount}</span> Database Target{totalBatchTargetsCount !== 1 ? 's' : ''}
-                </span>
+            {/* What the next run covers */}
+            <div className="aq-summary">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="aq-live-dot" />
+                <span>Ready to run on</span>
+                <b className="aq-summary-chip">{selectedConnIds.length} connection{selectedConnIds.length !== 1 ? 's' : ''}</b>
+                <b className="aq-summary-chip is-blue">{totalBatchTargetsCount} database{totalBatchTargetsCount !== 1 ? 's' : ''}</b>
               </div>
-              <span className="text-[11px] text-gray-500">
-                Single query script will execute concurrently across all selected databases in one click.
-              </span>
+              <span className="aq-summary-hint">The query runs on every selected database at once.</span>
             </div>
           </div>
         )}
@@ -1819,133 +1806,101 @@ function QueryEditorContent({ user, location }) {
           </div>
         )}
 
-        {/* MULTI-DATABASE BATCH EXECUTION RESULTS DASHBOARD */}
+        {/* Results of a run on several databases */}
         {executionMode === 'batch' && batchResults && (
-          <div className="cd-panel bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm mb-6 text-left animate-fadeIn">
-            {/* Top Metrics Row */}
-            <div className="p-4 bg-gradient-to-r from-gray-900 to-gray-800 text-white flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">⚡</span>
-                <div>
-                  <h3 className="text-sm font-bold tracking-wide">Multi-Database Batch Execution Results</h3>
-                  <p className="text-xs text-gray-300">
-                    Dispatched query across {batchResults.summary.total} targets in {batchResults.summary.totalTime} ms
-                  </p>
+          <div className="aq-panel aq-results mb-6 text-left animate-fadeIn">
+            <div className="aq-results-head">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="aq-head-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" /></svg></span>
+                <div className="min-w-0">
+                  <h3>Batch Results</h3>
+                  <p>Ran on {batchResults.summary.total} target{batchResults.summary.total !== 1 ? 's' : ''} in {batchResults.summary.totalTime} ms</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-xs font-bold">
-                <div className="bg-gray-800/80 border border-gray-700 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                  <span className="text-gray-400">Targets:</span>
-                  <span className="text-white">{batchResults.summary.total}</span>
-                </div>
-                <div className="bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                  <span>✅ Success:</span>
-                  <span>{batchResults.summary.successCount}</span>
-                </div>
-                {batchResults.summary.errorCount > 0 && (
-                  <div className="bg-rose-950/60 border border-rose-700/50 text-rose-300 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                    <span>❌ Errors:</span>
-                    <span>{batchResults.summary.errorCount}</span>
-                  </div>
-                )}
+              <div className="aq-metrics">
+                <div className="aq-metric"><small>Targets</small><b>{batchResults.summary.total}</b></div>
+                <div className="aq-metric is-ok"><small>Success</small><b>{batchResults.summary.successCount}</b></div>
+                <div className={`aq-metric ${batchResults.summary.errorCount > 0 ? 'is-bad' : ''}`}><small>Errors</small><b>{batchResults.summary.errorCount}</b></div>
+                <div className="aq-metric"><small>Time</small><b>{batchResults.summary.totalTime} ms</b></div>
               </div>
             </div>
 
             {/* Target Tab Navigation */}
-            <div className="flex items-center gap-1 p-2 bg-gray-50 border-b border-gray-200 overflow-x-auto text-xs">
+            <div className="aq-tabs" role="tablist" aria-label="Batch results">
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeResultKey === 'summary'}
                 onClick={() => setActiveResultKey('summary')}
-                className={`px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-                  activeResultKey === 'summary'
-                    ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
+                className={`aq-tab ${activeResultKey === 'summary' ? 'is-active' : ''}`}
               >
-                <span>📊</span> Overview Matrix ({batchResults.targets.length})
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+                Overview
+                <span className="aq-tab-count">{batchResults.targets.length}</span>
               </button>
 
               {batchResults.targets.map((tgt) => (
                 <button
                   key={tgt.key}
                   type="button"
+                  role="tab"
+                  aria-selected={activeResultKey === tgt.key}
                   onClick={() => setActiveResultKey(tgt.key)}
-                  className={`px-3 py-1.5 rounded-lg font-semibold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 border ${
-                    activeResultKey === tgt.key
-                      ? 'bg-white text-teal-800 border-teal-500 shadow-sm font-bold'
-                      : tgt.status === 'error'
-                      ? 'border-red-200 bg-red-50/50 text-red-700 hover:bg-red-50'
-                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                  }`}
+                  className={`aq-tab ${activeResultKey === tgt.key ? 'is-active' : ''} ${tgt.status === 'error' ? 'is-error' : ''}`}
                 >
-                  <span>{tgt.connectionType === 'mysql' ? '🐬' : tgt.connectionType === 'postgresql' ? '🐘' : tgt.connectionType === 'mongodb' ? '🍃' : '🔴'}</span>
-                  <span>{tgt.connectionName} &gt; {tgt.database}</span>
-                  <span className={`text-[10px] px-1 py-0.2 rounded font-bold ${
-                    tgt.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {tgt.status === 'success' ? `${tgt.rowCount}r` : 'ERR'}
+                  <EngineIcon type={tgt.connectionType} size={15} />
+                  <span>{tgt.connectionName} <span className="aq-tab-sep">›</span> {tgt.database}</span>
+                  <span className={`aq-tab-badge ${tgt.status === 'success' ? 'is-ok' : 'is-bad'}`}>
+                    {tgt.status === 'success' ? `${tgt.rowCount} row${tgt.rowCount !== 1 ? 's' : ''}` : 'Error'}
                   </span>
                 </button>
               ))}
             </div>
 
-            {/* TAB CONTENT: Overview Matrix */}
+            {/* TAB CONTENT: Overview */}
             {activeResultKey === 'summary' && (
               <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 uppercase text-[10px] font-bold">
+                <table className="aq-table w-full text-left">
+                  <thead>
                     <tr>
-                      <th className="px-4 py-3">Connection</th>
-                      <th className="px-4 py-3">Target Database</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Result / Rows</th>
-                      <th className="px-4 py-3">Latency</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th>Connection</th>
+                      <th>Database</th>
+                      <th>Status</th>
+                      <th>Result</th>
+                      <th>Time</th>
+                      <th className="text-right">Output</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-150">
+                  <tbody>
                     {batchResults.targets.map((tgt) => (
-                      <tr key={tgt.key} className="hover:bg-gray-50/80 transition">
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <span>{tgt.connectionType === 'mysql' ? '🐬' : tgt.connectionType === 'postgresql' ? '🐘' : tgt.connectionType === 'mongodb' ? '🍃' : '🔴'}</span>
-                            <span className="font-bold text-gray-900">{tgt.connectionName}</span>
-                            <span className="text-[10px] uppercase text-gray-500">({tgt.connectionType})</span>
+                      <tr key={tgt.key}>
+                        <td>
+                          <div className="flex items-center gap-2.5">
+                            <span className="aq-table-logo"><EngineIcon type={tgt.connectionType} size={18} /></span>
+                            <span className="font-semibold aq-strong">{tgt.connectionName}</span>
+                            <span className="aq-type">{ENGINE_INFO[tgt.connectionType]?.label || tgt.connectionType}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-mono font-medium text-teal-800">
-                          {tgt.database}
-                        </td>
-                        <td className="px-4 py-3">
+                        <td className="font-mono aq-db-name">{tgt.database}</td>
+                        <td>
                           {tgt.status === 'success' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
-                              <span>✓</span> Success
-                            </span>
+                            <span className="aq-status is-ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>Success</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-800">
-                              <span>✕</span> Error
-                            </span>
+                            <span className="aq-status is-bad"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>Error</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
+                        <td>
                           {tgt.status === 'success' ? (
-                            <span className="font-medium">{tgt.message}</span>
+                            <span>{tgt.message}</span>
                           ) : (
-                            <span className="text-red-600 font-mono text-[11px] line-clamp-1" title={tgt.error}>
-                              {tgt.error}
-                            </span>
+                            <span className="aq-error-text line-clamp-1" title={tgt.error}>{tgt.error}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 font-mono text-gray-500">
-                          {tgt.executionTime} ms
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setActiveResultKey(tgt.key)}
-                            className="px-2.5 py-1 text-xs font-semibold text-teal-700 hover:text-white bg-teal-50 hover:bg-teal-600 rounded border border-teal-200 hover:border-teal-600 transition cursor-pointer"
-                          >
-                            View Output &rarr;
+                        <td className="font-mono aq-muted">{tgt.executionTime} ms</td>
+                        <td className="text-right">
+                          <button type="button" onClick={() => setActiveResultKey(tgt.key)} className="aq-btn is-small">
+                            View
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
                           </button>
                         </td>
                       </tr>
@@ -1961,40 +1916,34 @@ function QueryEditorContent({ user, location }) {
               if (!activeTarget) return null;
 
               return (
-                <div className="p-4">
-                  {/* Target Details Header Bar */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-150 gap-2 mb-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">
-                        {activeTarget.connectionType === 'mysql' ? '🐬' : activeTarget.connectionType === 'postgresql' ? '🐘' : activeTarget.connectionType === 'mongodb' ? '🍃' : '🔴'}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-gray-900">{activeTarget.connectionName}</h4>
-                          <span className="text-xs text-gray-400">&gt;</span>
-                          <span className="text-xs font-mono font-bold text-teal-700">{activeTarget.database}</span>
-                        </div>
-                        <p className="text-[11px] text-gray-500">
-                          Executed in {activeTarget.executionTime} ms &middot; Status: {activeTarget.status.toUpperCase()}
+                <div className="p-4 sm:p-5">
+                  <div className="aq-target-head">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="aq-conn-logo"><EngineIcon type={activeTarget.connectionType} size={24} /></span>
+                      <div className="min-w-0">
+                        <h4>
+                          {activeTarget.connectionName}
+                          <span className="aq-tab-sep">›</span>
+                          <span className="font-mono aq-db-name">{activeTarget.database}</span>
+                        </h4>
+                        <p>
+                          Ran in {activeTarget.executionTime} ms
+                          <span className={`aq-status ${activeTarget.status === 'success' ? 'is-ok' : 'is-bad'}`}>
+                            {activeTarget.status === 'success' ? 'Success' : 'Error'}
+                          </span>
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {activeTarget.status === 'success' && activeTarget.results?.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => exportTargetCSV(activeTarget)}
-                          className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                          <span>📥</span> Export CSV
+                        <button type="button" onClick={() => exportTargetCSV(activeTarget)} className="aq-btn">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 20h16" /></svg>
+                          Export CSV
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setActiveResultKey('summary')}
-                        className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition cursor-pointer"
-                      >
+                      <button type="button" onClick={() => setActiveResultKey('summary')} className="aq-btn">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
                         Back to Overview
                       </button>
                     </div>
@@ -2002,55 +1951,43 @@ function QueryEditorContent({ user, location }) {
 
                   {/* If Error */}
                   {activeTarget.status === 'error' && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
-                      <p className="text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        <span>❌</span> Database Query Execution Error
-                      </p>
-                      <pre className="text-xs font-mono whitespace-pre-wrap break-all mt-1 bg-white/70 p-3 rounded-lg border border-red-200">
-                        {activeTarget.error}
-                      </pre>
+                    <div className="aq-error-box">
+                      <p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>Query failed on this database</p>
+                      <pre>{activeTarget.error}</pre>
                     </div>
                   )}
 
                   {/* If Success with No Rows Returned or Affected Rows */}
                   {activeTarget.status === 'success' && activeTarget.results?.length === 0 && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
-                      <p className="text-sm font-semibold text-gray-700">
-                        ✅ {activeTarget.message || 'Statement executed successfully. No rows returned.'}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">Latency: {activeTarget.executionTime} ms</p>
+                    <div className="aq-ok-box">
+                      <p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>{activeTarget.message || 'Statement executed successfully. No rows returned.'}</p>
+                      <small>Time: {activeTarget.executionTime} ms</small>
                     </div>
                   )}
 
                   {/* If Success with Tabular Data Rows */}
                   {activeTarget.status === 'success' && activeTarget.results?.length > 0 && (
-                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-xs">
-                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-150 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-gray-700">
-                          {activeTarget.results.length} rows returned
-                        </span>
-                        <span className="text-gray-400 font-mono text-[11px]">
-                          {activeTarget.executionTime} ms
-                        </span>
+                    <div className="aq-data">
+                      <div className="aq-data-head">
+                        <span>{activeTarget.results.length} row{activeTarget.results.length !== 1 ? 's' : ''} returned</span>
+                        <span className="font-mono">{activeTarget.executionTime} ms</span>
                       </div>
                       <div className="overflow-x-auto max-h-[450px]">
-                        <table className="w-full text-xs text-left">
-                          <thead className="bg-gray-100 border-b border-gray-200 sticky top-0 uppercase text-[10px] font-bold text-gray-600 tracking-wider">
+                        <table className="aq-table w-full text-left">
+                          <thead>
                             <tr>
                               {activeTarget.columns.map((col, cIdx) => (
-                                <th key={cIdx} className="px-4 py-2.5 whitespace-nowrap bg-gray-100">
-                                  {col}
-                                </th>
+                                <th key={cIdx} className="whitespace-nowrap">{col}</th>
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-150">
+                          <tbody>
                             {activeTarget.results.map((row, rIdx) => (
-                              <tr key={rIdx} className="hover:bg-gray-50/70 transition">
+                              <tr key={rIdx}>
                                 {activeTarget.columns.map((col, cIdx) => (
-                                  <td key={cIdx} className="px-4 py-2.5 text-gray-700 whitespace-nowrap font-mono">
+                                  <td key={cIdx} className="whitespace-nowrap font-mono">
                                     {row[col] === null ? (
-                                      <span className="text-gray-300 italic">null</span>
+                                      <span className="aq-null">null</span>
                                     ) : (
                                       String(row[col])
                                     )}

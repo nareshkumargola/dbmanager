@@ -49,6 +49,7 @@
 .cx-engine-chip .text-slate-900 { color: color-mix(in srgb, var(--chip) 78%, #000); }
 .cx-engine-chip .text-slate-500 { color: #475569; }
 .cx-chip-logo { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: #fff; border: 1px solid #eef2f7; }
+.cx-chip-logo img { width: 20px; height: 18px; object-fit: contain; }
 
 .cx-btn-primary {
   display: inline-flex;
@@ -351,11 +352,8 @@
   --cx-surface: color-mix(in srgb, var(--cx-accent) 5%, #fff);
 }
 
-/* ===== Lists with more than 10 connections scroll inside (max-height is set in Connections.jsx) ===== */
+/* ===== Lists are split into pages ===== */
 .cx-list { position: relative; }
-.cx-list.is-scroll { overflow-y: auto; align-content: start; }
-/* Room for the cards' hover lift and shadow, which the scroll area would otherwise cut off */
-.cx-list.is-scroll:not(.cx-rows) { padding: 6px 8px 10px 2px; }
 
 /* ===== Row view ===== */
 .cx-rows {
@@ -674,23 +672,135 @@ html.dark .cx-row-pager button { color: #e2e8f0; background: #1e293b; border-col
 html.dark .cx-row-pager button.is-active { color: #fff; background: #2563eb; border-color: #2563eb; }
 html.dark .cx-row-pager button:hover:not(:disabled):not(.is-active) { background: #1e293b; border-color: #60a5fa; }
 
-/* ===== Add Connection form: the login page's colors and hover effects ===== */
-/* Colors, shadows and hover movement only, so the form keeps its layout. */
-.cx-add-form { box-shadow: 0 30px 60px -25px rgba(15, 50, 110, 0.25), 0 8px 24px rgba(15, 23, 42, 0.05); }
-.cx-add-form h3 {
-  background: linear-gradient(90deg, #0b74e5, #10c98f, #0ea5e9, #0b74e5);
-  background-size: 300px 100%;
+/* ===== Add Connection: intro panel on the left, form on the right ===== */
+.cx-add-form {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.3fr) minmax(0, 1fr);
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid #dfe6fb;
+  border-radius: 26px;
+  background: linear-gradient(135deg, #eef1ff, #f6f8ff 45%, #eef4ff);
+  box-shadow: 0 30px 60px -30px rgba(49, 46, 129, 0.35), 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+/* Left panel */
+.cx-add-intro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 30px 24px 22px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 20px;
+  background:
+    radial-gradient(420px 280px at 20% 0, rgba(255, 255, 255, 0.9), transparent 70%),
+    linear-gradient(165deg, #e9edff, #dde4ff 55%, #e8ecff);
+}
+.cx-add-intro-icon { width: 54px; height: 54px; }
+.cx-add-intro h2 { font-size: 34px; font-weight: 800; line-height: 1.12; letter-spacing: -0.01em; color: #0b1240; }
+.cx-add-intro h2 span {
+  display: block;
+  background: linear-gradient(90deg, #5b4cf0, #3b6cf6);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: cxTextFlow 5s linear infinite;
 }
-@keyframes cxTextFlow {
-  to { background-position: -300px 0; }
-}
-.cx-add-form label { color: #1e2b55; }
+.cx-add-intro p { margin-top: 12px; font-size: 16px; line-height: 1.5; color: #2c3d93; }
 
-/* Inputs */
+.cx-add-art { position: relative; height: 290px; margin: 4px -6px; }
+.cx-add-cylinder { position: absolute; left: 50%; top: 52%; width: 210px; transform: translate(-50%, -50%); }
+.cx-add-chip {
+  position: absolute;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  width: 70px;
+  height: 70px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 26px -14px rgba(49, 46, 129, 0.5);
+  animation: cxChipFloat 6s ease-in-out infinite;
+}
+.cx-add-chip img { width: 34px; height: 26px; object-fit: contain; }
+.cx-add-chip small { font-size: 10px; font-weight: 600; color: #1f2a5a; }
+.cx-add-chip.is-mysql { left: 6%; top: 4%; }
+.cx-add-chip.is-postgresql { right: 6%; top: 0; animation-delay: -1s; }
+.cx-add-chip.is-oracle { left: 0; top: 40%; animation-delay: -2s; }
+.cx-add-chip.is-mongodb { right: 0; top: 36%; animation-delay: -3s; }
+.cx-add-chip.is-azure { left: 10%; bottom: 2%; animation-delay: -4s; }
+.cx-add-chip.is-aws { right: 10%; bottom: 0; animation-delay: -5s; }
+@keyframes cxChipFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.cx-add-points {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.cx-add-points li { display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; color: #1f2a5a; }
+.cx-add-points svg { width: 22px; height: 22px; flex-shrink: 0; }
+.cx-add-points svg circle { fill: #16a34a; }
+.cx-add-points svg path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Right panel */
+.cx-add-main {
+  min-width: 0;
+  padding: 22px 26px 26px;
+  border: 1px solid #e3e8fb;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.92);
+}
+.cx-add-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf0fb;
+}
+.cx-add-top-right { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cx-add-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #047857;
+  background: #e3f8ee;
+}
+.cx-add-secure svg { width: 16px; height: 16px; fill: #10b981; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cx-add-secure::after { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #10b981; }
+
+/* Labels with icons */
+.cx-add-form .cx-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b1240;
+}
+.cx-add-form .cx-label svg { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: #1e2b6f; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cx-add-form .cx-label em { font-style: normal; color: #5b4cf0; }
+.cx-add-form .flex > .cx-label { margin-bottom: 0; }
+
+/* Inputs: unchanged from before */
 .cx-add-form input:not([type="radio"]):not([type="checkbox"]) {
   color: #0b1b4d;
   border-color: #dbe3ee;
@@ -705,67 +815,72 @@ html.dark .cx-row-pager button:hover:not(:disabled):not(.is-active) { background
 .cx-add-form input[type="radio"],
 .cx-add-form input[type="checkbox"] { accent-color: #12b5c9; }
 
-/* Database type buttons */
-.cx-add-form .grid > button {
-  border-color: #dbe3ee;
-  color: #1e2b55;
-  transition: transform 0.35s cubic-bezier(.2,.8,.2,1), box-shadow 0.35s, border-color 0.25s, color 0.25s, background-position 0.5s ease;
-  cursor: pointer;
-}
-.cx-add-form .grid > button:not(.gradient-btn):hover {
-  transform: translateY(-2px);
-  border-color: #12b5c9;
-  color: #0b74e5;
-  box-shadow: 0 12px 24px -14px rgba(14, 165, 233, 0.7), 0 4px 14px rgba(15, 23, 42, 0.06);
-}
-
-/* Filled gradient buttons: the selected database type and Save */
-.cx-add-form .gradient-btn {
+/* Database type cards */
+.cx-type-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.cx-type-card {
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(90deg, #12d99a, #0ec2c2 40%, #1d8bf0 100%) !important;
-  background-size: 160% 100% !important;
-  box-shadow: 0 14px 28px -14px rgba(14, 165, 233, 0.7);
-  transition: background-position 0.5s ease, transform 0.2s, box-shadow 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 98px;
+  border: 1px solid #dde3f5;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfcff, #f1f4fd);
+  font-size: 16px;
+  font-weight: 600;
+  color: #0b1240;
+  transition: transform 0.3s cubic-bezier(.2,.8,.2,1), box-shadow 0.3s, border-color 0.25s;
   cursor: pointer;
 }
-.cx-add-form .gradient-btn:hover:not(:disabled) {
-  background: linear-gradient(90deg, #12d99a, #0ec2c2 40%, #1d8bf0 100%) !important;
-  background-size: 160% 100% !important;
-  background-position: 100% 0 !important;
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px -14px rgba(14, 165, 233, 0.85);
+.cx-type-card:hover:not(.is-active) { transform: translateY(-2px); border-color: #a9b8f5; box-shadow: 0 12px 22px -14px rgba(59, 91, 240, 0.55); }
+.cx-type-card.is-active {
+  color: #fff;
+  border-color: #c7d2fe;
+  background: linear-gradient(120deg, #2c7cf3, #5a5cf0);
+  box-shadow: 0 16px 28px -14px rgba(59, 91, 240, 0.8), 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
-.cx-add-form .gradient-btn:active:not(:disabled) { transform: translateY(0); }
-.cx-add-form .gradient-btn::after {
-  content: '';
+.cx-type-card.is-active .cx-type-logo svg { fill: #fff; }
+.cx-type-logo { display: grid; place-items: center; height: 36px; }
+.cx-type-check {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
-  transform: translateX(-100%);
-  pointer-events: none;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
 }
-.cx-add-form .gradient-btn:hover:not(:disabled)::after {
-  transform: translateX(100%);
-  transition: transform 0.8s ease;
-}
+.cx-type-check svg { width: 15px; height: 15px; fill: none; stroke: #3b5bf0; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Test Connection */
-.cx-add-form button.flex-1[type="button"] {
-  border-color: #dbe3ee;
-  color: #1e2b55;
-  transition: transform 0.2s, box-shadow 0.3s, border-color 0.25s, color 0.25s, background 0.25s;
+/* Access mode cards */
+.cx-access-options { display: grid; grid-template-columns: repeat(2, minmax(0, 300px)); gap: 14px; }
+.cx-add-form .cx-access-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border: 1px solid #dde3f5;
+  border-radius: 12px;
+  background: #f7f9fe;
+  color: #1f2a5a;
+  transition: border-color 0.25s, background 0.25s, box-shadow 0.25s;
   cursor: pointer;
 }
-.cx-add-form button.flex-1[type="button"]:hover:not(:disabled) {
-  transform: translateY(-2px);
-  border-color: #12b5c9;
-  color: #0b74e5;
-  background: #f0f9ff;
-  box-shadow: 0 12px 24px -14px rgba(14, 165, 233, 0.7);
-}
+.cx-add-form .cx-access-card:hover:not(.is-active) { border-color: #a9b8f5; }
+.cx-add-form .cx-access-card.is-active { border-color: #3b5bf0; background: #eef3ff; box-shadow: 0 0 0 3px rgba(59, 91, 240, 0.12); }
+.cx-add-form .cx-access-card input { width: 20px; height: 20px; flex-shrink: 0; accent-color: #3b5bf0; cursor: pointer; }
+.cx-access-text { display: grid; gap: 2px; }
+.cx-access-text b { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; }
+.cx-access-text b svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+.cx-access-text small { font-size: 13px; color: #52607a; }
+.cx-add-form .cx-access-card.is-active .cx-access-text b { color: #2148c9; }
+.cx-add-form .cx-access-card.is-active .cx-access-text small { color: #3348a8; }
 
-/* Access and SSL boxes */
+/* SSL box: unchanged from before */
 .cx-add-form .border-gray-100.rounded-lg {
   transition: transform 0.35s cubic-bezier(.2,.8,.2,1), background 0.35s, box-shadow 0.35s, border-color 0.35s;
 }
@@ -776,59 +891,157 @@ html.dark .cx-row-pager button:hover:not(:disabled):not(.is-active) { background
   box-shadow: 0 12px 30px -12px rgba(14, 165, 233, 0.25), 0 4px 14px rgba(15, 23, 42, 0.06);
 }
 
-/* MongoDB "Switch to..." links */
-.cx-add-form button.text-xs { color: #1d6fe0; transition: color 0.25s; cursor: pointer; }
-.cx-add-form button.text-xs:hover { color: #0ea5e9; }
+/* Test and Save */
+.cx-add-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cx-test-btn,
+.cx-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 50px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  transition: transform 0.2s, box-shadow 0.3s, border-color 0.25s, background 0.25s, filter 0.25s;
+  cursor: pointer;
+}
+.cx-test-btn svg,
+.cx-save-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cx-test-btn { border: 1px solid #d6def3; background: #fff; color: #1d4ed8; }
+.cx-test-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: #3b5bf0; background: #f3f6ff; }
+.cx-save-btn {
+  color: #fff;
+  background: linear-gradient(90deg, #7c4dff, #4f46e5 45%, #1d6ff2);
+  box-shadow: 0 16px 28px -14px rgba(79, 70, 229, 0.8);
+}
+.cx-save-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+.cx-save-btn .cx-save-arrow { width: 18px; height: 18px; }
+.cx-test-btn:disabled,
+.cx-save-btn:disabled { opacity: 0.6; cursor: default; }
 
-.cx-add-form button:focus-visible { outline: 2px solid #12b5c9; outline-offset: 2px; }
+/* MongoDB: Host & Port or Connection URL */
+.cx-mongo-mode { display: inline-flex; flex-wrap: wrap; gap: 6px; padding: 5px; border: 1px solid #dde3f5; border-radius: 14px; background: #f3f6fd; }
+.cx-mongo-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: #1f2a5a;
+  transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+  cursor: pointer;
+}
+.cx-mongo-mode svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cx-mongo-mode button:hover:not(.is-active) { color: #2148c9; background: #e6ecfb; }
+.cx-mongo-mode button.is-active { color: #fff; background: linear-gradient(90deg, #1d6ff2, #5a5cf0); box-shadow: 0 10px 18px -12px rgba(59, 91, 240, 0.85); }
 
-/* index.css sets dark mode colors with !important, so these must match it */
-html.dark .cx-add-form { box-shadow: 0 30px 60px -25px rgba(0, 0, 0, 0.8); }
-html.dark .cx-add-form h3 { background-image: linear-gradient(90deg, #60a5fa, #10c98f, #0ea5e9, #60a5fa); color: transparent !important; }
-html.dark .cx-add-form label { color: #e2e8f0; }
+.cx-add-form button:focus-visible,
+.cx-add-form .cx-access-card:focus-within { outline: 2px solid #3b5bf0; outline-offset: 2px; }
+
+/* Smaller screens: the intro becomes a short header */
+@media (max-width: 1099px) {
+  .cx-add-form { grid-template-columns: minmax(0, 1fr); }
+  .cx-add-intro { flex-direction: row; align-items: center; gap: 16px; padding: 20px 22px; }
+  .cx-add-intro h2 { font-size: 26px; }
+  .cx-add-intro h2 span { display: inline; }
+  .cx-add-intro p { margin-top: 4px; font-size: 14.5px; }
+  .cx-add-art,
+  .cx-add-points { display: none; }
+}
+@media (max-width: 640px) {
+  .cx-add-form { padding: 10px; border-radius: 20px; }
+  .cx-add-main { padding: 18px 16px 20px; }
+  .cx-add-intro-icon { width: 44px; height: 44px; }
+  .cx-add-intro h2 { font-size: 22px; }
+  .cx-type-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .cx-access-options,
+  .cx-add-actions { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Dark mode. index.css sets some dark colors with !important, so these match it. */
+html.dark .cx-add-form {
+  border-color: #1e293b;
+  background: linear-gradient(135deg, #0e1430, #111a35);
+  box-shadow: 0 30px 60px -25px rgba(0, 0, 0, 0.8);
+}
+html.dark .cx-add-intro {
+  border-color: rgba(99, 102, 241, 0.25);
+  background:
+    radial-gradient(420px 280px at 20% 0, rgba(99, 102, 241, 0.25), transparent 70%),
+    linear-gradient(165deg, #151d3d, #1b2150 55%, #161d3f);
+}
+html.dark .cx-add-intro h2 { color: #f1f5f9; }
+html.dark .cx-add-intro h2 span { background-image: linear-gradient(90deg, #a5b4fc, #60a5fa); }
+html.dark .cx-add-intro p { color: #c7d2fe; }
+html.dark .cx-add-points { border-color: rgba(99, 102, 241, 0.25); background: rgba(15, 23, 42, 0.6); }
+html.dark .cx-add-points li { color: #e2e8f0; }
+html.dark .cx-add-main { border-color: #1e293b; background: #0f172a; }
+html.dark .cx-add-top { border-color: #1e293b; }
+html.dark .cx-add-secure { color: #6ee7b7; background: rgba(16, 185, 129, 0.16); }
+html.dark .cx-add-form .cx-label { color: #e2e8f0; }
+html.dark .cx-add-form .cx-label svg { stroke: #a5b4fc; }
+html.dark .cx-add-form .cx-label em { color: #a5b4fc; }
 html.dark .cx-add-form input:not([type="radio"]):not([type="checkbox"]):hover { border-color: #64748b !important; }
 html.dark .cx-add-form input:not([type="radio"]):not([type="checkbox"]):focus { border-color: #22d3ee !important; }
-html.dark .cx-add-form .grid > button:not(.gradient-btn) { color: #cbd5e1 !important; }
-html.dark .cx-add-form .grid > button:not(.gradient-btn):hover { color: #7dd3fc !important; border-color: #22d3ee !important; }
-html.dark .cx-add-form button.flex-1[type="button"] { color: #cbd5e1 !important; }
-html.dark .cx-add-form button.flex-1[type="button"]:hover:not(:disabled) {
-  color: #7dd3fc !important;
-  border-color: #22d3ee !important;
-  background: rgba(255, 255, 255, 0.05) !important;
-}
+html.dark .cx-type-card { border-color: #334155; background: #111a2e; color: #e2e8f0; }
+html.dark .cx-type-card:hover:not(.is-active) { border-color: #6366f1; }
+html.dark .cx-type-card.is-active { border-color: #818cf8; background: linear-gradient(120deg, #2c7cf3, #5a5cf0); color: #fff; }
+html.dark .cx-add-form .cx-access-card { border-color: #334155; background: #111a2e; color: #e2e8f0; }
+html.dark .cx-add-form .cx-access-card.is-active { border-color: #818cf8; background: rgba(99, 102, 241, 0.16); }
+html.dark .cx-access-text small { color: #a7b3c9; }
+html.dark .cx-add-form .cx-access-card.is-active .cx-access-text b { color: #c7d2fe; }
+html.dark .cx-add-form .cx-access-card.is-active .cx-access-text small { color: #c7d2fe; }
 html.dark .cx-add-form .border-gray-100.rounded-lg:hover {
   border-color: rgba(34, 211, 238, 0.45) !important;
   background: rgba(255, 255, 255, 0.05) !important;
   box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.7);
 }
-html.dark .cx-add-form button.text-xs { color: #7dd3fc; }
+html.dark .cx-test-btn { border-color: #334155; background: #111a2e; color: #93c5fd; }
+html.dark .cx-test-btn:hover:not(:disabled) { border-color: #818cf8; background: #1e293b; }
+html.dark .cx-mongo-mode { border-color: #334155; background: #111a2e; }
+html.dark .cx-mongo-mode button { color: #cbd5e1; }
+html.dark .cx-mongo-mode button:hover:not(.is-active) { color: #c7d2fe; background: #1e293b; }
+html.dark .cx-mongo-mode button.is-active { color: #fff; background: linear-gradient(90deg, #1d6ff2, #5a5cf0); }
 
 @media (prefers-reduced-motion: reduce) {
+  .cx-add-chip { animation: none; }
   .cx-add-form button:hover,
   .cx-add-form .border-gray-100.rounded-lg:hover { transform: none !important; }
 }
 
 /* ===== Add Connection tabs and cloud options ===== */
-.cx-add-tabs { display: inline-flex; gap: 4px; margin-bottom: 16px; padding: 4px; border-radius: 12px; background: #eef2f8; }
+.cx-add-tabs { display: flex; flex-wrap: wrap; gap: 12px; }
 .cx-add-tabs button {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 9px;
-  font-size: 13px;
+  justify-content: center;
+  gap: 10px;
+  min-width: 176px;
+  height: 50px;
+  padding: 0 22px;
+  border-radius: 14px;
+  font-size: 15.5px;
   font-weight: 600;
-  color: #475569;
-  transition: background 0.25s, color 0.25s, box-shadow 0.25s;
+  color: #1f2a5a;
+  background: #eef2fb;
+  transition: background 0.25s, color 0.25s, box-shadow 0.25s, transform 0.25s;
   cursor: pointer;
 }
-.cx-add-tabs svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.cx-add-tabs button:hover:not(.is-active) { color: #0b74e5; }
+.cx-add-tabs svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cx-add-tabs button:hover:not(.is-active) { color: #2148c9; background: #e4eafb; }
 .cx-add-tabs button.is-active {
   color: #fff;
-  background: linear-gradient(90deg, #12d99a, #0ec2c2 40%, #1d8bf0 100%);
-  box-shadow: 0 8px 16px -10px rgba(14, 165, 233, 0.8);
+  background: linear-gradient(90deg, #1d6ff2, #5a5cf0);
+  box-shadow: 0 12px 22px -12px rgba(59, 91, 240, 0.85);
+}
+@media (max-width: 560px) {
+  .cx-add-tabs { flex: 1 1 100%; }
+  .cx-add-tabs button { flex: 1 1 0; min-width: 0; gap: 6px; padding: 0 8px; font-size: 13.5px; white-space: nowrap; }
+  .cx-add-tabs svg { width: 16px; height: 16px; }
 }
 .cx-cloud-providers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 1023px) { .cx-cloud-providers { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -915,10 +1128,9 @@ html.dark .cx-add-form button.text-xs { color: #7dd3fc; }
 .cx-cloud-card:focus-visible,
 .cx-cloud-service:focus-visible { outline: 2px solid #12b5c9; outline-offset: 2px; }
 
-html.dark .cx-add-tabs { background: #1e293b; }
-html.dark .cx-add-tabs button { color: #cbd5e1; }
-html.dark .cx-add-tabs button:hover:not(.is-active) { color: #7dd3fc; }
-html.dark .cx-add-tabs button.is-active { color: #fff; }
+html.dark .cx-add-tabs button { color: #cbd5e1; background: #1e293b; }
+html.dark .cx-add-tabs button:hover:not(.is-active) { color: #c7d2fe; background: #273449; }
+html.dark .cx-add-tabs button.is-active { color: #fff; background: linear-gradient(90deg, #1d6ff2, #5a5cf0); }
 html.dark .cx-cloud-card,
 html.dark .cx-cloud-service { border-color: #334155; background: #0f172a; }
 html.dark .cx-cloud-card:hover,

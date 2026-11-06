@@ -11,3 +11,4 @@ import './pages/Profile.css';
 import './pages/Connections.css';
 import './components/AuditLogsPanel.css';
 import './pages/LegalPolicies.css';
+import './pages/QueryEditor.css';
