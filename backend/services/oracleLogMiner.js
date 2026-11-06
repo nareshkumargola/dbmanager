@@ -1,4 +1,5 @@
 const oracledb = require('oracledb');
+const { oracleConnectOptions } = require('../connections/connectionTls');
 const { getBinlogAuditModel, getAuditCheckKey } = require('../models/binlogAuditModel');
 oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 
@@ -17,11 +18,7 @@ const readValue = async (value) => {
   return value;
 };
 
-const openOracleConnection = async (config) => oracledb.getConnection({
-  user: config.username,
-  password: config.password,
-  connectString: `${config.host}:${config.port || 1521}/${config.database}`
-});
+const openOracleConnection = async (config) => oracledb.getConnection(oracleConnectOptions(config));
 
 const startSession = async (connection, startScn) => {
   const conn = await openOracleConnection(connection);

@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import AppNavbar from './AppNavbar';
+import PageBoundary from './PageBoundary';
 import { useNavbar } from '../context/NavbarContext';
 
 export default function Layout() {
@@ -11,7 +12,7 @@ export default function Layout() {
   if (isCustomLayout) {
     return (
       <div className="min-h-screen bg-[#f4f7fb] flex flex-col">
-        <Outlet />
+        <PageBoundary><Outlet /></PageBoundary>
       </div>
     );
   }
@@ -25,7 +26,7 @@ export default function Layout() {
       />
       {/* This wrapper never scrolls, but its overflow would stop the profile page's sticky side panel */}
       <div className={`flex-1 flex flex-col min-h-0 ${location.pathname === '/profile' ? '' : 'overflow-y-auto'}`}>
-        <Outlet />
+        <PageBoundary><Outlet /></PageBoundary>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ const MonitoringSnapshot = require('../models/monitoringSnapshotModel');
 const { getConnection } = require('../connections/connectionManager');
 const { sendSlackNotification, sendEmailNotification, sendDiscordNotification } = require('./notificationService');
 const { getOracleMonitoringMetrics } = require('../utils/oracleMonitoringUtils');
+const { createHealthRunner, isUnreachableError } = require('./healthRound');
 
 const resolveRecipientEmails = async (connDoc) => {
   if (connDoc.alertEmail) return connDoc.alertEmail;
@@ -152,7 +153,9 @@ const evaluateConnectionHealth = async (connDoc, io) => {
       await sendEmailNotification(recipientEmail, alertPayload);
       io.emit('new-alert', { ...alert.toJSON(), connectionName: connDoc.name });
     }
+    return err;
   }
+  return undefined;
 };
 
 const recordConnectionSnapshot = async (connDoc) => {
@@ -309,30 +312,36 @@ const recordConnectionSnapshot = async (connDoc) => {
     }
   } catch (err) {
     console.error(`Snapshot collection failed for connection "${connDoc.name}":`, err.message);
+    return err;
   }
+  return undefined;
 };
+
+// Returns the error that stopped the checks, if any
+const checkConnection = async (connDoc, io) => {
+  if (connDoc.alertsEnabled) {
+    try {
+      const problem = await evaluateConnectionHealth(connDoc, io);
+      // Don't wait for the same timeout again in the snapshot
+      if (isUnreachableError(problem)) return problem;
+    } catch (err) {
+      console.error(`Health evaluation failed for connection "${connDoc.name}":`, err.message);
+    }
+  }
+  return recordConnectionSnapshot(connDoc);
+};
+
+exports.checkConnection = checkConnection;
 
 exports.startBackgroundHealthMonitor = (io) => {
   console.log('📡 Starting background Health Monitoring Daemon...');
   
+  const runner = createHealthRunner({ check: (connDoc) => checkConnection(connDoc, io) });
+
   // Run checks every 1 minute
   setInterval(async () => {
     try {
-      const connections = await Connection.find({});
-      for (const connDoc of connections) {
-        if (connDoc.alertsEnabled) {
-          try {
-            await evaluateConnectionHealth(connDoc, io);
-          } catch (err) {
-            console.error(`Health evaluation failed for connection "${connDoc.name}":`, err.message);
-          }
-        }
-        try {
-          await recordConnectionSnapshot(connDoc);
-        } catch (err) {
-          console.error(`Failed to record monitoring snapshot for connection "${connDoc.name}":`, err.message);
-        }
-      }
+      await runner.runRound(await Connection.find({}));
     } catch (err) {
       console.error('Health monitoring polling loop error:', err.message);
     }

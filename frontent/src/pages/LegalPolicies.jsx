@@ -1,149 +1,209 @@
-import { useState } from 'react';
 import Navbar from '../components/Navbar';
+import './LegalPolicies.css';
+
+const LAST_UPDATED = '5 November 2026';
+
+const SECTIONS = [
+  { id: 'privacy', title: 'Privacy Policy' },
+  { id: 'terms', title: 'Terms of Service' },
+  { id: 'security', title: 'Security' },
+  { id: 'sessions', title: 'Sessions & Browser Storage' },
+];
+
+const RETENTION = [
+  ['Query history', '10 days, then deleted automatically. It can’t be deleted by hand.'],
+  ['Monitoring data', '7 days, then deleted automatically.'],
+  ['Alerts', 'Until resolved, then deleted automatically after 5 days.'],
+  ['System and connection audit logs', 'No automatic deletion. The app has no option to edit or delete them.'],
+  ['Binlog, WAL, Oplog and Redo history', 'Until a user with the Binlog permission clears it.'],
+  ['Slow query records and saved queries', 'Until they are deleted in the app.'],
+  ['Backup files', 'Created on the server for download, then deleted once the download ends. Files uploaded for a restore are also deleted afterwards.'],
+  ['Accounts and connections', 'Until an administrator or the connection’s owner deletes them.'],
+];
+
+function Clause({ title, wide, children }) {
+  return (
+    <article className={`lp-clause ${wide ? 'is-wide' : ''}`}>
+      <h3>{title}</h3>
+      {children}
+    </article>
+  );
+}
+
+function Section({ id, title, intro, children }) {
+  return (
+    <section id={id} className="lp-section" aria-labelledby={`${id}-title`}>
+      <header>
+        <h2 id={`${id}-title`}>{title}</h2>
+        <p>{intro}</p>
+      </header>
+      <div className="lp-clauses">{children}</div>
+    </section>
+  );
+}
 
 export default function LegalPolicies() {
-  const [activeTab, setActiveTab] = useState('privacy');
-
-  const tabs = [
-    { id: 'privacy', label: 'Privacy Policy' },
-    { id: 'terms', label: 'Terms of Service' },
-    { id: 'security', label: 'Database Security Standards' },
-    { id: 'cookies', label: 'Session & Cookies' }
-  ];
-
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-left">
-      {/* Navbar configuration */}
+    <div className="lp-page text-left">
       <Navbar backTo="/dashboard" backText="Dashboard" />
 
-      <div className="max-w-4xl mx-auto px-5 py-8">
-        {/* Title Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-teal-900 dark:text-teal-50">Legal Agreements &amp; Security Policies</h1>
-          <p className="text-sm text-teal-800/70 dark:text-teal-200/80 mt-1">
-            Review how Allatone DMS safeguards database credentials, limits user liability, and tracks audit activities.
-          </p>
-        </div>
-
-        {/* Tab Switcher */}
-        <div className="flex flex-wrap border-b border-gray-200 dark:border-gray-800 mb-6">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
-                activeTab === tab.id
-                  ? 'border-[#0d9da4] text-[#0d9da4]'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
+      <header className="lp-hero">
+        <h1>Legal &amp; Security <span>Policies</span></h1>
+        <p>How Allatone DMS handles your account, your database connections and your activity, based on how the product works today.</p>
+        <small>Last updated: {LAST_UPDATED}</small>
+        <nav aria-label="Policy sections">
+          {SECTIONS.map((section) => (
+            <a key={section.id} href={`#${section.id}`}>{section.title}</a>
           ))}
-        </div>
+        </nav>
+      </header>
 
-        {/* Dynamic Tab Content Cards */}
-        <div className="bg-white dark:bg-gray-850 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-xs leading-relaxed text-xs text-gray-650 dark:text-gray-300">
-          
-          {/* Privacy Policy */}
-          {activeTab === 'privacy' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">1. Information We Collect</h2>
-              <p>
-                To provide a secure database connection tunnel, we collect user identity credentials (email, name, hashed passwords) and encrypted database configuration settings (hosts, ports, database names, database users).
-              </p>
-              <p className="bg-teal-50/50 dark:bg-teal-950/20 p-3 rounded-lg border border-teal-100 dark:border-teal-900/30 text-[11px] font-semibold text-teal-800 dark:text-teal-400">
-                🔒 <strong>Database Secrets Protection:</strong> All passwords and connection URI secrets are fully encrypted at rest using AES-256-GCM. We never store database credentials in raw plain text format.
-              </p>
+      <Section id="privacy" title="Privacy Policy" intro="What the app stores, how long it keeps it, and who else receives it.">
+        <Clause title="Information we collect">
+          <ul>
+            <li><b>Account:</b> name, email, role, permissions, profile settings and a hashed password.</li>
+            <li><b>Multi-factor sign-in:</b> your authenticator secret, stored encrypted, and backup codes, stored hashed.</li>
+            <li><b>Connections:</b> name, database type, host, port, username, database name, SSL setting, cloud provider and service, and CA certificate.</li>
+            <li><b>Activity:</b> queries you run, actions you take, and system alerts.</li>
+          </ul>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">2. Query Logging &amp; Audit Trails</h2>
-              <p>
-                For auditing, compliance, and tracking developer activities, we record the raw SQL/NoSQL command, database connection target, timestamp, and user ID of every query executed on our platform. These logs are preserved in read-only tables for safety audit purposes and to investigate database security issues.
-              </p>
+        <Clause title="How saved database passwords are protected">
+          <p className="lp-note">Saved database passwords and connection strings are encrypted with AES-256-GCM before they are stored. API responses never include a saved password.</p>
+          <p>Other connection details, such as host, port and username, are stored unencrypted so the app can show and use them.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">3. Data Sharing Restrictions</h2>
-              <p>
-                We do not sell, rent, lease, or distribute your identity details, database credentials, or query analytics data to any third-party marketing companies, advertisers, or vendors. Access to connection parameters is restricted strictly to authorized developers.
-              </p>
+        <Clause title="Query history and audit logs">
+          <p>Each query you run records its text, connection, database, result, rows affected, run time and your user account.</p>
+          <p>System audit logs are visible to administrators only. Connection audit logs need the Audit Logs permission, and query history needs the History permission.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">4. Data Retention &amp; Archival Policy</h2>
-              <p>
-                Query history records and slow query logs are retained in our operational databases for a default period of 365 days. Upon completion of this period, log entries are systematically archived into secure, cold-storage objects and deleted from live databases. Audit trails detailing configuration edits are stored indefinitely to maintain compliance history.
-              </p>
+        <Clause title="How long we keep data" wide>
+          <div className="lp-table-wrap">
+            <table className="lp-table">
+              <thead>
+                <tr><th scope="col">Data</th><th scope="col">Kept for</th></tr>
+              </thead>
+              <tbody>
+                {RETENTION.map(([data, kept]) => (
+                  <tr key={data}><th scope="row">{data}</th><td>{kept}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">5. User Rights &amp; Access Controls</h2>
-              <p>
-                Users can request absolute deletion of their profiles and active database connections by contacting the system administrator. Please note that data deletion requests will exclude mandatory security audit logs (like transactional histories and permission modification flags) which must be preserved to satisfy regulatory compliance standards.
-              </p>
+        <Clause title="Who else receives data">
+          <p>We do not sell or rent your account details, database credentials or query data, and the app has no advertising or analytics trackers. Data reaches these services only as described:</p>
+          <ul>
+            <li><b>Your database servers and cloud providers:</b> receive your credentials and queries when you connect.</li>
+            <li><b>Email service:</b> Microsoft Graph or the configured mail server sends alert and account emails.</li>
+            <li><b>Slack and Discord:</b> receive alerts only if a webhook is set in alert settings.</li>
+            <li><b>Google Fonts:</b> your browser downloads fonts from Google, which can see your IP address.</li>
+          </ul>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">6. Compliance &amp; Regulatory Standards</h2>
-              <p>
-                Our platform operates under strict compliance standards designed around SOC 2 Type II, HIPAA, and GDPR guidelines. All connection sessions utilize TLS 1.3 encryption. Backend nodes run on isolated sandbox environments ensuring data packets do not cross-talk, protecting your company's network integrity.
-              </p>
-            </div>
-          )}
+        <Clause title="Deleting your data">
+          <p>Ask your administrator to delete your account. This removes your account and the connections you own.</p>
+          <p>Audit logs stay after an account is deleted, and any remaining query history is removed on its 10-day schedule.</p>
+        </Clause>
 
-          {/* Terms of Service */}
-          {activeTab === 'terms' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">1. Acceptance of Terms</h2>
-              <p>
-                By connecting a database and executing queries, you agree to comply with our security protocols and accept full responsibility for operations performed.
-              </p>
+        <Clause title="Laws and standards">
+          <p>If your data falls under a law or standard such as GDPR or HIPAA, your organization is responsible for confirming that this deployment meets it. This page is not a certification.</p>
+        </Clause>
+      </Section>
 
-              <div className="bg-red-50/40 dark:bg-red-950/20 p-3.5 rounded-lg border border-red-150 dark:border-red-900/20 text-red-650 dark:text-red-400">
-                ⚠️ <strong>Limitation of Liability:</strong> Allatone DMS serves as a database client tunnel. The developer/user is solely responsible for query safety. We are not liable for database downtime, loss of tables, row deletions (e.g. DROP, TRUNCATE, DELETE commands), or security breaches caused by user negligence.
-              </div>
+      <Section id="terms" title="Terms of Service" intro="The rules for using Allatone DMS and connecting databases to it.">
+        <Clause title="Acceptance">
+          <p>By signing in, connecting a database or running a query, you agree to these terms.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">2. Database Ownership &amp; Rights</h2>
-              <p>
-                You warrant that you hold legitimate permissions, rights, and auth keys to access and edit any target databases connected to the platform.
-              </p>
+        <Clause title="Authorized use">
+          <p>You confirm that you have permission to access and change every database you connect.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">3. Account Termination</h2>
-              <p>
-                Administrators reserve the right to suspend developer privileges or remove accounts immediately if malicious activities or password brute-forcing is detected.
-              </p>
-            </div>
-          )}
+        <Clause title="Accounts">
+          <p>Administrators create accounts; there is no public sign-up. Keep your password, authenticator and backup codes private.</p>
+          <p>Administrators can change your role and permissions, reset your multi-factor sign-in, or remove your account.</p>
+        </Clause>
 
-          {/* Database Security Standards */}
-          {activeTab === 'security' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">1. Isolation of Database Credentials</h2>
-              <p>
-                DMS backend APIs are designed so that decrypted connection passwords never traverse back to the browser. The browser only receives metadata (connection name, database type, hostname).
-              </p>
+        <Clause title="Your queries and liability">
+          <p className="lp-note is-warn">You are responsible for every query and restore you run. To the extent the law allows, we are not liable for downtime, lost tables, deleted rows (for example from DROP, TRUNCATE or DELETE), or security incidents caused by user negligence.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">2. Immutable Audit Logs Policy</h2>
-              <p>
-                All log operations recorded in the System Audit Trail cannot be edited, modified, or deleted by standard developer accounts. Only system level administrators have read-only access to audit dashboards.
-              </p>
+        <Clause title="Cloud services">
+          <p>You are responsible for your cloud account, its charges, its firewall settings and the provider’s terms.</p>
+          <p>A provider can limit what a feature can do, such as managing users or reading logs. Services marked Coming soon can’t be used yet.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">3. Transit Security</h2>
-              <p>
-                Every query command sent from the browser editor uses secure HTTPS (TLS 1.3) protocols to ensure mid-stream packets cannot be intercepted by network sniffers.
-              </p>
-            </div>
-          )}
+        <Clause title="Backups">
+          <p>Backup files contain your data, so store them safely. Test a backup before you rely on it.</p>
+        </Clause>
 
-          {/* Cookies & Sessions */}
-          {activeTab === 'cookies' && (
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">1. JWT Token Authentication</h2>
-              <p>
-                To keep developers logged in, we store a secure JSON Web Token (JWT) in the browser's LocalStorage. This token authenticates every API request sent to the server.
-              </p>
+        <Clause title="Monitoring information">
+          <p>Monitoring is for guidance, and a connection’s status label may not show its live state.</p>
+          <p className="lp-note is-warn">The WAL and Oplog monitors currently show simulated events. The Binlog monitor does too when binary logs are off or access is denied. These events have a Simulated type. Don’t use them as an audit record or to make decisions.</p>
+        </Clause>
 
-              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-4">2. Session Lifetime &amp; Expiry</h2>
-              <p>
-                Authentication sessions automatically expire after 24 hours of inactivity. When expired, the user is redirected to the login screen to protect against unauthorized access on shared devices.
-              </p>
-            </div>
-          )}
+        <Clause title="Changes to these policies">
+          <p>We may update these policies as the product changes. The date at the top of this page shows the latest version.</p>
+        </Clause>
+      </Section>
 
-        </div>
-      </div>
+      <Section id="security" title="Security" intro="The protections built into the app, and where they stop.">
+        <Clause title="Credentials stay on the server">
+          <p>The browser never receives a saved password. A connection string’s password is hidden as ****.</p>
+          <p>If you change the host of a saved connection, you must enter the password again, so it can’t be sent to a different server by mistake.</p>
+        </Clause>
+
+        <Clause title="Sign-in protection">
+          <ul>
+            <li>Account passwords are hashed with bcrypt.</li>
+            <li>Authenticator sign-in is on by default, and each user can turn it off in their profile.</li>
+            <li>Five wrong codes lock multi-factor sign-in for 15 minutes.</li>
+            <li>Too many failed attempts block further tries for 15 minutes.</li>
+            <li>Changing your password ends your other sessions.</li>
+          </ul>
+        </Clause>
+
+        <Clause title="Access control">
+          <p>Users have an Administrator or Developer role and individual permissions. Each connection can be Read Only or Read &amp; Write, and owners can share it with chosen users.</p>
+        </Clause>
+
+        <Clause title="Encryption in transit" wide>
+          <ul>
+            <li><b>Your browser to the app:</b> encrypted only when the deployment uses HTTPS. Your administrator is responsible for turning it on.</li>
+            <li><b>Cloud Services connections:</b> the app always uses TLS and checks the server’s certificate. Oracle Cloud uses TCPS.</li>
+            <li><b>Database tab connections:</b> SSL is optional for MySQL and PostgreSQL, and the server’s certificate isn’t checked. MongoDB follows its connection string. The app doesn’t encrypt Oracle connections from this tab, so use a private network or VPN.</li>
+          </ul>
+        </Clause>
+
+        <Clause title="Audit logging">
+          <p>The app records actions such as sign-ins, connection changes and queries. It has no option to edit or delete system and connection audit logs. Users with the Binlog permission can clear Binlog, WAL, Oplog and Redo history.</p>
+        </Clause>
+
+        <Clause title="Administrator responsibilities">
+          <p>Protect the server’s settings file, which holds the encryption keys. If the connection encryption key is lost or changed, saved database passwords can’t be read and must be entered again.</p>
+          <p>No system is completely secure, so report anything suspicious to your administrator.</p>
+        </Clause>
+      </Section>
+
+      <Section id="sessions" title="Sessions & Browser Storage" intro="What stays in your browser, and how long you stay signed in.">
+        <Clause title="Sign-in token, not cookies">
+          <p>The app sets no sign-in or tracking cookies. Your sign-in token is kept in your browser’s local storage and sent with each request.</p>
+        </Clause>
+
+        <Clause title="How long you stay signed in">
+          <p>By default, you are signed out after 30 minutes without activity, and a sign-in token lasts up to 1 hour. Your administrator can change these limits.</p>
+        </Clause>
+
+        <Clause title="What else your browser stores">
+          <p>Theme and layout choices, open query tabs, recent queries for each connection, which audit logs you have seen, and your name for the welcome message.</p>
+          <p>Queries saved in your browser stay there until the site’s data is cleared, so be careful on shared devices.</p>
+        </Clause>
+      </Section>
+
+      <p className="lp-contact">Questions about these policies? Contact your system administrator.</p>
     </div>
   );
 }

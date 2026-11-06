@@ -1,9 +1,16 @@
 const mysql = require('mysql2/promise');
 const { Pool } = require('pg');
 const { MongoClient } = require('mongodb');
+const {
+  CERTIFICATE_ERROR, cloudConfigError, isCertificateError, mongoTlsOptions, oracleConnectOptions, tlsOptions,
+} = require('./connectionTls');
+const { decryptSecret } = require('../utils/connectionSecrets');
 
 // Active connections store karo — memory mein
 const activeConnections = new Map();
+
+// Cloud databases are further away and need a TLS handshake, so they get longer to answer
+const connectTimeout = (config, localMs) => (config.cloudProvider ? 10000 : localMs);
 
 // ─── MYSQL CONNECT ────────────────────────────────
 const connectMySQL = async (config) => {
@@ -15,9 +22,9 @@ const connectMySQL = async (config) => {
     waitForConnections: true,
     connectionLimit: 5,
     authPlugins: undefined,
-    ssl: config.ssl ? { rejectUnauthorized: false } : false,
+    ssl: tlsOptions(config),
     multipleStatements: true,
-    connectTimeout: 2000, // Fail fast on offline hosts
+    connectTimeout: connectTimeout(config, 2000), // Fail fast on offline hosts
   };
 
   // Database optional hai — sirf tab add karo jab ho
@@ -41,11 +48,12 @@ const connectPostgreSQL = async (config) => {
     database: config.database || 'postgres',
     max: 5,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 3000,
+    connectionTimeoutMillis: connectTimeout(config, 3000),
   };
 
-  if (config.ssl) {
-    poolConfig.ssl = { rejectUnauthorized: false };
+  const ssl = tlsOptions(config);
+  if (ssl) {
+    poolConfig.ssl = ssl;
   }
 
   const pool = new Pool(poolConfig);
@@ -59,10 +67,11 @@ const connectPostgreSQL = async (config) => {
 // ─── MONGODB CONNECT ──────────────────────────────
 const connectMongoDB = async (config) => {
   const client = new MongoClient(config.connectionString, {
-    serverSelectionTimeoutMS: 2000, // Fail fast on offline hosts
+    serverSelectionTimeoutMS: connectTimeout(config, 2000), // Fail fast on offline hosts
     maxPoolSize: 5,
     minPoolSize: 0,
     waitQueueTimeoutMS: 10000,
+    ...mongoTlsOptions(config),
   });
   await client.connect();
   return client;
@@ -74,11 +83,7 @@ const connectOracle = async (config) => {
   oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
   
   // Thin mode has connectString = host:port/serviceName
-  const conn = await oracledb.getConnection({
-    user: config.username,
-    password: config.password,
-    connectString: `${config.host}:${config.port || 1521}/${config.database}`
-  });
+  const conn = await oracledb.getConnection(oracleConnectOptions(config));
   return conn;
 };
 
@@ -106,6 +111,8 @@ const getConnection = async (connectionDoc, targetDatabase = null) => {
 
   // Connection config prepare karo
   const configToUse = connectionDoc.toObject ? connectionDoc.toObject() : { ...connectionDoc };
+  configToUse.password = decryptSecret(configToUse.password);
+  configToUse.connectionString = decryptSecret(configToUse.connectionString);
   if (targetDb && configToUse.type !== 'oracle') {
     configToUse.database = targetDb;
   }
@@ -136,6 +143,10 @@ const getConnection = async (connectionDoc, targetDatabase = null) => {
 
 // ─── CONNECTION TEST ──────────────────────────────
 const testConnection = async (config) => {
+  if (config.cloudProvider) {
+    const problem = cloudConfigError(config);
+    if (problem) return { success: false, message: problem };
+  }
   try {
     switch (config.type) {
       case 'mysql': {
@@ -163,6 +174,9 @@ const testConnection = async (config) => {
     }
     return { success: true, message: 'Connection successful!' };
   } catch (err) {
+    if (config.cloudProvider && isCertificateError(err)) {
+      return { success: false, message: CERTIFICATE_ERROR };
+    }
     return { success: false, message: err.message };
   }
 };

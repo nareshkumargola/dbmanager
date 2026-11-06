@@ -8,9 +8,12 @@ import ConnectionSchemaSelector from '../components/ConnectionSchemaSelector';
 import Toast from '../components/Toast';
 import AnimatedHero from '../components/AnimatedHero';
 import AppNavbar from '../components/AppNavbar';
+import ConnectionPager from '../components/ConnectionPager';
 import useConnectionAlerts from '../hooks/useConnectionAlerts';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import './Dashboard.css';
+
+const CONNECTIONS_PER_PAGE = 10;
 
 const QUICK_ACTIONS = [
   {
@@ -395,6 +398,15 @@ export default function Dashboard() {
       return true;
     });
   }, [activeConnectionsList, filterType, filterRole, filterUser, filterStatus, searchConnText]);
+
+  // Connection table pages. Changing a filter goes back to page 1.
+  const connListKey = [filterType, filterRole, filterUser, filterStatus, searchConnText].join('|');
+  const [connPageState, setConnPageState] = useState({ key: connListKey, page: 1 });
+  if (connPageState.key !== connListKey) setConnPageState({ key: connListKey, page: 1 });
+  const connPageCount = Math.max(1, Math.ceil(filteredConnections.length / CONNECTIONS_PER_PAGE));
+  const connPage = connPageState.key === connListKey ? Math.min(connPageState.page, connPageCount) : 1;
+  const firstConnIndex = (connPage - 1) * CONNECTIONS_PER_PAGE;
+  const pageConnections = filteredConnections.slice(firstConnIndex, firstConnIndex + CONNECTIONS_PER_PAGE);
   const hasActiveFilters = Boolean(
     searchConnText.trim() || filterType !== 'all' || filterRole !== 'all' || filterStatus !== 'all'
   );
@@ -1542,7 +1554,8 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-medium">
-                      {filteredConnections.map((conn, idx) => {
+                      {pageConnections.map((conn, pageIndex) => {
+                        const idx = firstConnIndex + pageIndex;
                         const isConnected = conn.status !== 'disconnected';
 
                         // Database badge colors matching screenshot
@@ -1679,6 +1692,18 @@ export default function Dashboard() {
                     </tbody>
                   </table>
                 </div>
+                {filteredConnections.length > 0 && (
+                  <div className="dash-conn-pager">
+                    <ConnectionPager
+                      page={connPage}
+                      pageCount={connPageCount}
+                      firstIndex={firstConnIndex}
+                      shownCount={pageConnections.length}
+                      total={filteredConnections.length}
+                      onPageChange={(page) => setConnPageState({ key: connListKey, page })}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

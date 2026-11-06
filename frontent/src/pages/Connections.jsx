@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
 import EngineIcon from '../components/EngineIcon';
+import ConnectionPager from '../components/ConnectionPager';
+import { CLOUD_PROVIDERS, DEFAULT_PORTS, cloudLabel } from '../utils/cloudProviders';
 import './Connections.css';
 
 const ENGINE_META = {
@@ -23,6 +25,7 @@ const ENGINE_COLORS = {
 
 const COLOR_THEMES = [
   { key: 'teal', label: 'Teal', swatch: '#0d9488' },
+  { key: 'sky', label: 'Sky Blue', swatch: '#0ea5e9' },
   { key: 'blue', label: 'Ocean Blue', swatch: '#2563eb' },
   { key: 'violet', label: 'Violet', swatch: '#7c3aed' },
   { key: 'rose', label: 'Rose', swatch: '#e11d48' },
@@ -33,7 +36,14 @@ const COLOR_THEMES = [
 const THEME_KEYS = COLOR_THEMES.map((theme) => theme.key);
 const LAYOUT_STORAGE_KEY = 'connectionsLayout';
 const MAX_VISIBLE_CONNECTIONS = 10;
-const DEFAULT_LAYOUT = { view: 'cards', cardTheme: 'teal', rowTheme: 'teal' };
+const DEFAULT_LAYOUT = { view: 'cards', cardTheme: 'engine', rowTheme: 'sky' };
+const ROWS_PER_PAGE = 10;
+
+const formatAddedOn = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+};
 
 // The choice is only a display preference, so a blocked or corrupt store falls back to the default
 const readLayout = () => {
@@ -41,8 +51,8 @@ const readLayout = () => {
     const saved = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY)) || {};
     return {
       view: saved.view === 'rows' ? 'rows' : 'cards',
-      cardTheme: THEME_KEYS.includes(saved.cardTheme) ? saved.cardTheme : DEFAULT_LAYOUT.cardTheme,
-      rowTheme: THEME_KEYS.includes(saved.rowTheme) ? saved.rowTheme : DEFAULT_LAYOUT.rowTheme,
+      cardTheme: THEME_KEYS.includes(saved.cardColor) ? saved.cardColor : DEFAULT_LAYOUT.cardTheme,
+      rowTheme: THEME_KEYS.includes(saved.rowColor) ? saved.rowColor : DEFAULT_LAYOUT.rowTheme,
     };
   } catch {
     return DEFAULT_LAYOUT;
@@ -243,6 +253,7 @@ export default function Connections() {
       database: conn.database || '',
       connectionString: conn.connectionString || '',
       ssl: !!conn.ssl,
+      caCertificate: conn.caCertificate || '',
       accessMode: conn.accessMode || 'readwrite'
     });
     setEditConnError('');
@@ -315,6 +326,73 @@ export default function Connections() {
     }
   }
 
+  // Add Connection tabs: Database, or Cloud Services with a provider and service
+  const [addTab, setAddTab] = useState('database');
+  const [cloudProviderKey, setCloudProviderKey] = useState(null);
+  const [cloudServiceKey, setCloudServiceKey] = useState(null);
+  const [cloudCa, setCloudCa] = useState('');
+  const isCloudTab = addTab === 'cloud';
+  const cloudProvider = CLOUD_PROVIDERS.find((provider) => provider.key === cloudProviderKey);
+  const cloudService = cloudProvider?.services.find((service) => service.key === cloudServiceKey);
+  const showConnectionFields = !isCloudTab || Boolean(cloudService);
+
+  const clearCloudChoice = () => {
+    setCloudProviderKey(null);
+    setCloudServiceKey(null);
+    setCloudCa('');
+  };
+
+  const chooseAddTab = (tab) => {
+    if (tab === addTab) return;
+    setAddTab(tab);
+    clearCloudChoice();
+    setMongoMode('structured');
+    setTestResult(null);
+    setForm((current) => ({
+      ...current,
+      type: 'mysql',
+      host: 'localhost',
+      port: '3306',
+      username: 'root',
+      password: '',
+      database: '',
+      connectionString: '',
+      ssl: false,
+    }));
+  };
+
+  const chooseCloudService = (provider, service) => {
+    if (provider.key === cloudProviderKey && service.key === cloudServiceKey) return;
+    setCloudProviderKey(provider.key);
+    setCloudServiceKey(service.key);
+    setCloudCa('');
+    setMongoMode(service.engine === 'mongodb' ? 'uri' : 'structured');
+    setTestResult(null);
+    setForm((current) => ({
+      ...current,
+      type: service.engine,
+      host: '',
+      port: service.port || DEFAULT_PORTS[service.engine],
+      username: '',
+      password: '',
+      database: '',
+      connectionString: '',
+      ssl: true,
+    }));
+  };
+
+  const chooseCloudProvider = (provider) => {
+    if (provider.key === cloudProviderKey) return;
+    const available = provider.services.filter((service) => !service.comingSoon);
+    if (available.length === 1) {
+      chooseCloudService(provider, available[0]);
+      return;
+    }
+    setCloudProviderKey(provider.key);
+    setCloudServiceKey(null);
+    setTestResult(null);
+  };
+
   // Type change hone pe default port set karo
   const handleTypeChange = (type) => {
     setTestResult(null);
@@ -331,6 +409,9 @@ export default function Connections() {
   };
 
   const getProcessedForm = () => {
+    const cloudFields = isCloudTab && cloudService
+      ? { cloudProvider: cloudProvider.key, cloudService: cloudService.label, caCertificate: cloudCa }
+      : {};
     if (form.type === 'mongodb' && mongoMode === 'structured') {
       let uri = 'mongodb://';
       if (form.username && form.password) {
@@ -342,9 +423,9 @@ export default function Connections() {
       if (form.database) {
         uri += `/${form.database}`;
       }
-      return { ...form, connectionString: uri };
+      return { ...form, ...cloudFields, connectionString: uri };
     }
-    return form;
+    return { ...form, ...cloudFields };
   };
 
   // Connection test karo
@@ -377,6 +458,9 @@ export default function Connections() {
       setSuccess('Connection saved successfully!');
       setShowForm(false);
       setTestResult(null);
+      setAddTab('database');
+      clearCloudChoice();
+      setMongoMode('structured');
       setForm({
         name: '', type: 'mysql', host: 'localhost',
         port: '3306', username: 'root', password: '',
@@ -444,7 +528,7 @@ export default function Connections() {
     const next = { ...layout, ...changes };
     setLayout(next);
     try {
-      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(next));
+      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({ view: next.view, cardColor: next.cardTheme, rowColor: next.rowTheme }));
     } catch {
       // Not saved; the choice still applies until the page reloads
     }
@@ -453,7 +537,7 @@ export default function Connections() {
   // Longer lists scroll inside the list. The height comes from the 10th item, because
   // card and row heights change with the view and the screen width.
   const listRef = useRef(null);
-  const listScrolls = visibleConnections.length > MAX_VISIBLE_CONNECTIONS;
+  const listScrolls = layout.view !== 'rows' && visibleConnections.length > MAX_VISIBLE_CONNECTIONS;
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return undefined;
@@ -474,6 +558,31 @@ export default function Connections() {
     return () => observer.disconnect();
   }, [visibleConnections, layout.view, activeThemeKey, loading]);
 
+  // Rows are split into pages. A changed list goes back to page 1.
+  const rowListKey = visibleConnections.map((conn) => conn._id).join();
+  const [rowPageState, setRowPageState] = useState({ key: rowListKey, page: 1 });
+  if (rowPageState.key !== rowListKey) setRowPageState({ key: rowListKey, page: 1 });
+  const rowPageCount = Math.max(1, Math.ceil(visibleConnections.length / ROWS_PER_PAGE));
+  const rowPage = rowPageState.key === rowListKey ? Math.min(rowPageState.page, rowPageCount) : 1;
+  const setRowPage = (page) => setRowPageState({ key: rowListKey, page });
+  const firstRowIndex = (rowPage - 1) * ROWS_PER_PAGE;
+  const pageConnections = visibleConnections.slice(firstRowIndex, firstRowIndex + ROWS_PER_PAGE);
+
+  const [openRowMenu, setOpenRowMenu] = useState(null);
+  useEffect(() => {
+    if (!openRowMenu) return undefined;
+    const close = () => setOpenRowMenu(null);
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') close();
+    };
+    document.addEventListener('click', close);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('click', close);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [openRowMenu]);
+
   // "By database type" gives every card or row its own accent
   const accentStyle = (conn) => (
     activeThemeKey === 'engine' && ENGINE_COLORS[conn.type] ? { '--cx-accent': ENGINE_COLORS[conn.type] } : {}
@@ -482,11 +591,15 @@ export default function Connections() {
   const connectionDetails = (conn) => {
     const meta = ENGINE_META[conn.type] || { label: conn.type, logLabel: 'Log' };
     const supported = Boolean(ENGINE_META[conn.type]);
+    const stringHost = conn.connectionString
+      ? conn.connectionString.replace(/^[a-z+]+:\/\//i, '').split('@').pop().split(/[/?]/)[0]
+      : '';
     return {
       meta,
-      hostPort: `${conn.host || 'localhost'}:${conn.port || (conn.type === 'postgresql' ? 5432 : 3306)}`,
+      hostPort: stringHost || `${conn.host || 'localhost'}:${conn.port || (conn.type === 'postgresql' ? 5432 : 3306)}`,
       isDisconnected: conn.status === 'disconnected',
       isShared: Boolean(conn.user && conn.user._id !== (user?._id || user?.id)),
+      cloudText: cloudLabel(conn.cloudProvider, conn.cloudService),
       tools: [
         supported && hasPermission('userManagement') && {
           key: 'users',
@@ -666,7 +779,7 @@ export default function Connections() {
                     type="button"
                     onClick={() => setFilterType(filterType === type ? 'all' : type)}
                     className={`cx-engine-chip ${filterType === type ? 'is-active' : ''}`}
-
+                    style={{ '--chip': ENGINE_COLORS[type] }}
                   >
                     <span className="cx-chip-logo"><EngineIcon type={type} size={20} /></span>
                     <span className="text-left leading-tight">
@@ -693,14 +806,93 @@ export default function Connections() {
 
         {/* Add Connection Form */}
         {showForm && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="cx-add-form bg-white rounded-xl border border-gray-200 p-6 mb-6">
             <h3 className="text-sm font-semibold text-gray-900 mb-4">
               Add New Connection
             </h3>
 
+            <div className="cx-add-tabs" role="tablist" aria-label="Connection category">
+              <button type="button" role="tab" aria-selected={!isCloudTab} className={!isCloudTab ? 'is-active' : ''} onClick={() => chooseAddTab('database')}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" /></svg>
+                Database
+              </button>
+              <button type="button" role="tab" aria-selected={isCloudTab} className={isCloudTab ? 'is-active' : ''} onClick={() => chooseAddTab('cloud')}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a4.5 4.5 0 01-.6-8.96A6 6 0 0117.8 8.2 4 4 0 0117 18H7z" /></svg>
+                Cloud Services
+              </button>
+            </div>
+
             <form onSubmit={handleSave} className="space-y-4">
 
+              {/* Cloud provider and service */}
+              {isCloudTab && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cloud Provider
+                    </label>
+                    <div className="cx-cloud-providers">
+                      {CLOUD_PROVIDERS.map((provider) => (
+                        <button
+                          key={provider.key}
+                          type="button"
+                          aria-pressed={cloudProviderKey === provider.key}
+                          className={`cx-cloud-card ${cloudProviderKey === provider.key ? 'is-active' : ''}`}
+                          onClick={() => chooseCloudProvider(provider)}
+                        >
+                          <span className="cx-cloud-mark" aria-hidden="true"><img src={provider.logo} alt="" /></span>
+                          <span className="cx-cloud-text">
+                            <b>{provider.label}</b>
+                            <small>{provider.summary}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {cloudProvider && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Service
+                      </label>
+                      <div className="cx-cloud-services">
+                        {cloudProvider.services.map((service) => (
+                          <button
+                            key={service.key}
+                            type="button"
+                            disabled={service.comingSoon}
+                            aria-pressed={cloudServiceKey === service.key}
+                            className={`cx-cloud-service ${cloudServiceKey === service.key ? 'is-active' : ''}`}
+                            onClick={() => chooseCloudService(cloudProvider, service)}
+                          >
+                            {service.comingSoon ? (
+                              <>
+                                <span className="cx-cloud-service-name">{service.label}</span>
+                                <span className="cx-cloud-soon">Coming soon</span>
+                              </>
+                            ) : (
+                              <>
+                                <EngineIcon type={service.engine} size={20} />
+                                <span className="cx-cloud-service-name">{service.label}</span>
+                              </>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {cloudService && (
+                    <p className="cx-cloud-note">
+                      {cloudService.tip || `Copy the endpoint and port from your ${cloudProvider.label} console.`} Allow this server's IP address in your {cloudProvider.label} network settings or firewall. SSL is always on and the server's certificate is checked.
+                    </p>
+                  )}
+                </>
+              )}
+
               {/* Connection Name */}
+              {showConnectionFields && (
+              <>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Connection Name
@@ -715,6 +907,7 @@ export default function Connections() {
                 />
               </div>
 
+              {!isCloudTab && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Database Type
@@ -735,6 +928,7 @@ export default function Connections() {
                   ))}
                 </div>
               </div>
+              )}
 
               {/* Connection Form Fields */}
               {form.type === 'mongodb' && mongoMode === 'uri' ? (
@@ -743,6 +937,7 @@ export default function Connections() {
                     <label className="block text-sm font-medium text-gray-700">
                       Connection String
                     </label>
+                    {!isCloudTab && (
                     <button
                       type="button"
                       onClick={() => setMongoMode('structured')}
@@ -750,10 +945,11 @@ export default function Connections() {
                     >
                       Switch to Structured Fields
                     </button>
+                    )}
                   </div>
                   <input
                     type="text"
-                    placeholder="mongodb://username:password@host:27017/"
+                    placeholder={cloudService?.uriHint || 'mongodb://username:password@host:27017/'}
                     value={form.connectionString}
                     onChange={e => setForm({ ...form, connectionString: e.target.value })}
                     required
@@ -775,10 +971,10 @@ export default function Connections() {
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Host</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{isCloudTab ? 'Endpoint / Host' : 'Host'}</label>
                       <input
                         type="text"
-                        placeholder={form.type === 'mongodb' ? '127.0.0.1' : 'localhost'}
+                        placeholder={cloudService?.hostHint || (form.type === 'mongodb' ? '127.0.0.1' : 'localhost')}
                         value={form.host}
                         onChange={e => setForm({ ...form, host: e.target.value })}
                         required
@@ -836,6 +1032,24 @@ export default function Connections() {
                 </div>
               )}
 
+              {isCloudTab && cloudProvider?.ca && form.type !== 'oracle' && form.type !== 'mongodb' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    CA Certificate ({cloudProvider.ca === 'required' ? 'Required' : 'Optional'})
+                  </label>
+                  <textarea
+                    className="cx-cloud-ca"
+                    rows={4}
+                    spellCheck={false}
+                    placeholder="-----BEGIN CERTIFICATE-----"
+                    value={cloudCa}
+                    required={cloudProvider.ca === 'required'}
+                    onChange={e => setCloudCa(e.target.value)}
+                  />
+                  <p className="cx-cloud-hint">{cloudProvider.caHint}</p>
+                </div>
+              )}
+
               {/* Connection Access Mode */}
               <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Connection Access Mode</label>
@@ -852,7 +1066,7 @@ export default function Connections() {
               </div>
 
               {/* SSL Configuration Checkbox */}
-              {form.type !== 'mongodb' && (
+              {form.type !== 'mongodb' && !isCloudTab && (
                 <div className="flex items-center gap-2 mt-3 mb-1 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100">
                   <input
                     type="checkbox"
@@ -893,6 +1107,8 @@ export default function Connections() {
                   {saveLoading ? 'Saving...' : '💾 Save Connection'}
                 </button>
               </div>
+              </>
+              )}
 
             </form>
           </div>
@@ -1126,54 +1342,108 @@ export default function Connections() {
           </div>
 
           {layout.view === 'rows' ? (
-            <div ref={listRef} className={`cx-list cx-rows cxt-${activeThemeKey} ${listScrolls ? 'is-scroll' : ''}`}>
-              <div className="cx-row-head" aria-hidden="true">
-                <span>Connection</span>
-                <span>Host</span>
-                <span>Database</span>
-                <span>Status</span>
-                <span>Tools</span>
-                <span className="text-right">Actions</span>
-              </div>
-              {visibleConnections.map((conn) => {
-                const { meta, hostPort, isDisconnected, isShared, tools } = connectionDetails(conn);
+            <div ref={listRef} className={`cx-list cx-rows cxt-${activeThemeKey}`}>
+              {pageConnections.map((conn) => {
+                const { hostPort, isShared, cloudText, tools } = connectionDetails(conn);
+                const isInactive = conn.isActive === false;
+                const menuOpen = openRowMenu === conn._id;
                 return (
-                  <div key={conn._id} className="cx-row" style={accentStyle(conn)} onClick={() => navigate(`/connections/${conn._id}`)}>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="cx-card-logo is-small"><EngineIcon type={conn.type} size={22} /></span>
-                      <div className="min-w-0">
-                        <p className="cx-name truncate text-[13.5px] font-bold">{conn.name}</p>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                          <span className="cx-badge">{meta.label}</span>
-                          <span className="cx-badge">{conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}</span>
-                          {isShared && <span className="cx-badge">Shared by {conn.user.name}</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="cx-row-mono" data-label="Host" title={hostPort}>{hostPort}</span>
-                    <span className="cx-row-mono" data-label="Database" title={conn.database || ''}>{conn.database || '—'}</span>
-                    <span className={`cx-status ${isDisconnected ? 'is-off' : ''}`} data-label="Status">
-                      {isDisconnected ? 'Disconnected' : 'Connected'}
+                  <div key={conn._id} className={`cx-row ${menuOpen ? 'is-menu-open' : ''}`} style={accentStyle(conn)} onClick={() => navigate(`/connections/${conn._id}`)}>
+                    <span className="cx-row-logo">
+                      <EngineIcon type={conn.type} size={40} />
+                      {conn.type === 'oracle' && <small>ORACLE</small>}
                     </span>
-                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      {tools.map((tool) => (
-                        <button key={tool.key} type="button" onClick={() => navigate(tool.to)} className="cx-row-tool" style={{ '--t': tool.color }} title={tool.title} aria-label={tool.title}>
-                          {renderToolIcon(tool)}
-                        </button>
-                      ))}
+
+                    <div className="cx-row-main">
+                      <div className="cx-row-title">
+                        <p className="cx-name" title={conn.name}>{conn.name}</p>
+                        <span className={`cx-state ${isInactive ? 'is-off' : ''}`}>{isInactive ? 'Inactive' : 'Active'}</span>
+                      </div>
+                      <p className="cx-row-sub" title={conn.database || 'Any'}>
+                        Database: {conn.database || 'Any'}
+                      </p>
+                      {cloudText && <span className="cx-badge is-cloud">{cloudText}</span>}
+                      {isShared && <span className="cx-badge is-shared">Shared by {conn.user.name}</span>}
                     </div>
-                    <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                      {renderOpenButton(conn)}
-                      {renderManageButtons(conn)}
+
+                    <dl className="cx-row-facts">
+                      <div>
+                        <dt><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>Connection ID</dt>
+                        <dd title={String(conn._id)}>{String(conn._id).slice(-6)}</dd>
+                      </div>
+                      <div>
+                        <dt><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>Added On</dt>
+                        <dd>{formatAddedOn(conn.createdAt)}</dd>
+                      </div>
+                      <div>
+                        <dt><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></svg>Host</dt>
+                        <dd title={hostPort}>{hostPort}</dd>
+                      </div>
+                    </dl>
+
+                    <div className="cx-row-actions" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="cx-row-view" onClick={() => navigate(`/connections/${conn._id}`)}>
+                        Open
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                      </button>
+                      {canManage(conn) && (
+                        <button type="button" className="cx-row-delete" onClick={() => handleDelete(conn._id, conn.name)} aria-label={`Delete ${conn.name}`}>
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3" /></svg>
+                          Delete
+                        </button>
+                      )}
+                      <div className="cx-row-more">
+                        <button
+                          type="button"
+                          className="cx-row-more-btn"
+                          aria-label={`More options for ${conn.name}`}
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          title="More options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenRowMenu(menuOpen ? null : conn._id);
+                          }}
+                        >
+                          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" /></svg>
+                        </button>
+                        {menuOpen && (
+                          <div className="cx-row-menu" role="menu">
+                            {tools.map((tool) => (
+                              <button key={tool.key} type="button" role="menuitem" style={{ '--t': tool.color }} onClick={() => navigate(tool.to)}>
+                                <span className="cx-tool-icon">{renderToolIcon(tool)}</span>
+                                {tool.label}
+                              </button>
+                            ))}
+                            {canManage(conn) && (
+                              <button type="button" role="menuitem" style={{ '--t': '#475569' }} onClick={() => { setOpenRowMenu(null); handleOpenEditModal(conn); }}>
+                                <span className="cx-tool-icon">
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4.2-.8L19 8.4a2.1 2.1 0 0 0-3-3L5.2 16.2 4 20Z" /></svg>
+                                </span>
+                                Edit
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
+
+              <ConnectionPager
+                page={rowPage}
+                pageCount={rowPageCount}
+                firstIndex={firstRowIndex}
+                shownCount={pageConnections.length}
+                total={visibleConnections.length}
+                onPageChange={setRowPage}
+              />
             </div>
           ) : (
           <div ref={listRef} className={`cx-list grid gap-4 md:grid-cols-2 2xl:grid-cols-3 cxt-${activeThemeKey} ${listScrolls ? 'is-scroll' : ''}`}>
             {visibleConnections.map((conn, index) => {
-              const { meta, hostPort, isDisconnected, isShared, tools } = connectionDetails(conn);
+              const { meta, hostPort, isDisconnected, isShared, cloudText, tools } = connectionDetails(conn);
 
               return (
                 <div
@@ -1192,12 +1462,13 @@ export default function Connections() {
                         <span className={`h-2 w-2 shrink-0 rounded-full ${isDisconnected ? 'bg-rose-400' : 'bg-emerald-500 animate-pulse'}`} title={isDisconnected ? 'Disconnected' : 'Connected'} />
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="cx-badge">{meta.label}</span>
-                        <span className="cx-badge">
+                        <span className="cx-badge is-engine">{meta.label}</span>
+                        <span className={`cx-badge ${conn.accessMode === 'read' ? 'is-read' : 'is-write'}`}>
                           {conn.accessMode === 'read' ? 'Read Only' : 'Read & Write'}
                         </span>
+                        {cloudText && <span className="cx-badge is-cloud">{cloudText}</span>}
                         {isShared && (
-                          <span className="cx-badge">Shared by {conn.user.name}</span>
+                          <span className="cx-badge is-shared">Shared by {conn.user.name}</span>
                         )}
                       </div>
                     </div>
@@ -1386,6 +1657,22 @@ export default function Connections() {
                     onChange={e => setEditConnForm({ ...editConnForm, database: e.target.value })}
                     className="w-full px-3.5 py-2 border border-gray-300 rounded-lg text-xs outline-none focus:border-[#0d9da4]"
                   />
+                </div>
+              )}
+
+              {/* CA certificate of a cloud database */}
+              {CLOUD_PROVIDERS.find((provider) => provider.key === editConnectionModalConn.cloudProvider)?.ca && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">CA Certificate</label>
+                  <textarea
+                    className="cx-cloud-ca"
+                    rows={4}
+                    spellCheck={false}
+                    placeholder="-----BEGIN CERTIFICATE-----"
+                    value={editConnForm.caCertificate}
+                    onChange={e => setEditConnForm({ ...editConnForm, caCertificate: e.target.value })}
+                  />
+                  <p className="cx-cloud-hint">SSL is always on for this connection, and the server's certificate is checked.</p>
                 </div>
               )}
 

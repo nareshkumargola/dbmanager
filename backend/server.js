@@ -15,6 +15,9 @@ const mongoose = require("mongoose");
 const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
+if (!process.env.CONNECTION_ENCRYPTION_KEY) {
+  console.error("CONNECTION_ENCRYPTION_KEY is not set. Saved database connections will not work.");
+}
 
 const app = express();
 app.set("trust proxy", 1);

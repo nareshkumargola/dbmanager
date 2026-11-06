@@ -325,9 +325,12 @@
 /* ===== Connections table ===== */
 /* Room for the header (36px) plus 10 rows (57px each); longer lists scroll under a fixed header */
 .dash-table-scroll {
-  max-height: 606px;
+  /* The padding gives a hovered row room to rise, and the negative margin keeps the table where it was */
+  margin: 0 -20px -12px;
+  padding: 0 20px 12px;
   overflow: auto;
 }
+.dash-conn-pager { margin-top: 16px; }
 .dash-table thead th {
   position: sticky;
   top: 0;
@@ -336,16 +339,32 @@
   color: #64748b;
 }
 .dash-row {
-  transition: background 0.2s;
+  position: relative;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.dash-row > td:first-child {
-  box-shadow: inset 0 0 0 0 #2563eb;
-  transition: box-shadow 0.25s;
+.dash-row > td {
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
-.dash-row:hover { background: #dbeafe; }
-/* The owner avatar is this same blue, so it turns white to stay visible on the hovered row */
-.dash-row:hover .bg-blue-100 { background: #fff; }
-.dash-row:hover > td:first-child { box-shadow: inset 3px 0 0 0 #2563eb; }
+/* Hover lifts the row towards the viewer, with no change of color. One slab sits behind the
+   whole row, because a background on each cell shows gaps between them when scaled. */
+.dash-row:hover {
+  z-index: 1;
+  transform: translateY(-3px) scale(1.01);
+}
+.dash-row > td:first-child::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 14px -4px rgba(15, 23, 42, 0.28), 0 2px 4px rgba(15, 23, 42, 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.dash-row:hover > td:first-child::before { opacity: 1; }
 
 .dash-live-dot {
   position: relative;
@@ -413,9 +432,14 @@ html.dark .dash-side-card {
 }
 html.dark .dash-row .text-\[\#0f172a\] { color: #f1f5f9; }
 html.dark .dash-row .text-\[\#334155\] { color: #cbd5e1; }
-html.dark .dash-row:hover { background: #1e3a5f; }
+html.dark .dash-row > td:first-child::before {
+  background: #1a2438;
+  box-shadow: 0 8px 14px -4px rgba(0, 0, 0, 0.75), 0 2px 4px rgba(0, 0, 0, 0.5);
+}
 
 @media (prefers-reduced-motion: reduce) {
+  .dash-row { transition: none; }
+  .dash-row:hover { transform: none; }
   .dash-root *,
   .dash-root *::before,
   .dash-root *::after {

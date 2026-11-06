@@ -69,7 +69,7 @@ export default function AnimatedHero({ className = '', style, tilt = true }) {
       <div className="ah-hero-float">
         <div className="ah-hero-tilt" ref={tiltRef}>
           {/* Layer 1: servers, cylinder, pedestal and status card */}
-          <img src="/assets/hero_layer_servers.png" alt="Database servers with live status" draggable="false" />
+          <img src="/assets/hero_layer_servers.webp" alt="Database servers with live status" draggable="false" />
 
           <svg className="ah-hero-fx" viewBox="0 0 557 645" aria-hidden="true">
             <defs>
@@ -150,7 +150,7 @@ export default function AnimatedHero({ className = '', style, tilt = true }) {
 
           {/* Layer 2: "Database Online" card floats on its own */}
           <div className="ah-hero-layer ah-hero-card-db">
-            <img src="/assets/hero_layer_card_db.png" alt="" draggable="false" />
+            <img src="/assets/hero_layer_card_db.webp" alt="" draggable="false" />
             <svg className="ah-hero-fx" viewBox="0 0 557 645" aria-hidden="true">
               <g clipPath="url(#lgChart1)">
                 <rect y="80" width="45" height="55" fill="url(#lgSweep)">
@@ -163,7 +163,7 @@ export default function AnimatedHero({ className = '', style, tilt = true }) {
 
           {/* Layer 3: "Replication" card floats on its own */}
           <div className="ah-hero-layer ah-hero-card-repl">
-            <img src="/assets/hero_layer_card_repl.png" alt="" draggable="false" />
+            <img src="/assets/hero_layer_card_repl.webp" alt="" draggable="false" />
             <svg className="ah-hero-fx" viewBox="0 0 557 645" aria-hidden="true">
               <g clipPath="url(#lgChart2)">
                 <rect y="135" width="35" height="40" fill="url(#lgSweep)">

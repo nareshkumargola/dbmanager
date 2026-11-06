@@ -158,13 +158,20 @@ exports.createConnection = async (req, res) => {
     const {
       name, type, host, port,
       username, password, database,
-      connectionString, ssl, accessMode
+      connectionString, ssl, accessMode,
+      cloudProvider, cloudService, caCertificate
     } = req.body;
+
+    if (cloudProvider && !Connection.schema.path('cloudProvider').enumValues.includes(cloudProvider)) {
+      return res.status(400).json({ message: 'Unknown cloud provider.' });
+    }
+
+    const cloudCa = cloudProvider ? caCertificate : undefined;
 
     // Pehle test karo
     const testResult = await testConnection({
       type, host, port, username,
-      password, database, connectionString, ssl
+      password, database, connectionString, ssl, cloudProvider, caCertificate: cloudCa
     });
 
     if (!testResult.success) {
@@ -180,8 +187,12 @@ exports.createConnection = async (req, res) => {
       name, type, host,
       port: port || (type === 'mysql' ? 3306 : type === 'postgresql' ? 5432 : null),
       username, password, database,
-      connectionString, ssl,
-      accessMode: ['read', 'readwrite'].includes(accessMode) ? accessMode : 'readwrite'
+      connectionString,
+      ssl: cloudProvider ? true : ssl,
+      accessMode: ['read', 'readwrite'].includes(accessMode) ? accessMode : 'readwrite',
+      cloudProvider: cloudProvider || null,
+      caCertificate: cloudCa || null,
+      cloudService: cloudProvider && typeof cloudService === 'string' ? cloudService.trim().slice(0, 60) : null,
     });
 
     // Log to Audit Trail
@@ -189,7 +200,7 @@ exports.createConnection = async (req, res) => {
       connection._id,
       req.user.id,
       'CREATE_CONNECTION',
-      `[${type.toUpperCase()}] Added new database connection: "${name}" (${host || 'localhost'}:${port || (type === 'mysql' ? 3306 : 5432)})`
+      `[${type.toUpperCase()}] Added new database connection: "${name}" (${host || 'localhost'}:${port || (type === 'mysql' ? 3306 : 5432)})${cloudProvider ? ` on ${cloudProvider}` : ''}`
     );
 
     res.status(201).json({
@@ -204,6 +215,10 @@ exports.createConnection = async (req, res) => {
   }
 };
 
+// A saved password must not be sent to a server that was just typed into the form
+const hostChanged = (submitted, saved) => submitted !== undefined && String(submitted || '') !== String(saved || '');
+const HOST_CHANGED_MESSAGE = 'Please enter the password again when changing the host.';
+
 // ─── CONNECTION UPDATE KARO ───────────────────────
 exports.updateConnection = async (req, res) => {
   try {
@@ -211,7 +226,7 @@ exports.updateConnection = async (req, res) => {
     const {
       name, type, host, port,
       username, password, database,
-      connectionString, ssl, accessMode
+      connectionString, ssl, accessMode, caCertificate
     } = req.body;
 
     const connection = await Connection.findById(id);
@@ -224,6 +239,9 @@ exports.updateConnection = async (req, res) => {
     }
 
     const connType = type || connection.type;
+    if (!password && connection.password && connType !== 'mongodb' && hostChanged(host, connection.host)) {
+      return res.status(400).json({ message: HOST_CHANGED_MESSAGE });
+    }
     const connHost = host !== undefined ? host : connection.host;
     const connPort = port !== undefined ? port : connection.port;
     const connUsername = username !== undefined ? username : connection.username;
@@ -235,6 +253,7 @@ exports.updateConnection = async (req, res) => {
     }
     const connString = connectionString !== undefined ? restored.value : connection.connectionString;
     const connSsl = ssl !== undefined ? ssl : connection.ssl;
+    const connCa = caCertificate !== undefined ? caCertificate : connection.caCertificate;
     const connAccessMode = ['read', 'readwrite'].includes(accessMode) ? accessMode : (connection.accessMode || 'readwrite');
 
     const testResult = await testConnection({
@@ -245,7 +264,9 @@ exports.updateConnection = async (req, res) => {
       password: connPassword,
       database: connDatabase,
       connectionString: connString,
-      ssl: connSsl
+      ssl: connSsl,
+      cloudProvider: connection.cloudProvider,
+      caCertificate: connCa
     });
 
     if (!testResult.success) {
@@ -265,7 +286,8 @@ exports.updateConnection = async (req, res) => {
     if (password) connection.password = password;
     if (database !== undefined) connection.database = database;
     if (connectionString !== undefined) connection.connectionString = connString;
-    if (ssl !== undefined) connection.ssl = ssl;
+    if (ssl !== undefined && !connection.cloudProvider) connection.ssl = ssl;
+    if (caCertificate !== undefined && connection.cloudProvider) connection.caCertificate = caCertificate || null;
     connection.accessMode = connAccessMode;
 
     await connection.save();
@@ -294,7 +316,7 @@ exports.updateConnection = async (req, res) => {
 exports.testConnectionRoute = async (req, res) => {
   try {
     const { type, host, port, username, database, ssl, connectionId } = req.body;
-    let { password, connectionString } = req.body;
+    let { password, connectionString, cloudProvider, caCertificate } = req.body;
 
     // Testing a saved connection: the form has no password, so use the saved one
     if (connectionId) {
@@ -313,12 +335,17 @@ exports.testConnectionRoute = async (req, res) => {
         return res.status(400).json({ message: restored.error });
       }
       connectionString = restored.value;
+      if (!password && saved.password && type !== 'mongodb' && hostChanged(host, saved.host)) {
+        return res.status(400).json({ message: HOST_CHANGED_MESSAGE });
+      }
       if (!password) password = saved.password;
+      cloudProvider = saved.cloudProvider;
+      if (caCertificate === undefined) caCertificate = saved.caCertificate;
     }
 
     const result = await testConnection({
       type, host, port, username,
-      password, database, connectionString, ssl
+      password, database, connectionString, ssl, cloudProvider, caCertificate
     });
 
     if (req.user?.id) {

@@ -4,6 +4,7 @@ const mysql = require('mysql2/promise');
 const mysqldump = require('mysqldump');
 const { ObjectId } = require('mongodb');
 const Connection = require('../models/connectionModel');
+const { tlsOptions } = require('../connections/connectionTls');
 const { mysqlPool } = require('../config/db');
 const { createBackup, backupDir } = require('../utils/backup');
 const {
@@ -50,7 +51,7 @@ const parseMongoTypes = (doc) => {
   return newDoc;
 };
 
-const createMysqlBackup = async ({ host, port, user, password, database }) => {
+const createMysqlBackup = async ({ host, port, user, password, database, ssl }) => {
   const fileName = `backup_${database || 'database'}_${Date.now()}.sql`;
   const filePath = path.join(backupDir, fileName);
 
@@ -61,6 +62,7 @@ const createMysqlBackup = async ({ host, port, user, password, database }) => {
       user,
       password,
       database,
+      ssl,
     },
     dumpToFile: filePath,
   });
@@ -68,7 +70,7 @@ const createMysqlBackup = async ({ host, port, user, password, database }) => {
   return { fileName, filePath };
 };
 
-const createPgBackup = async ({ host, port, username, password, database, selections }) => {
+const createPgBackup = async ({ host, port, username, password, database, selections, ssl }) => {
   const { Pool } = require('pg');
   const pool = new Pool({
     host,
@@ -76,6 +78,7 @@ const createPgBackup = async ({ host, port, username, password, database, select
     user: username,
     password,
     database,
+    ssl,
   });
 
   const client = await pool.connect();
@@ -151,7 +154,7 @@ const createPgBackup = async ({ host, port, username, password, database, select
   }
 };
 
-const generateSinglePgDump = async ({ host, port, username, password, database, selectedTables }) => {
+const generateSinglePgDump = async ({ host, port, username, password, database, selectedTables, ssl }) => {
   const { Pool } = require('pg');
   const pool = new Pool({
     host,
@@ -159,6 +162,7 @@ const generateSinglePgDump = async ({ host, port, username, password, database, 
     user: username,
     password,
     database,
+    ssl,
   });
 
   const client = await pool.connect();
@@ -398,6 +402,7 @@ exports.takeBackup = async (req, res) => {
                 port: connection.port,
                 username: connection.username,
                 password: connection.password,
+                ssl: tlsOptions(connection),
                 database: db,
                 selectedTables: selections[db]
               });
@@ -422,6 +427,7 @@ exports.takeBackup = async (req, res) => {
               port: connection.port,
               username: connection.username,
               password: connection.password,
+              ssl: tlsOptions(connection),
               database: targetDb,
             });
             fileName = pgBackupResult.fileName;
@@ -433,6 +439,7 @@ exports.takeBackup = async (req, res) => {
               port: connection.port || 5432,
               user: connection.username,
               password: connection.password,
+              ssl: tlsOptions(connection),
               database: 'postgres'
             });
 
@@ -463,6 +470,7 @@ exports.takeBackup = async (req, res) => {
                   port: connection.port,
                   username: connection.username,
                   password: connection.password,
+                  ssl: tlsOptions(connection),
                   database: db
                 });
                 fs.appendFileSync(
@@ -500,6 +508,7 @@ exports.takeBackup = async (req, res) => {
                 port: connection.port || 3306,
                 user: connection.username,
                 password: connection.password,
+                ssl: tlsOptions(connection),
                 database: db,
               },
               dumpToFile: tempFilePath,
@@ -539,6 +548,7 @@ exports.takeBackup = async (req, res) => {
             port: connection.port,
             user: connection.username,
             password: connection.password,
+            ssl: tlsOptions(connection),
             database,
           }));
         } else {
@@ -548,6 +558,7 @@ exports.takeBackup = async (req, res) => {
             port: connection.port || 3306,
             user: connection.username,
             password: connection.password,
+            ssl: tlsOptions(connection),
           });
           conn.on('error', (err) => {
             console.error('Temporary backup MySQL connection error:', err.message);
@@ -582,6 +593,7 @@ exports.takeBackup = async (req, res) => {
                   port: connection.port || 3306,
                   user: connection.username,
                   password: connection.password,
+                  ssl: tlsOptions(connection),
                   database: db,
                 },
                 dumpToFile: tempFilePath,
@@ -809,6 +821,7 @@ exports.restoreBackup = async (req, res) => {
             port: connectionDoc.port || 5432,
             user: connectionDoc.username,
             password: connectionDoc.password,
+            ssl: tlsOptions(connectionDoc),
             database: 'postgres',
           });
           const adminClient = await adminPool.connect();
@@ -834,6 +847,7 @@ exports.restoreBackup = async (req, res) => {
           port: connectionDoc.port || 5432,
           user: connectionDoc.username,
           password: connectionDoc.password,
+          ssl: tlsOptions(connectionDoc),
           database: targetDatabase || 'postgres',
         });
         const pgClient = await pool.connect();
@@ -875,6 +889,7 @@ exports.restoreBackup = async (req, res) => {
         port: connectionDoc.port || 3306,
         user: connectionDoc.username,
         password: connectionDoc.password,
+        ssl: tlsOptions(connectionDoc),
       });
       targetConnection.on('error', (err) => {
         console.error('Restore MySQL connection error:', err.message);

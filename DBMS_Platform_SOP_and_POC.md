@@ -366,6 +366,7 @@ The following environment variables configure the application runtime:
 PORT=5001
 NODE_ENV=production
 MFA_ENCRYPTION_KEY=<random 64-character hex key; changing it later breaks everyone's MFA>
+CONNECTION_ENCRYPTION_KEY=<random 64-character hex key; keep a safe copy, because losing or changing it makes every saved database password unreadable>
 
 # App Metadata Database
 MONGO_URI=mongodb://127.0.0.1:27017/dbmanager

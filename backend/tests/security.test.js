@@ -2,6 +2,7 @@
 // Run from backend/: node --test tests/security.test.js
 process.env.JWT_SECRET = 'test-only-jwt-secret';
 process.env.MFA_ENCRYPTION_KEY = 'test-only-mfa-key';
+process.env.CONNECTION_ENCRYPTION_KEY = 'test-only-connection-key';
 process.env.NODE_ENV = 'test';
 
 const { after, before, beforeEach, test } = require('node:test');
@@ -25,6 +26,7 @@ const User = require('../models/userModel');
 const Connection = require('../models/connectionModel');
 const { getConnection, closeConnection } = require('../connections/connectionManager');
 const { maskConnectionString, restoreMaskedPassword } = require('../utils/connectionString');
+const { decryptSecret, isEncrypted } = require('../utils/connectionSecrets');
 
 let server;
 let base;
@@ -54,7 +56,11 @@ const makeUser = (email, role = 'developer', extra = {}) => User.create({
 });
 const tokenFor = async (email, password = PASSWORD) => (await call('POST', '/api/auth/login', { email, password })).data.token;
 const profileStatus = async (token) => (await call('GET', '/api/auth/profile', null, token)).status;
-const rawConnection = (id) => Connection.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+const storedConnection = (id) => Connection.collection.findOne({ _id: new mongoose.Types.ObjectId(id) });
+const rawConnection = async (id) => {
+  const stored = await storedConnection(id);
+  return { ...stored, password: decryptSecret(stored.password), connectionString: decryptSecret(stored.connectionString) };
+};
 
 const makeMongoConnection = async (owner, extra = {}) => {
   const connection = await Connection.create({ user: owner._id, name: 'Mongo Test', type: 'mongodb', connectionString: MONGO_URI, ...extra });
@@ -257,6 +263,196 @@ test('the share list includes connections without an owner, and is not open to e
     assert.ok(!res.text.includes('Orphan-Secret'));
   }
   assert.equal((await call('GET', '/api/connections/all', null, await tokenFor(developer.email))).status, 403);
+});
+
+/* ---------- Cloud connections ---------- */
+
+test('a cloud connection saves its provider and service, and shows them in the list', async () => {
+  const admin = await makeUser('cloud-admin@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const res = await call('POST', '/api/connections', { name: 'Atlas One', type: 'mongodb', connectionString: MONGO_URI, cloudProvider: 'atlas', cloudService: 'MongoDB Atlas' }, token);
+  assert.equal(res.status, 201, res.text);
+  openConnectionIds.add(res.data.connection._id);
+  assert.equal(res.data.connection.cloudProvider, 'atlas');
+  assert.equal(res.data.connection.cloudService, 'MongoDB Atlas');
+  assert.equal(res.data.connection.ssl, true);
+  const list = await call('GET', '/api/connections', null, token);
+  const listed = list.data.connections.find((c) => c.name === 'Atlas One');
+  assert.equal(listed.cloudProvider, 'atlas');
+  assert.ok(!list.text.includes(MONGO_SECRET));
+});
+
+test('a connection from the Database tab has no cloud provider', async () => {
+  const admin = await makeUser('plain-conn@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const res = await call('POST', '/api/connections', { name: 'Plain One', type: 'mongodb', connectionString: MONGO_URI }, token);
+  assert.equal(res.status, 201, res.text);
+  openConnectionIds.add(res.data.connection._id);
+  assert.equal(res.data.connection.cloudProvider, null);
+  assert.equal(res.data.connection.cloudService, null);
+});
+
+test('an unknown cloud provider is refused before anything is saved', async () => {
+  const admin = await makeUser('bad-cloud@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  for (const cloudProvider of ['not-a-cloud', { $ne: null }]) {
+    const res = await call('POST', '/api/connections', { name: 'Bad Cloud', type: 'mongodb', connectionString: MONGO_URI, cloudProvider }, token);
+    assert.equal(res.status, 400);
+  }
+  assert.equal(await Connection.countDocuments({ name: 'Bad Cloud' }), 0);
+});
+
+test('a cloud connection with no endpoint is refused instead of reaching a local database', async () => {
+  const admin = await makeUser('no-endpoint@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  for (const host of ['', '   ', undefined]) {
+    const body = { name: 'No Endpoint', type: 'mysql', host, port: 3306, username: 'root', password: 'x', cloudProvider: 'aws', cloudService: 'Aurora MySQL' };
+    const tested = await call('POST', '/api/connections/test', body, token);
+    assert.equal(tested.status, 400);
+    assert.match(tested.text, /cloud endpoint/);
+    const saved = await call('POST', '/api/connections', body, token);
+    assert.equal(saved.status, 400);
+    assert.match(saved.text, /cloud endpoint/);
+  }
+  assert.equal(await Connection.countDocuments({ name: 'No Endpoint' }), 0);
+});
+
+test('Test Connection and editing still work on a cloud connection', async () => {
+  const admin = await makeUser('edit-cloud@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const doc = await makeMongoConnection(admin, { cloudProvider: 'atlas', cloudService: 'MongoDB Atlas' });
+  const body = { type: 'mongodb', connectionId: doc._id, connectionString: MASKED_URI };
+  assert.equal((await call('POST', '/api/connections/test', body, token)).status, 200);
+  const updated = await call('PUT', `/api/connections/${doc._id}`, { name: 'Renamed Cloud', connectionString: MASKED_URI }, token);
+  assert.equal(updated.status, 200, updated.text);
+  assert.equal(updated.data.connection.cloudProvider, 'atlas');
+  assert.equal((await rawConnection(doc._id)).connectionString, MONGO_URI);
+});
+
+/* ---------- Saved passwords ---------- */
+
+test('passwords and connection strings are encrypted in the database and work as before', async () => {
+  const admin = await makeUser('encrypted@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const created = await call('POST', '/api/connections', { name: 'Encrypted', type: 'mongodb', connectionString: MONGO_URI }, token);
+  assert.equal(created.status, 201, created.text);
+  const id = created.data.connection._id;
+  openConnectionIds.add(id);
+
+  const stored = await storedConnection(id);
+  assert.ok(isEncrypted(stored.connectionString));
+  assert.ok(!JSON.stringify(stored).includes(MONGO_SECRET));
+  assert.equal(created.data.connection.connectionString, MASKED_URI);
+
+  const doc = await Connection.findById(id);
+  assert.equal(doc.connectionString, MONGO_URI);
+  assert.equal(doc.toObject().connectionString, MONGO_URI);
+  assert.equal(doc.toJSON().connectionString, MASKED_URI);
+  const { conn } = await getConnection(doc);
+  assert.ok((await conn.db(DB_NAME).command({ ping: 1 })).ok);
+});
+
+test('saving again does not encrypt a password twice', async () => {
+  const owner = await makeUser('twice@test.local', 'admin');
+  const doc = await Connection.create({ user: owner._id, name: 'Twice', type: 'mysql', host: 'db.example.com', username: 'u', password: 'plain-pass' });
+  const stored = await storedConnection(doc._id);
+  assert.ok(isEncrypted(stored.password));
+  assert.equal(doc.password, 'plain-pass');
+  assert.equal(doc.toJSON().password, undefined);
+
+  const loaded = await Connection.findById(doc._id);
+  loaded.name = 'Twice Renamed';
+  await loaded.save();
+  const after = await Connection.findById(doc._id);
+  assert.equal(after.password, 'plain-pass');
+  assert.equal((await storedConnection(doc._id)).password, stored.password);
+
+  after.password = 'new-pass';
+  await after.save();
+  assert.ok(isEncrypted((await storedConnection(doc._id)).password));
+  assert.equal((await Connection.findById(doc._id)).password, 'new-pass');
+});
+
+test('a connection saved before encryption still works and stays hidden', async () => {
+  const admin = await makeUser('before-encryption@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const { insertedId } = await Connection.collection.insertOne({ user: admin._id, name: 'Legacy', type: 'mongodb', connectionString: MONGO_URI, password: 'old-plain', createdAt: new Date() });
+  openConnectionIds.add(String(insertedId));
+  const doc = await Connection.findById(insertedId);
+  assert.equal(doc.password, 'old-plain');
+  const { conn } = await getConnection(doc);
+  assert.ok((await conn.db(DB_NAME).command({ ping: 1 })).ok);
+  const list = await call('GET', '/api/connections', null, token);
+  assert.ok(!list.text.includes(MONGO_SECRET) && !list.text.includes('old-plain'));
+  assert.equal(list.data.connections.find((c) => c.name === 'Legacy').connectionString, MASKED_URI);
+});
+
+test('with the wrong key the list still opens, hides the value, and connecting fails clearly', async (t) => {
+  const admin = await makeUser('wrong-key@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const doc = await makeMongoConnection(admin, { name: 'Wrong Key' });
+  const key = process.env.CONNECTION_ENCRYPTION_KEY;
+  t.after(() => { process.env.CONNECTION_ENCRYPTION_KEY = key; });
+  process.env.CONNECTION_ENCRYPTION_KEY = 'a-different-key';
+  const list = await call('GET', '/api/connections', null, token);
+  assert.equal(list.status, 200, list.text);
+  assert.equal(list.data.connections.find((c) => c.name === 'Wrong Key').connectionString, '****');
+  await closeConnection(String(doc._id));
+  await assert.rejects(getConnection(await Connection.findById(doc._id)), /CONNECTION_ENCRYPTION_KEY/);
+});
+
+test('a saved password is not sent to a host typed into the form', async () => {
+  const admin = await makeUser('host-swap@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const doc = await Connection.create({ user: admin._id, name: 'Host Swap', type: 'mysql', host: 'db.example.com', port: 3306, username: 'u', password: 'keep-me' });
+  const body = { type: 'mysql', host: 'attacker.example.net', port: 3306, username: 'u', password: '' };
+  const tested = await call('POST', '/api/connections/test', { ...body, connectionId: doc._id }, token);
+  assert.equal(tested.status, 400);
+  assert.match(tested.text, /password again/);
+  const updated = await call('PUT', `/api/connections/${doc._id}`, body, token);
+  assert.equal(updated.status, 400);
+  assert.match(updated.text, /password again/);
+  assert.equal((await Connection.findById(doc._id)).host, 'db.example.com');
+});
+
+/* ---------- Cloud TLS rules on the routes ---------- */
+
+test('a cloud connection string that turns off TLS is refused', async () => {
+  const admin = await makeUser('no-tls@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const body = { name: 'No TLS', type: 'mongodb', connectionString: 'mongodb://u:p@cluster.example.net/db?tls=false', cloudProvider: 'atlas' };
+  for (const url of ['/api/connections/test', '/api/connections']) {
+    const res = await call('POST', url, body, token);
+    assert.equal(res.status, 400);
+    assert.match(res.text, /turns off TLS/);
+  }
+  assert.equal(await Connection.countDocuments({ name: 'No TLS' }), 0);
+});
+
+test('a bad CA certificate is refused before any network call', async () => {
+  const admin = await makeUser('bad-ca@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const body = { name: 'Bad CA', type: 'mysql', host: 'db.example.com', port: 3306, username: 'u', password: 'x', cloudProvider: 'ibm', caCertificate: 'not a certificate' };
+  for (const url of ['/api/connections/test', '/api/connections']) {
+    const res = await call('POST', url, body, token);
+    assert.equal(res.status, 400);
+    assert.match(res.text, /valid CA certificate/);
+  }
+  const doc = await Connection.create({ user: admin._id, name: 'Edit CA', type: 'mysql', host: 'db.example.com', username: 'u', password: 'x', cloudProvider: 'ibm' });
+  const edited = await call('PUT', `/api/connections/${doc._id}`, { caCertificate: 'still not one' }, token);
+  assert.equal(edited.status, 400);
+  assert.match(edited.text, /valid CA certificate/);
+  assert.equal((await Connection.findById(doc._id)).caCertificate, null);
+});
+
+test('the Database tab ignores a CA certificate', async () => {
+  const admin = await makeUser('plain-ca@test.local', 'admin');
+  const token = await tokenFor(admin.email);
+  const res = await call('POST', '/api/connections', { name: 'Plain CA', type: 'mongodb', connectionString: MONGO_URI, caCertificate: 'anything', ssl: false }, token);
+  assert.equal(res.status, 201, res.text);
+  openConnectionIds.add(res.data.connection._id);
+  assert.equal(res.data.connection.caCertificate, null);
+  assert.equal(res.data.connection.ssl, false);
 });
 
 /* ---------- Session tokens ---------- */

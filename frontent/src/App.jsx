@@ -1,30 +1,36 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NavbarProvider } from './context/NavbarContext';
 import Layout from './components/Layout';
+import PageBoundary from './components/PageBoundary';
+import { lazyPage } from './utils/lazyPage';
 
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import Dashboard from './pages/Dashboard';
-import MysqlTable from './pages/MysqlTable';
-import MongoCollection from './pages/MongoCollection';
-import QueryEditor from './pages/QueryEditor';
-import QueryHistory from './pages/QueryHistory';
-import Profile from './pages/Profile';
-import Backup from './pages/Backup';
-import SlowQuery from './pages/SlowQuery';
-import UserManagement from './pages/UserManagement';
-import Connections from './pages/Connections';
-import ConnectionDashboard from './pages/ConnectionDashboard';
-import DatabaseSelector from './pages/DatabaseSelector';
-import ConnectionUsers from './pages/ConnectionUsers';
-import ConnectionMonitor from './pages/ConnectionMonitor';
-import ConnectionBinlog from './pages/ConnectionBinlog';
-import ConnectionBackup from './pages/ConnectionBackup';
-import HelpDocs from './pages/HelpDocs';
-import SystemStatus from './pages/SystemStatus';
-import LegalPolicies from './pages/LegalPolicies';
+const Login = lazyPage(() => import('./pages/Login'));
+const ForgotPassword = lazyPage(() => import('./pages/ForgotPassword'));
+const ResetPassword = lazyPage(() => import('./pages/ResetPassword'));
+const loadDashboard = () => import('./pages/Dashboard');
+const Dashboard = lazyPage(loadDashboard);
+const MysqlTable = lazyPage(() => import('./pages/MysqlTable'));
+const MongoCollection = lazyPage(() => import('./pages/MongoCollection'));
+const QueryEditor = lazyPage(() => import('./pages/QueryEditor'));
+const QueryHistory = lazyPage(() => import('./pages/QueryHistory'));
+const Profile = lazyPage(() => import('./pages/Profile'));
+const Backup = lazyPage(() => import('./pages/Backup'));
+const SlowQuery = lazyPage(() => import('./pages/SlowQuery'));
+const UserManagement = lazyPage(() => import('./pages/UserManagement'));
+const loadConnections = () => import('./pages/Connections');
+const Connections = lazyPage(loadConnections);
+const ConnectionDashboard = lazyPage(() => import('./pages/ConnectionDashboard'));
+const DatabaseSelector = lazyPage(() => import('./pages/DatabaseSelector'));
+const ConnectionUsers = lazyPage(() => import('./pages/ConnectionUsers'));
+const ConnectionMonitor = lazyPage(() => import('./pages/ConnectionMonitor'));
+const ConnectionBinlog = lazyPage(() => import('./pages/ConnectionBinlog'));
+const ConnectionBackup = lazyPage(() => import('./pages/ConnectionBackup'));
+const HelpDocs = lazyPage(() => import('./pages/HelpDocs'));
+const SystemStatus = lazyPage(() => import('./pages/SystemStatus'));
+const LegalPolicies = lazyPage(() => import('./pages/LegalPolicies'));
+
 // Protected Route
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -56,6 +62,7 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <BrowserRouter>
+      <PageBoundary>
       <Routes>
 
         {/* Default */}
@@ -110,11 +117,22 @@ function AppRoutes() {
         } />
 
       </Routes>
+      </PageBoundary>
     </BrowserRouter>
   );
 }
 
 export default function App() {
+  // Fetch the two most used pages once the browser is idle, so opening them feels instant
+  useEffect(() => {
+    const preload = () => {
+      loadDashboard().catch(() => {});
+      loadConnections().catch(() => {});
+    };
+    if ('requestIdleCallback' in window) window.requestIdleCallback(preload);
+    else setTimeout(preload, 1500);
+  }, []);
+
   return (
     <AuthProvider>
       <NavbarProvider>

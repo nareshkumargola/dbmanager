@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { maskConnectionString } = require('../utils/connectionString');
+const { MASK, maskConnectionString } = require('../utils/connectionString');
+const { encryptSecret, decryptSecret } = require('../utils/connectionSecrets');
 
 const connectionSchema = new mongoose.Schema({
   user: {
@@ -26,7 +27,7 @@ const connectionSchema = new mongoose.Schema({
   host: { type: String, default: null },
   port: { type: Number, default: null },
   username: { type: String, default: null },
-  password: { type: String, default: null },
+  password: { type: String, default: null, set: encryptSecret, get: decryptSecret },
   database: { type: String, default: null },
   ssl: { type: Boolean, default: false },
   accessMode: {
@@ -36,7 +37,16 @@ const connectionSchema = new mongoose.Schema({
   },
 
   // MongoDB ke liye
-  connectionString: { type: String, default: null },
+  connectionString: { type: String, default: null, set: encryptSecret, get: decryptSecret },
+
+  // Set when the connection was added from the Cloud Services tab
+  cloudProvider: {
+    type: String,
+    enum: ['aws', 'azure', 'gcp', 'atlas', 'oci', 'ibm', 'alibaba'],
+    default: null,
+  },
+  cloudService: { type: String, trim: true, maxlength: 60, default: null },
+  caCertificate: { type: String, trim: true, default: null },
 
   isActive: { type: Boolean, default: true },
   
@@ -118,12 +128,20 @@ const connectionSchema = new mongoose.Schema({
     default: Date.now,
   },
 }, {
+  // Connecting to the database needs the real values, and it reads them through toObject
+  toObject: { getters: true, virtuals: false },
   toJSON: {
     // Every API response goes through toJSON, so passwords stay on the server.
-    // toObject is left alone because connecting to the database needs the real values.
+    // A value that can't be read is hidden, so the connection list still opens.
     transform(doc, ret) {
       delete ret.password;
-      if (ret.connectionString) ret.connectionString = maskConnectionString(ret.connectionString);
+      if (ret.connectionString) {
+        try {
+          ret.connectionString = maskConnectionString(decryptSecret(ret.connectionString));
+        } catch {
+          ret.connectionString = MASK;
+        }
+      }
       return ret;
     },
   },
