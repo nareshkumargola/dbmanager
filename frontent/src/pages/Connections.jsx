@@ -72,7 +72,6 @@ const PROVIDER_CHIP_COLORS = {
   ibm: '#0f62fe',
   alibaba: '#c2410c',
 };
-const cloudLogo = (key) => CLOUD_PROVIDERS.find((provider) => provider.key === key)?.logo;
 
 // Host part of a connection string, e.g. cluster0.example.net from mongodb+srv://user:****@cluster0.example.net/db
 const stringHostOf = (conn) => (conn.connectionString
@@ -889,62 +888,6 @@ export default function Connections() {
         {/* Add Connection Form */}
         {showForm && (
           <div className="cx-add-form mb-6">
-            <aside className="cx-add-intro">
-              <svg className="cx-add-intro-icon" viewBox="0 0 48 48" aria-hidden="true">
-                <defs>
-                  <linearGradient id="cxIntroIcon" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stopColor="#8b7bff" />
-                    <stop offset="1" stopColor="#3b6cf6" />
-                  </linearGradient>
-                </defs>
-                <ellipse cx="24" cy="10" rx="16" ry="6" fill="url(#cxIntroIcon)" />
-                <path d="M8 16c0 3.3 7.2 6 16 6s16-2.7 16-6v7c0 3.3-7.2 6-16 6S8 26.3 8 23v-7zM8 29c0 3.3 7.2 6 16 6s16-2.7 16-6v7c0 3.3-7.2 6-16 6S8 39.3 8 36v-7z" fill="url(#cxIntroIcon)" opacity="0.85" />
-              </svg>
-              <div>
-                <h2>Add New <span>Connection</span></h2>
-                <p>Connect your database to manage and monitor it with ease.</p>
-              </div>
-              <div className="cx-add-art" aria-hidden="true">
-                <svg className="cx-add-cylinder" viewBox="0 0 220 240">
-                  <defs>
-                    <linearGradient id="cxCylBody" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0" stopColor="#1e40af" />
-                      <stop offset="0.45" stopColor="#3b82f6" />
-                      <stop offset="1" stopColor="#1e3a8a" />
-                    </linearGradient>
-                    <linearGradient id="cxCylTop" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0" stopColor="#bfdbfe" />
-                      <stop offset="1" stopColor="#60a5fa" />
-                    </linearGradient>
-                    <filter id="cxGlow" x="-30%" y="-80%" width="160%" height="260%"><feGaussianBlur stdDeviation="3" /></filter>
-                  </defs>
-                  <ellipse cx="110" cy="200" rx="100" ry="26" fill="#dfe6ff" />
-                  <ellipse cx="110" cy="194" rx="78" ry="18" fill="#eef2ff" stroke="#c7d2fe" />
-                  <ellipse cx="110" cy="130" rx="104" ry="44" fill="none" stroke="#c7d2fe" strokeDasharray="4 6" />
-                  <path d="M60 58v120a50 15 0 0 0 100 0V58" fill="url(#cxCylBody)" />
-                  <path d="M60 98a50 15 0 0 0 100 0" fill="none" stroke="#22d3ee" strokeWidth="6" filter="url(#cxGlow)" />
-                  <path d="M60 98a50 15 0 0 0 100 0" fill="none" stroke="#a5f3fc" strokeWidth="2" />
-                  <path d="M60 140a50 15 0 0 0 100 0" fill="none" stroke="#a78bfa" strokeWidth="6" filter="url(#cxGlow)" />
-                  <path d="M60 140a50 15 0 0 0 100 0" fill="none" stroke="#e9d5ff" strokeWidth="2" />
-                  <ellipse cx="110" cy="58" rx="50" ry="15" fill="url(#cxCylTop)" />
-                </svg>
-                <span className="cx-add-chip is-mysql"><EngineIcon type="mysql" size={30} /><small>MySQL</small></span>
-                <span className="cx-add-chip is-postgresql"><EngineIcon type="postgresql" size={30} /><small>PostgreSQL</small></span>
-                <span className="cx-add-chip is-oracle"><EngineIcon type="oracle" size={30} /><small>Oracle</small></span>
-                <span className="cx-add-chip is-mongodb"><EngineIcon type="mongodb" size={30} /><small>MongoDB</small></span>
-                <span className="cx-add-chip is-azure"><img src={cloudLogo('azure')} alt="" /><small>Azure</small></span>
-                <span className="cx-add-chip is-aws"><img src={cloudLogo('aws')} alt="" /><small>AWS</small></span>
-              </div>
-              <ul className="cx-add-points">
-                {['Multi-Database Support', 'Secure & Reliable', 'Real-time Monitoring'].map((point) => (
-                  <li key={point}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </aside>
-
             <div className="cx-add-main">
             <div className="cx-add-top">
             <div className="cx-add-tabs" role="tablist" aria-label="Connection category">
@@ -968,7 +911,7 @@ export default function Connections() {
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
                     <path d="M6 6l12 12M18 6L6 18" />
                   </svg>
-                  Cancel
+                  Back
                 </button>
               </div>
             </div>

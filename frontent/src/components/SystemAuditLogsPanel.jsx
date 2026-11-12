@@ -2,22 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import API from '../api/axios';
 import Toast from './Toast';
 import AdminPager from './AdminPager';
-import { copyText, downloadCsv, escapeHtml, initialsOf, timeAgo, toLocalDateInput } from '../utils/adminHelpers';
-import './AdminPages.css';
-
+import AuditDownloadDialog from './AuditDownloadDialog';
+import { copyText, initialsOf, timeAgo, toLocalDateInput } from '../utils/adminHelpers';
+import { categoryBreakdown, downloadAuditCsv, downloadAuditPdf, formatReportMoment, reportSlug } from '../utils/auditReport';
 // Quick category chips (client-side, on top of the server filters)
-const CATEGORIES = [
-  { id: 'queries', label: 'Queries', actions: ['RUN_QUERY', 'SLOW_QUERY'] },
-  { id: 'data', label: 'Data & Schema', actions: ['INSERT_DATA', 'UPDATE_DATA', 'DELETE_DATA', 'CREATE_TABLE', 'ALTER_TABLE', 'DROP_TABLE', 'CREATE_DATABASE', 'ALTER_DATABASE', 'DROP_DATABASE'] },
-  { id: 'backups', label: 'Backups', actions: ['EXPORT_BACKUP', 'RESTORE_BACKUP'] },
-  { id: 'users', label: 'Users & Access', actions: ['CREATE_USER', 'UPDATE_USER', 'DELETE_USER', 'UPDATE_USER_PERMISSIONS', 'CREATE_DB_USER', 'UPDATE_DB_USER', 'DELETE_DB_USER', 'PROFILE_UPDATE', 'PASSWORD_CHANGE', 'MFA_ENABLE', 'MFA_DISABLE', 'MFA_RESET', 'MFA_BACKUP_CODES'] },
-  { id: 'connections', label: 'Connections', actions: ['CREATE_CONNECTION', 'UPDATE_CONNECTION', 'DELETE_CONNECTION', 'TEST_CONNECTION'] },
-  { id: 'signins', label: 'Sign-ins', actions: ['LOGIN', 'LOGOUT', 'MFA_FAILED', 'MFA_BACKUP_USED'] },
-];
-const ALL_ACTIONS = CATEGORIES.flatMap((category) => category.actions);
-
-// Actions that destroy data or change who can do what
-const SENSITIVE_ACTIONS = new Set(['DELETE_DATA', 'DROP_TABLE', 'DROP_DATABASE', 'RESTORE_BACKUP', 'DELETE_CONNECTION', 'DELETE_USER', 'DELETE_DB_USER', 'UPDATE_USER_PERMISSIONS', 'PASSWORD_CHANGE', 'MFA_DISABLE', 'MFA_RESET', 'MFA_FAILED', 'MFA_BACKUP_USED']);
+import {
+  AUDIT_CATEGORIES as CATEGORIES,
+  ALL_AUDIT_ACTIONS as ALL_ACTIONS,
+  SENSITIVE_AUDIT_ACTIONS as SENSITIVE_ACTIONS,
+} from '../utils/auditCategories';
+import './AdminPages.css';
 
 const DATE_PRESETS = [
   { id: 'all', label: 'All time', days: null },
@@ -67,6 +61,12 @@ export default function SystemAuditLogsPanel() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const downloadButtonRef = useRef(null);
+  const closeDownload = () => {
+    setDownloadOpen(false);
+    requestAnimationFrame(() => downloadButtonRef.current?.focus());
+  };
 
   // Only the newest request may update the list
   const latestRequest = useRef(0);
@@ -244,76 +244,76 @@ export default function SystemAuditLogsPanel() {
   const page = Math.min(currentPage, totalPages);
   const currentItems = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
 
-  // Exports use exactly what the filters currently show
-  const exportToExcel = () => {
-    if (filteredLogs.length === 0) return;
-    downloadCsv(
-      `system_audit_logs_${toLocalDateInput(new Date())}.csv`,
-      ['Timestamp', 'User Name', 'User Email', 'Role', 'Connection', 'Action', 'Details'],
-      filteredLogs.map((log) => [
-        new Date(log.createdAt).toLocaleString(),
-        log.user?.name || 'Unknown',
-        log.user?.email || 'N/A',
-        log.user?.role || 'N/A',
-        log.connection?.name || 'Global System',
-        log.action,
-        log.details || '',
-      ])
-    );
-    setToast({ message: `Exported ${filteredLogs.length} records as CSV`, type: 'success' });
+  // The Download box starts from what the page is filtering by. Filters it has no field for are
+  // listed in the box, so nobody expects them in the file.
+  const downloadInitial = {
+    userId: selectedUser,
+    connectionId: selectedConnection,
+    activity: category !== 'all' ? category : (sensitiveOnly ? 'sensitive' : ''),
+    preset: activePreset,
+    startDate,
+    endDate,
   };
+  const filtersNotInDownload = [
+    tableSearch.trim() && 'search',
+    selectedRole && 'role',
+    selectedAction && 'exact action',
+    queryType && 'query type',
+    sensitiveOnly && category !== 'all' && 'sensitive only',
+  ].filter(Boolean);
 
-  const exportToPDF = async () => {
-    if (filteredLogs.length === 0) return;
-    const element = document.createElement('div');
-    element.style.padding = '24px';
-    element.style.fontFamily = 'system-ui, sans-serif';
-    element.style.fontSize = '10px';
-    // Log text can hold anything a user typed, so every value is escaped before going into HTML
-    element.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #0d9488;padding-bottom:12px;margin-bottom:18px;">
-        <div>
-          <div style="font-size:16px;font-weight:800;color:#0d9488;">ALLATONE DMS</div>
-          <div style="font-size:8px;color:#64748b;font-weight:700;text-transform:uppercase;">Audit &amp; Compliance Trail</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:14px;font-weight:bold;color:#111827;">System Activity Audit Trail</div>
-          <div style="font-size:8px;color:#6b7280;margin-top:2px;">${filteredLogs.length} records · Generated ${escapeHtml(new Date().toLocaleString())}</div>
-        </div>
-      </div>
-      <table style="width:100%;border-collapse:collapse;text-align:left;">
-        <thead>
-          <tr style="background-color:#f3f4f6;color:#374151;">
-            ${['Timestamp', 'User', 'Connection', 'Action', 'Details'].map((h) => `<th style="padding:6px;border:1px solid #e5e7eb;">${h}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${filteredLogs.map((log) => `
-            <tr style="color:#4b5563;">
-              <td style="padding:6px;border:1px solid #e5e7eb;white-space:nowrap;">${escapeHtml(new Date(log.createdAt).toLocaleString())}</td>
-              <td style="padding:6px;border:1px solid #e5e7eb;">${escapeHtml(log.user?.name || 'Unknown')}<br/><span style="font-size:7px;color:#9ca3af;">${escapeHtml(log.user?.email || '')}</span></td>
-              <td style="padding:6px;border:1px solid #e5e7eb;">${escapeHtml(log.connection?.name || 'Global System')}</td>
-              <td style="padding:6px;border:1px solid #e5e7eb;"><strong>${escapeHtml(log.action)}</strong></td>
-              <td style="padding:6px;border:1px solid #e5e7eb;font-size:8px;font-family:monospace;max-width:250px;overflow-wrap:break-word;">${escapeHtml((log.details || '').substring(0, 120))}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
-
+  // PDF / CSV buttons at the top: a report of exactly what the list below shows
+  const [exporting, setExporting] = useState('');
+  const viewSummary = () => {
+    const categoryLabel = CATEGORIES.find((c) => c.id === category)?.label || 'All activity';
+    const person = users.find((u) => u._id === selectedUser);
+    const conn = connections.find((c) => c._id === selectedConnection);
+    const day = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const period = startDate && endDate
+      ? `${day(startDate)} to ${day(endDate)}`
+      : startDate ? `From ${day(startDate)}` : endDate ? `Up to ${day(endDate)}` : 'All time';
+    const alsoFiltered = [
+      selectedRole && `role ${selectedRole}`,
+      selectedAction && `action ${selectedAction.replace(/_/g, ' ')}`,
+      queryType && `query type ${queryType}`,
+      sensitiveOnly && 'sensitive actions only',
+    ].filter(Boolean);
+    const rows = [
+      ['Showing', categoryLabel],
+      ['Person', person ? `${person.name} (${person.email})` : 'All people'],
+      ['Connection', selectedConnection === 'global' ? 'Global system logs' : conn ? `${conn.name} (${String(conn.type).toUpperCase()})` : 'All connections'],
+      ['Period', period],
+    ];
+    if (tableSearch.trim()) rows.push(['Search', `"${tableSearch.trim()}"`]);
+    if (alsoFiltered.length) rows.push(['Also filtered by', alsoFiltered.join(', ')]);
+    // The page loads the newest 2000 records, so a report of the page can't hold more
+    rows.push(['Records', `${filteredLogs.length.toLocaleString()}${logs.length >= 2000 ? ' (from the newest 2,000 loaded)' : ''}`]);
+    rows.push(['Generated', formatReportMoment(new Date())]);
+    return rows;
+  };
+  const exportView = async (format) => {
+    if (filteredLogs.length === 0 || exporting) return;
+    setExporting(format);
     try {
-      const mod = await import('html2pdf.js');
-      const html2pdf = mod.default || mod;
-      await html2pdf().set({
-        margin: 10,
-        filename: `system_audit_report_${toLocalDateInput(new Date())}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { orientation: 'landscape', unit: 'mm', format: 'a4' },
-      }).from(element).save();
-    } catch (e) {
-      console.error('PDF generation failed', e);
-      setToast({ message: 'PDF download failed.', type: 'error' });
+      const categoryLabel = CATEGORIES.find((c) => c.id === category)?.label || 'all';
+      const fileName = `${['audit-report', reportSlug(categoryLabel), toLocalDateInput(new Date())].join('_')}.${format}`;
+      if (format === 'pdf') {
+        await downloadAuditPdf({
+          fileName,
+          logs: filteredLogs,
+          title: 'Audit Report',
+          summary: viewSummary(),
+          breakdown: categoryBreakdown(logs, category),
+        });
+      } else {
+        downloadAuditCsv(fileName, filteredLogs);
+      }
+      setToast({ message: `Exported ${filteredLogs.length.toLocaleString()} records as ${format.toUpperCase()}`, type: 'success' });
+    } catch (err) {
+      console.error('Audit report export failed:', err);
+      setToast({ message: 'The export failed. Please try again.', type: 'error' });
+    } finally {
+      setExporting('');
     }
   };
 
@@ -356,16 +356,50 @@ export default function SystemAuditLogsPanel() {
             <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /></svg>
             Refresh
           </button>
-          <button type="button" onClick={exportToExcel} disabled={filteredLogs.length === 0} className="ap-btn-outline">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" /></svg>
+          <button
+            type="button"
+            onClick={() => exportView('csv')}
+            disabled={loading || filteredLogs.length === 0 || Boolean(exporting)}
+            className="ap-btn-outline"
+            title="Report of the records shown below, as a CSV file for Excel"
+          >
+            {exporting === 'csv' ? (
+              <span className="ap-dl-spin is-dark" aria-hidden="true" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M3 15h18M9 4v16" /></svg>
+            )}
             CSV
           </button>
-          <button type="button" onClick={exportToPDF} disabled={filteredLogs.length === 0} className="ap-btn">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5" /></svg>
-            PDF report
+          <button
+            type="button"
+            onClick={() => exportView('pdf')}
+            disabled={loading || filteredLogs.length === 0 || Boolean(exporting)}
+            className="ap-btn"
+            title="Report of the records shown below, as a PDF"
+          >
+            {exporting === 'pdf' ? (
+              <span className="ap-dl-spin" aria-hidden="true" />
+            ) : (
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+            )}
+            {exporting === 'pdf' ? 'Preparing...' : 'PDF'}
           </button>
         </div>
       </div>
+
+      {downloadOpen && (
+        <AuditDownloadDialog
+          users={users}
+          connections={connections}
+          initial={downloadInitial}
+          otherFilters={filtersNotInDownload}
+          onClose={closeDownload}
+          onDownloaded={(message) => {
+            closeDownload();
+            setToast({ message, type: 'success' });
+          }}
+        />
+      )}
 
       <div className="ap-stats">
         <div className="ap-stat">
@@ -469,8 +503,8 @@ export default function SystemAuditLogsPanel() {
           </div>
         )}
 
-        {/* Category chips */}
-        <div className="ap-divider flex flex-wrap gap-1.5 p-3">
+        {/* Category chips, then the Export Report button right after Sign-ins */}
+        <div className="ap-divider flex flex-wrap items-center gap-1.5 p-3">
           <button type="button" onClick={() => setCategory('all')} className={`ap-chip ${category === 'all' ? 'is-active' : ''}`}>
             All <span className="ap-chip-count">{logs.length.toLocaleString()}</span>
           </button>
@@ -479,6 +513,18 @@ export default function SystemAuditLogsPanel() {
               {c.label} <span className="ap-chip-count">{(categoryCounts[c.id] || 0).toLocaleString()}</span>
             </button>
           ))}
+          <span className="ap-chip-sep" aria-hidden="true" />
+          <button
+            ref={downloadButtonRef}
+            type="button"
+            onClick={() => setDownloadOpen(true)}
+            aria-haspopup="dialog"
+            className="ap-chip-download"
+            title="Pick person, connection and time, then export a PDF or CSV report"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+            Export Report
+          </button>
         </div>
 
         {error && <div className="ap-alert mx-3 mb-3">{error}</div>}

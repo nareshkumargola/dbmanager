@@ -108,6 +108,8 @@ const userSchema = new mongoose.Schema({
     defaultLanding: { type: String, enum: ['/dashboard', '/connections'], default: '/dashboard' },
     sidebarOpenByDefault: { type: Boolean, default: false },
     reduceMotion: { type: Boolean, default: false },
+    // Text size across the whole app
+    fontSize: { type: String, enum: ['small', 'default', 'large', 'xlarge'], default: 'default' },
   },
   createdAt: {
     type: Date,

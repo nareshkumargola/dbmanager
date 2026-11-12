@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font size setting (Settings → Appearance), set on <html> by utils/fontSize.js.
+   All font sizes are rem, so changing the root size scales every piece of text. */
+html[data-font-size='small'] { font-size: 87.5%; }
+html[data-font-size='large'] { font-size: 112.5%; }
+html[data-font-size='xlarge'] { font-size: 125%; }
+
 /* Smooth premium transition for theme toggle */
 body {
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;

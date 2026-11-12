@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import API from '../api/axios';
+import { applyFontSize } from '../utils/fontSize';
 
 const AuthContext = createContext();
 const SESSION_TIMEOUT_MINUTES = Number(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES ?? 720);
@@ -70,6 +71,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     document.documentElement.classList.toggle('reduce-motion', reduceMotion);
   }, [reduceMotion]);
+
+  // And the user's font size. Signed out, the page keeps this device's last size.
+  const fontSize = user?.preferences?.fontSize;
+  useEffect(() => {
+    if (fontSize) applyFontSize(fontSize);
+  }, [fontSize]);
 
   const login = (userData, token) => {
     localStorage.setItem('token', token);

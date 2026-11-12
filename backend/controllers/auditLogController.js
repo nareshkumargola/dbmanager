@@ -1,5 +1,16 @@
 const AuditLog = require('../models/auditLogModel');
 
+// The page loads the newest 2000 records. A download may ask for up to 10000.
+const DEFAULT_ROW_LIMIT = 2000;
+const MAX_ROW_LIMIT = 10000;
+
+// An exact moment such as 2026-11-10T08:30:00.000Z. Empty gives undefined, and bad text gives null.
+const parseMoment = (value) => {
+  if (value === undefined || value === '') return undefined;
+  const time = Date.parse(String(value));
+  return Number.isNaN(time) ? null : new Date(time);
+};
+
 /**
  * Retrieve all system audit logs (Admin Only)
  */
@@ -9,7 +20,7 @@ exports.getSystemAuditLogs = async (req, res) => {
       return res.status(403).json({ message: 'Admin access only!' });
     }
 
-    const { userId, action, startDate, endDate, queryType, connectionId, role } = req.query;
+    const { userId, action, actions, startDate, endDate, from, to, queryType, connectionId, role, countOnly, limit } = req.query;
     const filter = {};
 
     // 1. Filter by specific user
@@ -17,9 +28,12 @@ exports.getSystemAuditLogs = async (req, res) => {
       filter.user = userId;
     }
 
-    // 2. Filter by specific action type
+    // 2. Filter by specific action type, or by a group of actions such as all query actions
     if (action) {
-      filter.action = action;
+      filter.action = String(action);
+    } else if (actions) {
+      const actionList = String(actions).split(',').map((item) => item.trim()).filter(Boolean);
+      if (actionList.length > 0) filter.action = { $in: actionList };
     }
 
     // 2.5 Filter by specific database connection target
@@ -48,12 +62,36 @@ exports.getSystemAuditLogs = async (req, res) => {
       }
     }
 
+    // 3.5 Exact time window, e.g. 10 Nov 2:00 PM to 6:00 PM. It replaces the day range above.
+    const fromMoment = parseMoment(from);
+    const toMoment = parseMoment(to);
+    if (fromMoment === null || toMoment === null) {
+      return res.status(400).json({ message: 'From and To must be valid dates and times.' });
+    }
+    if (fromMoment && toMoment && fromMoment > toMoment) {
+      return res.status(400).json({ message: 'From must be earlier than To.' });
+    }
+    if (fromMoment || toMoment) {
+      filter.createdAt = {};
+      if (fromMoment) filter.createdAt.$gte = fromMoment;
+      if (toMoment) filter.createdAt.$lte = toMoment;
+    }
+
+    // Count only: lets the download box show how many records match before downloading.
+    // Query type and role are checked after loading, so those still go the long way.
+    const wantsCount = countOnly === '1' || countOnly === 'true';
+    if (wantsCount && !queryType && !role) {
+      return res.status(200).json({ success: true, count: await AuditLog.countDocuments(filter) });
+    }
+
+    const rowLimit = Math.min(MAX_ROW_LIMIT, Math.max(1, Number.parseInt(limit, 10) || DEFAULT_ROW_LIMIT));
+
     // Retrieve database logs
     let logs = await AuditLog.find(filter)
       .populate('user', 'name email role')
       .populate('connection', 'name type')
       .sort({ createdAt: -1 })
-      .limit(2000); // Admin limit capping for system overview
+      .limit(rowLimit);
 
     // 4. Client query statement categorization filter (select, insert, update, delete)
     if (queryType) {
@@ -85,7 +123,11 @@ exports.getSystemAuditLogs = async (req, res) => {
       logs = logs.filter(log => log.user && log.user.role === role);
     }
 
-    res.status(200).json({ success: true, logs });
+    if (wantsCount) {
+      return res.status(200).json({ success: true, count: logs.length });
+    }
+
+    res.status(200).json({ success: true, logs, limit: rowLimit });
   } catch (err) {
     console.error('System audit fetch error:', err.message);
     res.status(500).json({ message: 'Error fetching system audit logs', error: err.message });

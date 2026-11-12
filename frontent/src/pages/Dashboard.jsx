@@ -10,10 +10,33 @@ import AnimatedHero from '../components/AnimatedHero';
 import AppNavbar from '../components/AppNavbar';
 import ConnectionPager from '../components/ConnectionPager';
 import useConnectionAlerts from '../hooks/useConnectionAlerts';
+import { CLOUD_PROVIDERS } from '../utils/cloudProviders';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import './Dashboard.css';
 
 const CONNECTIONS_PER_PAGE = 10;
+
+// Database Usage card
+const USAGE_ENGINES = [
+  { key: 'mysql', label: 'MySQL', color: '#0284c7' },
+  { key: 'postgresql', label: 'PostgreSQL', color: '#7c3aed' },
+  { key: 'mongodb', label: 'MongoDB', color: '#16a34a' },
+  { key: 'oracle', label: 'Oracle', color: '#e11d48' },
+];
+const USAGE_GROUPS = [
+  { key: 'engine', label: 'Engine' },
+  { key: 'source', label: 'Source' },
+  { key: 'connection', label: 'Connection' },
+];
+// Slice colors when grouping by source or connection, biggest first. Grey is for "Other".
+const USAGE_PALETTE = ['#0284c7', '#7c3aed', '#16a34a', '#e11d48', '#f59e0b'];
+const USAGE_OTHER_COLOR = '#94a3b8';
+// The donut shows the biggest 4 groups, and puts the rest into one "Other" slice
+const USAGE_MAX_SLICES = 5;
+const usageEngineLabel = (type) => USAGE_ENGINES.find((engine) => engine.key === type)?.label || type;
+const usageSourceLabel = (source) => (source === 'database'
+  ? 'Database servers'
+  : CLOUD_PROVIDERS.find((provider) => provider.key === source)?.label || 'Cloud');
 
 const QUICK_ACTIONS = [
   {
@@ -97,6 +120,11 @@ export default function Dashboard() {
   const [filterUser] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchConnText, setSearchConnText] = useState('');
+
+  // Database Usage card filters
+  const [usageEngine, setUsageEngine] = useState('all');
+  const [usageSource, setUsageSource] = useState('all');
+  const [usageGroup, setUsageGroup] = useState('engine');
 
   // System Users & Roles State (restored)
   const [users, setUsers] = useState([]);
@@ -244,6 +272,33 @@ export default function Dashboard() {
 
   // Sidebar starts hidden unless the user turned on "open sidebar on start" in Settings
   const [sidebarOpen, setSidebarOpen] = useState(() => Boolean(user?.preferences?.sidebarOpenByDefault));
+
+  // A click on an empty spot outside the sidebar hides it, and so does Escape.
+  // Buttons, links and form fields keep doing their own job and leave it open.
+  // Clicks inside the sidebar are handled on the sidebar itself.
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+    const CONTROLS = 'button, a, input, select, textarea, label, summary, [role="button"], [role="tab"], '
+      + '[role="menuitem"], [role="option"], [role="switch"], [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+    const hideOnEmptyClick = (event) => {
+      const target = event.target;
+      if (event.button !== 0 || !(target instanceof Element) || !target.isConnected) return;
+      if (target.closest('.dash-sidebar, [role="dialog"], [aria-modal="true"]')) return;
+      if (target.closest(CONTROLS)) return;
+      // Dragging to select text ends in a click too, and should not hide the sidebar
+      if (window.getSelection && !window.getSelection().isCollapsed) return;
+      setSidebarOpen(false);
+    };
+    const hideOnEscape = (event) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) setSidebarOpen(false);
+    };
+    document.addEventListener('click', hideOnEmptyClick);
+    document.addEventListener('keydown', hideOnEscape);
+    return () => {
+      document.removeEventListener('click', hideOnEmptyClick);
+      document.removeEventListener('keydown', hideOnEscape);
+    };
+  }, [sidebarOpen]);
 
   // Display user name and role matching reference mockup
   const displayName =
@@ -443,27 +498,110 @@ export default function Dashboard() {
     qps: point.queriesPerSecond || 0,
     active: point.activeConnections || 0,
   }));
-  const databaseUsageTypes = [
-    { type: 'mysql', label: 'MySQL', color: '#0284c7' },
-    { type: 'postgresql', label: 'PostgreSQL', color: '#7c3aed' },
-    { type: 'mongodb', label: 'MongoDB', color: '#16a34a' },
-    { type: 'oracle', label: 'Oracle', color: '#e11d48' },
-  ]
-    .map((engine) => {
-      const measuredConnections = currentPerformanceConnections.filter(
-        (connection) => connection.type === engine.type
-          && connection.sizeMB !== null
-          && connection.sizeMB !== undefined
-          && Number.isFinite(Number(connection.sizeMB))
-      );
+  // Database Usage: the latest size of each measured connection, and where it runs
+  const cloudProviderById = new Map(connections.map((conn) => [String(conn._id), conn.cloudProvider || '']));
+  const measuredSizes = currentPerformanceConnections
+    .filter((connection) => USAGE_ENGINES.some((engine) => engine.key === connection.type)
+      && connection.sizeMB !== null
+      && connection.sizeMB !== undefined
+      && Number.isFinite(Number(connection.sizeMB)))
+    .map((connection) => ({
+      id: String(connection.id),
+      name: connection.name || 'Unnamed connection',
+      type: connection.type,
+      sizeMB: Number(connection.sizeMB),
+      source: cloudProviderById.get(String(connection.id)) || 'database',
+    }));
+  // "Total storage" at the top of the page always counts every connection
+  const totalDatabaseSizeMB = measuredSizes.reduce((total, item) => total + item.sizeMB, 0);
+
+  const usageMatchesSource = (item, source) => source === 'all'
+    || (source === 'cloud' ? item.source !== 'database' : item.source === source);
+  const usageMatchesEngine = (item, engine) => engine === 'all' || item.type === engine;
+  // Option counts follow the other filter, so a count shows what picking it would give
+  const usageEngineCount = (engine) => measuredSizes
+    .filter((item) => usageMatchesEngine(item, engine) && usageMatchesSource(item, usageSource)).length;
+  const usageSourceCount = (source) => measuredSizes
+    .filter((item) => usageMatchesEngine(item, usageEngine) && usageMatchesSource(item, source)).length;
+  const usageCloudProviders = CLOUD_PROVIDERS.filter(
+    (provider) => provider.key === usageSource || measuredSizes.some((item) => item.source === provider.key)
+  );
+  const usageItems = measuredSizes.filter(
+    (item) => usageMatchesEngine(item, usageEngine) && usageMatchesSource(item, usageSource)
+  );
+  const usageTotalMB = usageItems.reduce((total, item) => total + item.sizeMB, 0);
+  const usageIsChanged = usageEngine !== 'all' || usageSource !== 'all' || usageGroup !== 'engine';
+
+  const usageSlices = (() => {
+    const groups = new Map();
+    usageItems.forEach((item) => {
+      const key = usageGroup === 'engine' ? item.type : usageGroup === 'source' ? item.source : item.id;
+      const group = groups.get(key) || { key, sizeMB: 0, connectionCount: 0, first: item };
+      group.sizeMB += item.sizeMB;
+      group.connectionCount += 1;
+      groups.set(key, group);
+    });
+    const sorted = [...groups.values()].sort((a, b) => b.sizeMB - a.sizeMB);
+    const shown = sorted.length > USAGE_MAX_SLICES ? sorted.slice(0, USAGE_MAX_SLICES - 1) : sorted;
+    const slices = shown.map((group, index) => {
+      if (usageGroup === 'engine') {
+        const engine = USAGE_ENGINES.find((item) => item.key === group.key);
+        return { ...group, label: engine.label, color: engine.color, count: group.connectionCount };
+      }
+      if (usageGroup === 'source') {
+        return { ...group, label: usageSourceLabel(group.key), color: USAGE_PALETTE[index], count: group.connectionCount };
+      }
+      const where = group.first.source === 'database' ? '' : ` · ${usageSourceLabel(group.first.source)}`;
       return {
-        ...engine,
-        sizeMB: measuredConnections.reduce((total, connection) => total + Number(connection.sizeMB), 0),
-        connectionCount: measuredConnections.length,
+        ...group,
+        label: group.first.name,
+        color: USAGE_PALETTE[index],
+        detail: `${usageEngineLabel(group.first.type)}${where}`,
       };
-    })
-    .filter((engine) => engine.connectionCount > 0);
-  const totalDatabaseSizeMB = databaseUsageTypes.reduce((total, engine) => total + engine.sizeMB, 0);
+    });
+    const rest = sorted.slice(shown.length);
+    if (rest.length > 0) {
+      slices.push({
+        key: 'other',
+        label: 'Other',
+        color: USAGE_OTHER_COLOR,
+        sizeMB: rest.reduce((total, group) => total + group.sizeMB, 0),
+        count: rest.reduce((total, group) => total + group.connectionCount, 0),
+        isOther: true,
+      });
+    }
+    return slices;
+  })();
+
+  const chooseUsageEngine = (value) => {
+    setUsageEngine(value);
+    // One engine as one slice says nothing, so show its connections instead
+    if (value !== 'all' && usageGroup === 'engine') setUsageGroup('connection');
+  };
+  const chooseUsageSource = (value) => {
+    setUsageSource(value);
+    if (value !== 'all' && value !== 'cloud' && usageGroup === 'source') setUsageGroup('connection');
+  };
+  const resetUsageFilters = () => {
+    setUsageEngine('all');
+    setUsageSource('all');
+    setUsageGroup('engine');
+  };
+  // Clicking a legend row looks inside it: an engine or source shows its connections,
+  // and a connection opens its own page
+  const openUsageSlice = (slice) => {
+    if (slice.isOther) return;
+    if (usageGroup === 'engine') chooseUsageEngine(slice.key);
+    else if (usageGroup === 'source') {
+      setUsageSource(slice.key);
+      setUsageGroup('connection');
+    } else navigate(`/connections/${slice.key}`);
+  };
+  const usageSliceAction = (slice) => {
+    if (slice.isOther) return '';
+    if (usageGroup === 'connection') return `Open ${slice.label}`;
+    return `Show ${slice.label} connections`;
+  };
   const formatDatabaseSize = (sizeMB) => {
     if (sizeMB >= 1024 * 1024) return `${(sizeMB / (1024 * 1024)).toFixed(2)} TB`;
     if (sizeMB >= 1024) return `${(sizeMB / 1024).toFixed(2)} GB`;
@@ -787,7 +925,11 @@ export default function Dashboard() {
           className="fixed inset-0 z-20 bg-slate-900/20 md:hidden"
         />
       )}
-      <aside className={`${sidebarOpen ? 'flex' : 'hidden'} dash-sidebar w-60 shrink-0 flex-col justify-between fixed md:sticky top-0 left-0 h-screen z-30 overflow-y-auto transition-colors duration-300`} >
+      {/* A click anywhere in the sidebar hides it. A menu item does its job first. */}
+      <aside
+        onClick={() => setSidebarOpen(false)}
+        className={`${sidebarOpen ? 'flex' : 'hidden'} dash-sidebar w-60 shrink-0 flex-col justify-between fixed md:sticky top-0 left-0 h-screen z-30 overflow-y-auto transition-colors duration-300`}
+      >
         <div>
           <nav className="p-3 pt-4">
             {[
@@ -1236,32 +1378,114 @@ export default function Dashboard() {
                   </span>
                 </div>
 
+                {measuredSizes.length > 0 && (
+                  <div className="dash-usage-filters">
+                    <div className="dash-usage-seg" role="group" aria-label="Group database usage by">
+                      {USAGE_GROUPS.map((group) => (
+                        <button
+                          key={group.key}
+                          type="button"
+                          aria-pressed={usageGroup === group.key}
+                          className={usageGroup === group.key ? 'is-active' : ''}
+                          onClick={() => setUsageGroup(group.key)}
+                        >
+                          {group.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="dash-usage-selects">
+                      <select
+                        className="dash-usage-select"
+                        value={usageEngine}
+                        onChange={(e) => chooseUsageEngine(e.target.value)}
+                        aria-label="Filter database usage by engine"
+                      >
+                        <option value="all">All engines ({usageEngineCount('all')})</option>
+                        {USAGE_ENGINES.map((engine) => {
+                          const count = usageEngineCount(engine.key);
+                          return (
+                            <option key={engine.key} value={engine.key} disabled={count === 0 && usageEngine !== engine.key}>
+                              {engine.label} ({count})
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <select
+                        className="dash-usage-select"
+                        value={usageSource}
+                        onChange={(e) => chooseUsageSource(e.target.value)}
+                        aria-label="Filter database usage by database or cloud"
+                      >
+                        <option value="all">All sources ({usageSourceCount('all')})</option>
+                        <option value="database" disabled={usageSourceCount('database') === 0 && usageSource !== 'database'}>
+                          Database servers ({usageSourceCount('database')})
+                        </option>
+                        <option value="cloud" disabled={usageSourceCount('cloud') === 0 && usageSource !== 'cloud'}>
+                          Cloud services ({usageSourceCount('cloud')})
+                        </option>
+                        {usageCloudProviders.length > 0 && (
+                          <optgroup label="Cloud provider">
+                            {usageCloudProviders.map((provider) => {
+                              const count = usageSourceCount(provider.key);
+                              return (
+                                <option key={provider.key} value={provider.key} disabled={count === 0 && usageSource !== provider.key}>
+                                  {provider.label} ({count})
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        )}
+                      </select>
+                      <button
+                        type="button"
+                        className="dash-usage-clear"
+                        onClick={resetUsageFilters}
+                        disabled={!usageIsChanged}
+                        aria-label="Reset database usage filters"
+                        title="Reset filters"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 12a9 9 0 109-9 9.5 9.5 0 00-6.7 2.8L3 8" />
+                          <path d="M3 3v5h5" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {performanceLoading && !performanceOverview.updatedAt ? (
                   <p className="py-8 text-center text-[11px] text-slate-400">Loading database sizes...</p>
                 ) : performanceError && !performanceOverview.updatedAt ? (
                   <p className="py-8 text-center text-[11px] text-amber-700">{performanceError}</p>
-                ) : databaseUsageTypes.length === 0 ? (
+                ) : measuredSizes.length === 0 ? (
                   <p className="py-8 text-center text-[11px] text-slate-400">
                     No recent database size metrics available.
                   </p>
+                ) : usageSlices.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <p className="text-[11px] text-slate-400">No database sizes match these filters.</p>
+                    <button type="button" onClick={resetUsageFilters} className="mt-2 text-[11px] font-semibold text-blue-600 hover:underline">
+                      Show all
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-3">
                     <div className="relative h-[124px] w-[124px] shrink-0">
                       <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 124, height: 124 }}>
                         <PieChart>
                           <Pie
-                            data={databaseUsageTypes}
+                            data={usageSlices}
                             dataKey="sizeMB"
                             nameKey="label"
                             innerRadius={40}
                             outerRadius={58}
-                            paddingAngle={databaseUsageTypes.length > 1 ? 3 : 0}
+                            paddingAngle={usageSlices.length > 1 ? 3 : 0}
                             cornerRadius={4}
                             stroke="none"
                             animationDuration={900}
                           >
-                            {databaseUsageTypes.map((engine) => (
-                              <Cell key={engine.type} fill={engine.color} />
+                            {usageSlices.map((slice) => (
+                              <Cell key={slice.key} fill={slice.color} />
                             ))}
                           </Pie>
                           <Tooltip
@@ -1274,30 +1498,44 @@ export default function Dashboard() {
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                        <span className="text-[9px] font-medium text-slate-400 leading-none">Total</span>
-                        <span className="mt-1 text-[12px] font-extrabold text-slate-900 leading-none">{formatDatabaseSize(totalDatabaseSizeMB)}</span>
+                        <span className="text-[9px] font-medium text-slate-400 leading-none">
+                          {usageEngine === 'all' && usageSource === 'all' ? 'Total' : 'Filtered'}
+                        </span>
+                        <span className="mt-1 text-[12px] font-extrabold text-slate-900 leading-none">{formatDatabaseSize(usageTotalMB)}</span>
                       </div>
                     </div>
 
-                    <div className="min-w-0 flex-1 space-y-2">
-                      {databaseUsageTypes.map((engine) => {
-                        const share = totalDatabaseSizeMB > 0
-                          ? (engine.sizeMB / totalDatabaseSizeMB) * 100
-                          : 0;
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      {usageSlices.map((slice) => {
+                        const share = usageTotalMB > 0 ? (slice.sizeMB / usageTotalMB) * 100 : 0;
+                        const action = usageSliceAction(slice);
                         return (
-                          <div key={engine.type} className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: engine.color }} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2">
+                          <button
+                            key={slice.key}
+                            type="button"
+                            className="dash-usage-row"
+                            onClick={() => openUsageSlice(slice)}
+                            disabled={slice.isOther}
+                            title={action || undefined}
+                            aria-label={action ? `${action}, ${formatDatabaseSize(slice.sizeMB)}` : undefined}
+                          >
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: slice.color }} />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
                                 <span className="truncate text-[11px] font-semibold text-slate-700">
-                                  {engine.label}
-                                  <span className="ml-1 font-normal text-slate-400">({engine.connectionCount})</span>
+                                  {slice.label}
+                                  {slice.count !== undefined && (
+                                    <span className="ml-1 font-normal text-slate-400">({slice.count})</span>
+                                  )}
                                 </span>
-                                <span className="shrink-0 text-[10px] font-bold text-slate-500">{share.toFixed(0)}%</span>
-                              </div>
-                              <span className="block text-[10px] text-slate-400">{formatDatabaseSize(engine.sizeMB)}</span>
-                            </div>
-                          </div>
+                                <span className="shrink-0 text-[10px] font-bold text-slate-500">{share < 1 && share > 0 ? '<1' : share.toFixed(0)}%</span>
+                              </span>
+                              <span className="block truncate text-[10px] text-slate-400">
+                                {formatDatabaseSize(slice.sizeMB)}
+                                {slice.detail && ` · ${slice.detail}`}
+                              </span>
+                            </span>
+                          </button>
                         );
                       })}
                     </div>

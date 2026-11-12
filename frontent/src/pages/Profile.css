@@ -355,6 +355,14 @@ textarea.pf-input { height: auto; padding: 10px 12px; resize: vertical; min-heig
   color: #475569;
 }
 .pf-option.is-active .pf-option-icon { background: var(--pf-accent); color: #fff; }
+.pf-option:disabled { cursor: wait; }
+
+/* Font size choices: a sample "Aa" in each size, the name, and the percent */
+.pf-font-option { flex-direction: column; justify-content: flex-end; gap: 2px; min-height: 92px; text-align: center; }
+.pf-font-sample { display: grid; place-items: center; height: 34px; font-weight: 700; line-height: 1; color: #0f172a; }
+.pf-font-percent { font-size: 11px; font-weight: 600; color: #94a3b8; }
+.pf-option.is-active .pf-font-sample { color: var(--pf-accent-dark); }
+.pf-option.is-active .pf-font-percent { color: var(--pf-accent); }
 
 .pf-setting-row {
   display: flex;
@@ -450,6 +458,8 @@ html.dark .pf-perm.is-off { background: #111827; }
 html.dark .pf-activity,
 html.dark .pf-setting-row { border-color: #1e293b; }
 html.dark .pf-option-icon { background: #1e293b; color: #94a3b8; }
+html.dark .pf-font-sample { color: #e2e8f0; }
+html.dark .pf-option.is-active .pf-font-sample { color: #5eead4; }
 html.dark .pf-badge,
 html.dark .pf-option.is-active { background: rgba(13, 148, 136, 0.15); border-color: rgba(13, 148, 136, 0.45); color: #5eead4; }
 html.dark .pf-label { color: #cbd5e1; }

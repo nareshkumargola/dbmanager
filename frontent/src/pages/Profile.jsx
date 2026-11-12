@@ -6,6 +6,7 @@ import Navbar from '../components/Navbar';
 import Toast from '../components/Toast';
 import MfaSettings from '../components/MfaSettings';
 import useTheme from '../hooks/useTheme';
+import { FONT_SIZES, applyFontSize } from '../utils/fontSize';
 import './Profile.css';
 
 const SESSION_TIMEOUT_MINUTES = Number(import.meta.env.VITE_SESSION_TIMEOUT_MINUTES ?? 720);
@@ -223,11 +224,13 @@ export default function Profile() {
     defaultLanding: '/dashboard',
     sidebarOpenByDefault: false,
     reduceMotion: false,
+    fontSize: 'default',
     ...(user?.preferences || {}),
     ...(profile?.preferences || {}),
   };
   const [savingPreference, setSavingPreference] = useState(null);
 
+  // Returns true when the setting was saved
   const savePreference = async (key, value) => {
     setSavingPreference(key);
     try {
@@ -235,11 +238,21 @@ export default function Profile() {
       setProfile((current) => (current ? { ...current, preferences: res.data.user.preferences } : res.data.user));
       updateUser({ preferences: res.data.user.preferences });
       setToast({ message: 'Settings saved', type: 'success' });
+      return true;
     } catch (err) {
       setToast({ message: err.response?.data?.message || 'Could not save settings', type: 'error' });
+      return false;
     } finally {
       setSavingPreference(null);
     }
+  };
+
+  // The new size shows at once, and goes back if it can't be saved
+  const chooseFontSize = async (size) => {
+    if (size === preferences.fontSize || savingPreference === 'fontSize') return;
+    const previous = preferences.fontSize;
+    applyFontSize(size);
+    if (!(await savePreference('fontSize', size))) applyFontSize(previous);
   };
 
   const handleLogout = () => {
@@ -651,7 +664,7 @@ export default function Profile() {
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="pf-card p-5 sm:p-6">
               <h3 className="pf-card-title">Appearance</h3>
-              <p className="pf-card-sub">Theme is saved on this device.</p>
+              <p className="pf-card-sub">Theme is saved on this device. Font size and animations go with your account.</p>
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 {[
                   { id: 'light', label: 'Light', icon: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></> },
@@ -669,6 +682,30 @@ export default function Profile() {
                     {option.label}
                   </button>
                 ))}
+              </div>
+
+              <p className="mt-5 text-[13px] font-semibold" id="pf-font-size-label">Font size</p>
+              <p className="text-[12px] text-slate-500">Makes text bigger or smaller on every page.</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup" aria-labelledby="pf-font-size-label">
+                {FONT_SIZES.map((size) => {
+                  const active = preferences.fontSize === size.id;
+                  return (
+                    <button
+                      key={size.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      disabled={savingPreference === 'fontSize'}
+                      onClick={() => chooseFontSize(size.id)}
+                      className={`pf-option pf-font-option ${active ? 'is-active' : ''}`}
+                    >
+                      {/* Fixed px so each sample shows its own size, whatever size is in use now */}
+                      <span className="pf-font-sample" style={{ fontSize: `${(20 * size.percent) / 100}px` }} aria-hidden="true">Aa</span>
+                      <span>{size.label}</span>
+                      <span className="pf-font-percent">{size.percent}%</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="mt-5 pf-setting-row">

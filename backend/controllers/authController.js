@@ -162,7 +162,7 @@ exports.changePassword = async (req, res) => {
 // SAVE OWN APP SETTINGS
 exports.updatePreferences = async (req, res) => {
   try {
-    const { defaultLanding, sidebarOpenByDefault, reduceMotion } = req.body;
+    const { defaultLanding, sidebarOpenByDefault, reduceMotion, fontSize } = req.body;
     const updates = {};
 
     if (defaultLanding !== undefined) {
@@ -170,6 +170,12 @@ exports.updatePreferences = async (req, res) => {
         return res.status(400).json({ message: "Invalid default page." });
       }
       updates['preferences.defaultLanding'] = defaultLanding;
+    }
+    if (fontSize !== undefined) {
+      if (!['small', 'default', 'large', 'xlarge'].includes(fontSize)) {
+        return res.status(400).json({ message: "Invalid font size." });
+      }
+      updates['preferences.fontSize'] = fontSize;
     }
     if (sidebarOpenByDefault !== undefined) updates['preferences.sidebarOpenByDefault'] = Boolean(sidebarOpenByDefault);
     if (reduceMotion !== undefined) updates['preferences.reduceMotion'] = Boolean(reduceMotion);

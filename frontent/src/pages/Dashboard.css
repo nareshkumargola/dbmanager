@@ -322,6 +322,89 @@
   box-shadow: 0 10px 24px -10px rgba(11, 27, 77, 0.6);
 }
 
+/* ===== Database Usage filters ===== */
+.dash-usage-filters {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.dash-usage-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f1f5f9;
+}
+.dash-usage-seg button {
+  height: 24px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.dash-usage-seg button:hover:not(.is-active) { color: #0b1b4d; }
+.dash-usage-seg button.is-active {
+  color: #1d4ed8;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+.dash-usage-selects {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px;
+  gap: 6px;
+}
+.dash-usage-select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  color: #334155;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dash-usage-select:hover { border-color: #cbd5e1; }
+.dash-usage-select:focus-visible { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18); }
+.dash-usage-clear {
+  display: grid;
+  place-items: center;
+  height: 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #fff;
+  color: #64748b;
+  transition: color 0.2s, border-color 0.2s;
+}
+.dash-usage-clear:hover:not(:disabled) { color: #1d4ed8; border-color: #93c5fd; }
+.dash-usage-clear:disabled { opacity: 0.4; cursor: not-allowed; }
+.dash-usage-seg button:focus-visible,
+.dash-usage-clear:focus-visible,
+.dash-usage-row:focus-visible { outline: 2px solid #3b82f6; outline-offset: 1px; }
+
+/* Legend rows open what they show. Hover lifts the row, with no change of color. */
+.dash-usage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 8px;
+  text-align: left;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.dash-usage-row:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px -8px rgba(15, 23, 42, 0.4), 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.dash-usage-row:disabled { cursor: default; }
+
 /* ===== Connections table ===== */
 /* Room for the header (36px) plus 10 rows (57px each); longer lists scroll under a fixed header */
 .dash-table-scroll {
@@ -415,6 +498,16 @@ html.dark .dash-action {
   border-color: rgba(51, 65, 85, 0.8);
 }
 html.dark .dash-table thead th { background: #111827; color: #94a3b8; }
+html.dark .dash-usage-seg { background: #1e293b; }
+html.dark .dash-usage-seg button { color: #94a3b8; }
+html.dark .dash-usage-seg button:hover:not(.is-active) { color: #e2e8f0; }
+html.dark .dash-usage-seg button.is-active { color: #bfdbfe; background: #0f172a; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+html.dark .dash-usage-select,
+html.dark .dash-usage-clear { background: #0f172a; border-color: #334155; color: #cbd5e1; }
+html.dark .dash-usage-select:hover { border-color: #475569; }
+html.dark .dash-usage-clear:hover:not(:disabled) { color: #93c5fd; border-color: #3b82f6; }
+html.dark .dash-usage-row:hover:not(:disabled) { box-shadow: 0 6px 12px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(51, 65, 85, 0.8); }
+html.dark .dash-usage-row .text-slate-700 { color: #e2e8f0; }
 html.dark .dash-sidebar {
   background: rgba(2, 6, 23, 0.82);
   border-color: rgba(30, 41, 59, 0.9);
